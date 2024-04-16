@@ -1,0 +1,10 @@
+# Common
+build/
+bin/
+
+# VSCode
+.vscode/
+
+# Visual Studio
+.vs/
+out/
