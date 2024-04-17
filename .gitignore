@@ -1,6 +1,7 @@
 # Common
 build/
 bin/
+*.log
 
 # VSCode
 .vscode/
