@@ -1,6 +1,6 @@
 /**
  * @file command.hpp
- * @author your name (you@domain.com)
+ * @author MiaoHN (582418227@qq.com)
  * @brief
  * @version 0.1
  * @date 2024-04-17
@@ -26,12 +26,15 @@ class Command {
     Render,
   };
 
-  Command(Type type) : type_(type) {}
+  Command(Type type) : type_(type), is_cancelled_(false) {}
 
   ~Command() {}
 
+  const bool IsCancelled() const { return is_cancelled_; }
+
  private:
   Type type_;
+  bool is_cancelled_;
 };
 
 }  // namespace MEngine

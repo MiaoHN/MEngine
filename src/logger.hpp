@@ -1,6 +1,6 @@
 /**
  * @file logger.hpp
- * @author your name (you@domain.com)
+ * @author MiaoHN (582418227@qq.com)
  * @brief
  * @version 0.1
  * @date 2024-04-16

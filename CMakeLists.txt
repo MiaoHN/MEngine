@@ -10,6 +10,7 @@ add_executable(engine
   src/application.cpp
   src/logger.cpp
   src/task_dispatcher.cpp
+  src/task_handler.cpp
   )
 
 target_include_directories(engine

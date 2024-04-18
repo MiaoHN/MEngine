@@ -55,7 +55,7 @@ void Application::Run() {
     glClear(GL_COLOR_BUFFER_BIT);
 
     Command test_command(Command::Type::Logic);
-    task_dispatcher_->Do(test_command);
+    task_dispatcher_->Run(test_command);
 
     glfwSwapBuffers(window_);
 
