@@ -1,26 +1,10 @@
 #version 460 core
+layout (location = 0) in vec3 aPos; // 位置变量的属性位置值为0
 
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aNormal;
-layout(location = 2) in vec2 aTexCoord;
+out vec4 vertexColor; // 为片段着色器指定一个颜色输出
 
-out vec2 TexCoord;
-out vec3 Normal;
-out vec3 ViewPos;
-out vec3 FragPos;
-
-layout(std140, binding = 0) uniform camera {
-  mat4 viewProjection;
-  vec3 cameraPosition;
-};
-
-uniform mat4 model;
-
-void main() {
-  gl_Position = viewProjection * model * vec4(aPos, 1.0f);
-  TexCoord    = aTexCoord;
-  // Normal      = vec3(model * vec4(aNormal, 1.0f));
-  Normal  = mat3(transpose(inverse(model))) * aNormal;
-  FragPos = vec3(model * vec4(aPos, 1.0f));
-  ViewPos = cameraPosition;
+void main()
+{
+    gl_Position = vec4(aPos, 1.0); // 注意我们如何把一个vec3作为vec4的构造器的参数
+    vertexColor = vec4(0.5, 0.0, 0.0, 1.0); // 把输出变量设置为暗红色
 }

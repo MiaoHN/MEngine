@@ -24,6 +24,11 @@ class TaskHandler;
 class Shader;
 class Scene;
 
+namespace GL {
+class VertexArray;
+class VertexBuffer;
+};  // namespace GL
+
 /**
  * @brief Application class is the main class that runs the game loop.
  *
@@ -68,6 +73,10 @@ class Application {
   std::shared_ptr<TaskHandler> renderer_;
 
   std::shared_ptr<spdlog::logger> logger_;
+
+  // For test
+  std::shared_ptr<GL::VertexArray>  vertex_array_;
+  std::shared_ptr<GL::VertexBuffer> vertex_buffer_;
 };
 
 }  // namespace MEngine

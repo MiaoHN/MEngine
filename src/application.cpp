@@ -5,6 +5,7 @@
 #include <glad/glad.h>
 
 #include "command.hpp"
+#include "gl.hpp"
 #include "renderer.hpp"
 #include "scene.hpp"
 #include "shader.hpp"
@@ -47,6 +48,20 @@ Application::Application() {
                                      "res/shaders/test_frag.glsl");
 
   renderer_ = std::make_shared<Renderer>();
+
+  // For test
+  float vertices[] = {
+      -0.5f, -0.5f, 0.0f,  // left
+      0.5f,  -0.5f, 0.0f,  // right
+      0.0f,  0.5f,  0.0f   // top
+  };
+
+  vertex_buffer_ = std::make_shared<GL::VertexBuffer>();
+  vertex_buffer_->SetData(vertices, sizeof(vertices));
+  vertex_buffer_->AddLayout({{GL::ShaderDataType::Float3, "aPos"}});
+
+  vertex_array_ = std::make_shared<GL::VertexArray>();
+  vertex_array_->SetVertexBuffer(vertex_buffer_);
 }
 
 Application::~Application() {
@@ -66,6 +81,7 @@ void Application::Run() {
     // handle render
     RenderCommand render_command;
     render_command.SetShader(shader_);
+    render_command.SetVertexArray(vertex_array_);
     renderer_->Run(&render_command);
 
     glfwSwapBuffers(window_);

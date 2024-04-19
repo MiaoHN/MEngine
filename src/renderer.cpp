@@ -3,6 +3,7 @@
 #include <glad/glad.h>
 
 #include "command.hpp"
+#include "gl.hpp"
 #include "shader.hpp"
 
 namespace MEngine {
@@ -22,10 +23,12 @@ void Renderer::Run(Command* command) {
 
   RenderCommand* cmd = dynamic_cast<RenderCommand*>(command);
 
-  cmd->GetShader()->Bind();
-
   glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
+
+  cmd->GetShader()->Bind();
+  cmd->GetVertexArray()->Bind();
+  glDrawArrays(GL_TRIANGLES, 0, 3);
 }
 
 }  // namespace MEngine
