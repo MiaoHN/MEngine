@@ -13,9 +13,9 @@ void TaskDispatcher::PushHandler(std::shared_ptr<TaskHandler> task_handler) {
   task_handlers_.push_back(task_handler);
 }
 
-void TaskDispatcher::Run(Command& cmd) {
+void TaskDispatcher::Run(Command* cmd) {
   for (auto& task_handler : task_handlers_) {
-    if (cmd.IsCancelled()) {
+    if (cmd->IsCancelled()) {
       break;
     }
     task_handler->Run(cmd);

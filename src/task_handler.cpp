@@ -4,6 +4,6 @@ namespace MEngine {
 
 TaskHandler::TaskHandler() {}
 
-void TaskHandler::Run(Command& cmd) {}
+void TaskHandler::Run(Command* cmd) {}
 
 }  // namespace MEngine

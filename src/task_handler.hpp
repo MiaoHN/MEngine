@@ -23,7 +23,7 @@ class TaskHandler {
 
   virtual ~TaskHandler() = default;
 
-  virtual void Run(Command& cmd);
+  virtual void Run(Command* cmd);
 };
 
 }  // namespace MEngine

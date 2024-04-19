@@ -20,6 +20,8 @@ struct GLFWwindow;
 namespace MEngine {
 
 class TaskDispatcher;
+class TaskHandler;
+class Shader;
 class Scene;
 
 /**
@@ -60,6 +62,10 @@ class Application {
   std::unique_ptr<Scene> scene_;
 
   GLFWwindow* window_;
+
+  std::shared_ptr<Shader> shader_;
+
+  std::shared_ptr<TaskHandler> renderer_;
 
   std::shared_ptr<spdlog::logger> logger_;
 };

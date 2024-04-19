@@ -11,12 +11,20 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 
 namespace MEngine {
 
+namespace GL {
+class VertexArray;
+};
+
+class Shader;
+
 /**
  * @brief Command class is a utility class for parsing command line arguments.
+ * @warning it's better to create it on the stack.
  *
  */
 class Command {
@@ -28,13 +36,40 @@ class Command {
 
   Command(Type type) : type_(type), is_cancelled_(false) {}
 
-  ~Command() {}
+  virtual ~Command() = default;
 
   const bool IsCancelled() const { return is_cancelled_; }
+
+  void Cancel() { is_cancelled_ = true; }
+
+  const Type GetType() const { return type_; }
 
  private:
   Type type_;
   bool is_cancelled_;
+};
+
+class RenderCommand : public Command {
+ public:
+  RenderCommand() : Command(Type::Render) {}
+
+  ~RenderCommand() {}
+
+  void SetVertexArray(std::shared_ptr<GL::VertexArray> vertex_array) {
+    vertex_array_ = vertex_array;
+  }
+
+  void SetShader(std::shared_ptr<Shader> shader) { shader_ = shader; }
+
+  std::shared_ptr<GL::VertexArray> GetVertexArray() const {
+    return vertex_array_;
+  }
+
+  std::shared_ptr<Shader> GetShader() const { return shader_; }
+
+ private:
+  std::shared_ptr<GL::VertexArray> vertex_array_;
+  std::shared_ptr<Shader>          shader_;
 };
 
 }  // namespace MEngine

@@ -35,7 +35,7 @@ class TaskDispatcher {
    * 
    * @param cmd The command to run.
    */
-  void Run(Command& cmd);
+  void Run(Command* cmd);
 
  private:
   std::vector<std::shared_ptr<TaskHandler>> task_handlers_;
