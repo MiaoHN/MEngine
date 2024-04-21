@@ -8,3 +8,6 @@
 	path = deps/glad
 	url = https://github.com/Dav1dde/glad.git
 	branch = c
+[submodule "deps/entt"]
+	path = deps/entt
+	url = https://github.com/skypjack/entt.git

@@ -11,12 +11,42 @@
 
 #pragma once
 
+#include <entt/entt.hpp>
+#include <memory>
+#include <vector>
+
+#include "entity.hpp"
+#include "logger.hpp"
+
 namespace MEngine {
 
 class Scene {
  public:
-  Scene() {}
-  ~Scene() {}
+  Scene();
+  ~Scene();
+
+  Entity CreateEntity() {
+    Entity entity = Entity(registry_.create(), &registry_);
+    entities_.push_back(entity);
+    return entity;
+  }
+
+  template <typename... Components>
+  auto GetAllEntitiesWith() {
+    auto                view = registry_.view<Components...>();
+    std::vector<Entity> entities;
+    for (auto entity : view) {
+      entities.push_back(Entity(entity, &registry_));
+    }
+    return entities;
+  }
+
+ private:
+  entt::registry registry_;
+
+  std::vector<Entity> entities_;
+
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 }  // namespace MEngine

@@ -75,7 +75,8 @@ void Shader::Unbind() { glUseProgram(0); }
 std::vector<char> Shader::read_file(const std::string& path) {
   std::ifstream file(path, std::ios::ate | std::ios::binary);
   if (!file.is_open()) {
-    Logger::Get("Shader")->critical("read_file Can't open file '{}'", path.c_str());
+    Logger::Get("Shader")->critical("read_file Can't open file '{}'",
+                                    path.c_str());
     file.close();
     return {};
   }

@@ -28,6 +28,7 @@ void Renderer::Run(Command* command) {
 
   cmd->GetShader()->Bind();
   cmd->GetVertexArray()->Bind();
+
   glDrawArrays(GL_TRIANGLES, 0, 3);
 }
 

@@ -5,6 +5,7 @@
 #include <glad/glad.h>
 
 #include "command.hpp"
+#include "component.hpp"
 #include "gl.hpp"
 #include "renderer.hpp"
 #include "scene.hpp"
@@ -17,18 +18,11 @@ namespace MEngine {
 Application::Application() {
   logger_ = Logger::Get("Application");
   logger_->info("Application started");
-  task_dispatcher_ = std::make_unique<TaskDispatcher>();
-  scene_           = std::make_unique<Scene>();
 
+  glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-
-  if (!glfwInit()) {
-    logger_->error("Failed to initialize GLFW");
-    glfwTerminate();
-    exit(-1);
-  }
 
   window_ = glfwCreateWindow(800, 600, "MEngine", nullptr, nullptr);
 
@@ -44,24 +38,9 @@ Application::Application() {
     exit(-1);
   }
 
-  shader_ = std::make_shared<Shader>("res/shaders/test_vert.glsl",
-                                     "res/shaders/test_frag.glsl");
-
-  renderer_ = std::make_shared<Renderer>();
-
-  // For test
-  float vertices[] = {
-      -0.5f, -0.5f, 0.0f,  // left
-      0.5f,  -0.5f, 0.0f,  // right
-      0.0f,  0.5f,  0.0f   // top
-  };
-
-  vertex_buffer_ = std::make_shared<GL::VertexBuffer>();
-  vertex_buffer_->SetData(vertices, sizeof(vertices));
-  vertex_buffer_->AddLayout({{GL::ShaderDataType::Float3, "aPos"}});
-
-  vertex_array_ = std::make_shared<GL::VertexArray>();
-  vertex_array_->SetVertexBuffer(vertex_buffer_);
+  task_dispatcher_ = std::make_unique<TaskDispatcher>();
+  scene_           = std::make_unique<Scene>();
+  renderer_        = std::make_shared<Renderer>();
 }
 
 Application::~Application() {
@@ -79,10 +58,14 @@ void Application::Run() {
     task_dispatcher_->Run(&test_command);
 
     // handle render
-    RenderCommand render_command;
-    render_command.SetShader(shader_);
-    render_command.SetVertexArray(vertex_array_);
-    renderer_->Run(&render_command);
+    auto entities = scene_->GetAllEntitiesWith<RenderInfo>();
+    for (auto& entity : entities) {
+      RenderInfo&   render_info = entity.GetComponent<RenderInfo>();
+      RenderCommand render_command;
+      render_command.SetShader(render_info.shader);
+      render_command.SetVertexArray(render_info.vertex_array);
+      renderer_->Run(&render_command);
+    }
 
     glfwSwapBuffers(window_);
 
