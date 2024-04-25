@@ -1,7 +1,7 @@
-#include "task_dispatcher.hpp"
+#include "core/task_dispatcher.hpp"
 
-#include "command.hpp"
-#include "task_handler.hpp"
+#include "core/command.hpp"
+#include "core/task_handler.hpp"
 
 namespace MEngine {
 

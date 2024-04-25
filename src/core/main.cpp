@@ -1,5 +1,5 @@
-#include "application.hpp"
-#include "logger.hpp"
+#include "core/application.hpp"
+#include "core/logger.hpp"
 
 using namespace MEngine;
 

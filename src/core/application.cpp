@@ -1,4 +1,4 @@
-#include "application.hpp"
+#include "core/application.hpp"
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -7,16 +7,16 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "camera.hpp"
-#include "command.hpp"
-#include "component.hpp"
-#include "gl.hpp"
-#include "renderer.hpp"
-#include "scene.hpp"
-#include "input.hpp"
-#include "shader.hpp"
-#include "task_dispatcher.hpp"
-#include "task_handler.hpp"
+#include "scene/camera.hpp"
+#include "core/command.hpp"
+#include "scene/component.hpp"
+#include "render/gl.hpp"
+#include "render/renderer.hpp"
+#include "scene/scene.hpp"
+#include "core/input.hpp"
+#include "render/shader.hpp"
+#include "core/task_dispatcher.hpp"
+#include "core/task_handler.hpp"
 
 namespace MEngine {
 

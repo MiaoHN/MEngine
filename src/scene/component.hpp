@@ -1,6 +1,6 @@
 /**
  * @file component.hpp
- * @author your name (you@domain.com)
+ * @author MiaoHN (582418227@qq.com)
  * @brief
  * @version 0.1
  * @date 2024-04-21
@@ -14,8 +14,8 @@
 #include <glm/glm.hpp>
 #include <memory>
 
-#include "gl.hpp"
-#include "shader.hpp"
+#include "render/gl.hpp"
+#include "render/shader.hpp"
 
 namespace MEngine {
 

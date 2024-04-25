@@ -1,8 +1,8 @@
-#include "scene.hpp"
+#include "scene/scene.hpp"
 
-#include "component.hpp"
-#include "gl.hpp"
-#include "shader.hpp"
+#include "scene/component.hpp"
+#include "render/gl.hpp"
+#include "render/shader.hpp"
 
 namespace MEngine {
 

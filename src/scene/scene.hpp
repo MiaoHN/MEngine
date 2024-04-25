@@ -15,9 +15,9 @@
 #include <memory>
 #include <vector>
 
-#include "camera.hpp"
-#include "entity.hpp"
-#include "logger.hpp"
+#include "scene/camera.hpp"
+#include "scene/entity.hpp"
+#include "core/logger.hpp"
 
 namespace MEngine {
 

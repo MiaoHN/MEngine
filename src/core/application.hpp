@@ -13,7 +13,7 @@
 
 #include <memory>
 
-#include "logger.hpp"
+#include "core/logger.hpp"
 
 struct GLFWwindow;
 

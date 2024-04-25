@@ -10,15 +10,15 @@ add_subdirectory(deps/glfw)
 
 add_executable(${PROJECT_NAME}
   deps/glad/src/glad.c
-  src/main.cpp
-  src/application.cpp
-  src/logger.cpp
-  src/task_dispatcher.cpp
-  src/task_handler.cpp
-  src/gl.cpp
-  src/shader.cpp
-  src/scene.cpp
-  src/renderer.cpp
+  src/core/main.cpp
+  src/core/application.cpp
+  src/core/logger.cpp
+  src/core/task_dispatcher.cpp
+  src/core/task_handler.cpp
+  src/render/gl.cpp
+  src/render/shader.cpp
+  src/scene/scene.cpp
+  src/render/renderer.cpp
   )
 
 target_include_directories(${PROJECT_NAME}

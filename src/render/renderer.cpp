@@ -1,10 +1,10 @@
-#include "renderer.hpp"
+#include "render/renderer.hpp"
 
 #include <glad/glad.h>
 
-#include "command.hpp"
-#include "gl.hpp"
-#include "shader.hpp"
+#include "core/command.hpp"
+#include "render/gl.hpp"
+#include "render/shader.hpp"
 
 namespace MEngine {
 
