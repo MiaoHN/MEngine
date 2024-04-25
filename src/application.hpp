@@ -21,13 +21,7 @@ namespace MEngine {
 
 class TaskDispatcher;
 class TaskHandler;
-class Shader;
 class Scene;
-
-namespace GL {
-class VertexArray;
-class VertexBuffer;
-};  // namespace GL
 
 /**
  * @brief Application class is the main class that runs the game loop.
@@ -53,6 +47,10 @@ class Application {
    */
   void Run();
 
+  GLFWwindow* GetWindow() { return window_; }
+
+  static Application* GetInstance();
+
  private:
   /**
    * @brief task_dispatcher_ is a unique pointer to the TaskDispatcher class.
@@ -64,19 +62,13 @@ class Application {
    * @brief scene_ is a unique pointer to the Scene class.
    *
    */
-  std::unique_ptr<Scene> scene_;
+  std::shared_ptr<Scene> scene_;
 
   GLFWwindow* window_;
-
-  std::shared_ptr<Shader> shader_;
 
   std::shared_ptr<TaskHandler> renderer_;
 
   std::shared_ptr<spdlog::logger> logger_;
-
-  // For test
-  std::shared_ptr<GL::VertexArray>  vertex_array_;
-  std::shared_ptr<GL::VertexBuffer> vertex_buffer_;
 };
 
 }  // namespace MEngine

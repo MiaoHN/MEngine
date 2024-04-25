@@ -26,7 +26,12 @@ void Renderer::Run(Command* command) {
   glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
-  cmd->GetShader()->Bind();
+  auto shader = cmd->GetShader();
+
+  shader->SetUniform("model", cmd->GetModelMatrix());
+  shader->SetUniform("view_proj", cmd->GetViewProjectionMatrix());
+
+  shader->Bind();
   cmd->GetVertexArray()->Bind();
 
   glDrawArrays(GL_TRIANGLES, 0, 3);

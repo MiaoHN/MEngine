@@ -1,0 +1,7 @@
+[object]
+type = "triangle"
+     -0.5f, -0.5f, 0.0f,  // left
+      0.5f,  -0.5f, 0.0f,  // right
+      0.0f,  0.5f,  0.0f   // top
+vert_shader = "./res/shaders/test_vert.glsl"
+frag_shader = "./res/shaders/test_frag.glsl"

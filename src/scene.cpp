@@ -32,8 +32,22 @@ Scene::Scene() {
 
   render_info.vertex_array = vertex_array;
   render_info.shader       = shader;
+
+  entity.AddComponent<Transform>(glm::vec3(0.0f, 0.0f, 0.0f),
+                                 glm::vec3(0.0f, 0.0f, 0.0f),
+                                 glm::vec3(1.0f, 1.0f, 1.0f));
+
+  camera_ = std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
 }
 
 Scene::~Scene() {}
+
+void Scene::LoadScene(const std::string& path) {
+  // TODO: Implement
+}
+
+void Scene::SaveScene(const std::string& path) {
+  // TODO: Implement
+}
 
 }  // namespace MEngine

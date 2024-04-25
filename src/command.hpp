@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <glm/glm.hpp>
 #include <memory>
 #include <string>
 
@@ -67,9 +68,26 @@ class RenderCommand : public Command {
 
   std::shared_ptr<Shader> GetShader() const { return shader_; }
 
+  void SetModelMatrix(const glm::mat4& model_matrix) {
+    model_matrix_ = model_matrix;
+  }
+
+  void SetViewProjectionMatrix(const glm::mat4& view_projection_matrix) {
+    view_projection_matrix_ = view_projection_matrix;
+  }
+
+  const glm::mat4& GetModelMatrix() const { return model_matrix_; }
+
+  const glm::mat4& GetViewProjectionMatrix() const {
+    return view_projection_matrix_;
+  }
+
  private:
   std::shared_ptr<GL::VertexArray> vertex_array_;
   std::shared_ptr<Shader>          shader_;
+
+  glm::mat4 model_matrix_;
+  glm::mat4 view_projection_matrix_;
 };
 
 }  // namespace MEngine

@@ -26,6 +26,7 @@ target_include_directories(${PROJECT_NAME}
     src
     deps/glad/include
     deps/entt/single_include
+    deps/glm
 )
 
 target_link_libraries(${PROJECT_NAME}

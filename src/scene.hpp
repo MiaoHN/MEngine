@@ -15,6 +15,7 @@
 #include <memory>
 #include <vector>
 
+#include "camera.hpp"
 #include "entity.hpp"
 #include "logger.hpp"
 
@@ -41,10 +42,17 @@ class Scene {
     return entities;
   }
 
+  std::shared_ptr<OrthographicCamera> GetCamera() { return camera_; }
+
+  void LoadScene(const std::string& path);
+  void SaveScene(const std::string& path);
+
  private:
   entt::registry registry_;
 
   std::vector<Entity> entities_;
+
+  std::shared_ptr<OrthographicCamera> camera_;
 
   std::shared_ptr<spdlog::logger> logger_;
 };
