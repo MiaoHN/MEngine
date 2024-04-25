@@ -8,18 +8,30 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 add_subdirectory(deps/glfw)
 
-add_executable(${PROJECT_NAME}
-  deps/glad/src/glad.c
+set(SOURCE_CORE
   src/core/main.cpp
   src/core/application.cpp
   src/core/logger.cpp
   src/core/task_dispatcher.cpp
   src/core/task_handler.cpp
+)
+
+set(SOURCE_RENDER
   src/render/gl.cpp
   src/render/shader.cpp
-  src/scene/scene.cpp
   src/render/renderer.cpp
-  )
+)
+
+set(SOURCE_SCENE
+  src/scene/scene.cpp
+)
+
+add_executable(${PROJECT_NAME}
+  ${SOURCE_CORE}
+  ${SOURCE_RENDER}
+  ${SOURCE_SCENE}
+  deps/glad/src/glad.c
+)
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE deps/spdlog/include
