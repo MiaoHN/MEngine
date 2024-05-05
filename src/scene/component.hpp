@@ -12,20 +12,31 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <memory>
+#include <string>
 
 #include "render/gl.hpp"
 #include "render/shader.hpp"
+#include "render/texture.hpp"
 
 namespace MEngine {
 
+struct Tag {
+  std::string tag;
+
+  Tag(std::string tag) : tag(tag) {}
+  Tag() = default;
+};
+
 struct RenderInfo {
   std::shared_ptr<Shader>          shader;
+  std::shared_ptr<Texture>         texture;
   std::shared_ptr<GL::VertexArray> vertex_array;
 
-  RenderInfo(std::shared_ptr<Shader>          shader,
+  RenderInfo(std::shared_ptr<Shader> shader, std::shared_ptr<Texture> texture,
              std::shared_ptr<GL::VertexArray> vertex_array)
-      : shader(shader), vertex_array(vertex_array) {}
+      : shader(shader), texture(texture), vertex_array(vertex_array) {}
   RenderInfo() = default;
 };
 

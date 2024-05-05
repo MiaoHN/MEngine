@@ -11,12 +11,16 @@
 
 #pragma once
 
+#include <algorithm>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "core/command.hpp"
+#include "core/task_handler.hpp"
+
 namespace MEngine {
 
-class OrthographicCamera {
+class OrthographicCamera : public TaskHandler {
  public:
   OrthographicCamera(float left, float right, float bottom, float top) {
     projection_ = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
@@ -30,6 +34,42 @@ class OrthographicCamera {
   }
 
   ~OrthographicCamera() = default;
+
+  void Run(Command* cmd) override {
+    switch (cmd->GetType()) {
+      case Command::Type::Move: {
+        auto move_cmd = static_cast<MoveCommand*>(cmd);
+        position_ += move_cmd->GetDirection() * move_cmd->GetVelocity();
+        RecalculateViewMatrix();
+        break;
+      }
+      case Command::Type::Rotate: {
+        auto rotate_cmd = static_cast<RotateCommand*>(cmd);
+        rotation_ += rotate_cmd->GetAngle();
+        RecalculateViewMatrix();
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  void OnWindowResize(float width, float height) {
+    aspect_ratio_ = width / height;
+    SetProjection(-aspect_ratio_ * zoom_level_, aspect_ratio_ * zoom_level_,
+                  -zoom_level_, zoom_level_);
+  }
+
+  void OnMouseScroll(float y_offset) {
+    zoom_level_ += y_offset;
+    if (zoom_level_ < 0.25f) zoom_level_ = 0.25f;
+    SetProjection(-aspect_ratio_ * zoom_level_, aspect_ratio_ * zoom_level_,
+                  -zoom_level_, zoom_level_);
+  }
+
+  void SetProjection(float left, float right, float bottom, float top) {
+    projection_ = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
+  }
 
   void SetPosition(const glm::vec3& position) { position_ = position; }
 
@@ -58,6 +98,9 @@ class OrthographicCamera {
   glm::mat4 projection_;
   glm::vec3 position_;
   float     rotation_;
+
+  float aspect_ratio_ = 0.0f;
+  float zoom_level_   = 1.0f;
 };
 
 }  // namespace MEngine

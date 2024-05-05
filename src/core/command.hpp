@@ -15,6 +15,8 @@
 #include <memory>
 #include <string>
 
+#include "scene/component.hpp"
+
 namespace MEngine {
 
 namespace GL {
@@ -32,6 +34,8 @@ class Command {
  public:
   enum class Type {
     Logic,
+    Move,
+    Rotate,
     Render,
   };
 
@@ -56,17 +60,11 @@ class RenderCommand : public Command {
 
   ~RenderCommand() {}
 
-  void SetVertexArray(std::shared_ptr<GL::VertexArray> vertex_array) {
-    vertex_array_ = vertex_array;
+  void SetRenderInfo(const RenderInfo& render_info) {
+    render_info_ = render_info;
   }
 
-  void SetShader(std::shared_ptr<Shader> shader) { shader_ = shader; }
-
-  std::shared_ptr<GL::VertexArray> GetVertexArray() const {
-    return vertex_array_;
-  }
-
-  std::shared_ptr<Shader> GetShader() const { return shader_; }
+  RenderInfo& GetRenderInfo() { return render_info_; }
 
   void SetModelMatrix(const glm::mat4& model_matrix) {
     model_matrix_ = model_matrix;
@@ -83,11 +81,37 @@ class RenderCommand : public Command {
   }
 
  private:
-  std::shared_ptr<GL::VertexArray> vertex_array_;
-  std::shared_ptr<Shader>          shader_;
+  RenderInfo render_info_;
 
   glm::mat4 model_matrix_;
   glm::mat4 view_projection_matrix_;
+};
+
+class MoveCommand : public Command {
+ public:
+  MoveCommand(const glm::vec3& direction, const float velocity)
+      : Command(Type::Move), direction_(direction), velocity_(velocity) {}
+
+  ~MoveCommand() {}
+
+  const glm::vec3& GetDirection() const { return direction_; }
+  const glm::vec3& GetVelocity() const { return velocity_; }
+
+ private:
+  glm::vec3 direction_;
+  glm::vec3 velocity_;
+};
+
+class RotateCommand : public Command {
+ public:
+  RotateCommand(float angle) : Command(Type::Rotate), angle_(angle) {}
+
+  ~RotateCommand() {}
+
+  const float GetAngle() const { return angle_; }
+
+ private:
+  float angle_;
 };
 
 }  // namespace MEngine

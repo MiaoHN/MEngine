@@ -19,6 +19,7 @@ set(SOURCE_CORE
 set(SOURCE_RENDER
   src/render/gl.cpp
   src/render/shader.cpp
+  src/render/texture.cpp
   src/render/renderer.cpp
 )
 
@@ -39,6 +40,7 @@ target_include_directories(${PROJECT_NAME}
     deps/glad/include
     deps/entt/single_include
     deps/glm
+    deps/stb
 )
 
 target_link_libraries(${PROJECT_NAME}

@@ -49,6 +49,8 @@ class Application {
 
   GLFWwindow* GetWindow() { return window_; }
 
+  float GetDeltaTime();
+
   static Application* GetInstance();
 
  private:
@@ -65,6 +67,8 @@ class Application {
   std::shared_ptr<Scene> scene_;
 
   GLFWwindow* window_;
+
+  float prev_time_;
 
   std::shared_ptr<TaskHandler> renderer_;
 

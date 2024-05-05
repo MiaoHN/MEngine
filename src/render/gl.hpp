@@ -58,6 +58,20 @@ class VertexBuffer {
   std::vector<ElementLayout> layouts_;
 };
 
+class IndexBuffer {
+ public:
+  IndexBuffer();
+  ~IndexBuffer();
+  void Bind() const;
+  void Unbind() const;
+  void SetData(const unsigned int* data, int count);
+  int GetCount() const { return count_; }
+
+ private:
+  unsigned int id_;
+  int         count_;
+};
+
 class VertexArray {
  public:
   VertexArray();
@@ -65,11 +79,15 @@ class VertexArray {
   void Bind();
   void Unbind();
   void SetVertexBuffer(std::shared_ptr<VertexBuffer> vb);
+  void SetIndexBuffer(std::shared_ptr<IndexBuffer> ib);
+
+  int GetCount() const { return index_buffer_->GetCount(); }
 
  private:
   unsigned int id_;
 
   std::shared_ptr<VertexBuffer> vertex_buffer_;
+  std::shared_ptr<IndexBuffer>  index_buffer_;
 };
 
 }  // namespace GL

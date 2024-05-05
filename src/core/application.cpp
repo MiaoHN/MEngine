@@ -7,16 +7,16 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "scene/camera.hpp"
 #include "core/command.hpp"
-#include "scene/component.hpp"
-#include "render/gl.hpp"
-#include "render/renderer.hpp"
-#include "scene/scene.hpp"
 #include "core/input.hpp"
-#include "render/shader.hpp"
 #include "core/task_dispatcher.hpp"
 #include "core/task_handler.hpp"
+#include "render/gl.hpp"
+#include "render/renderer.hpp"
+#include "render/shader.hpp"
+#include "scene/camera.hpp"
+#include "scene/component.hpp"
+#include "scene/scene.hpp"
 
 namespace MEngine {
 
@@ -32,6 +32,7 @@ Application::Application() {
   s_app   = this;
   logger_ = Logger::Get("Application");
   logger_->info("Application started");
+  prev_time_ = glfwGetTime();
 
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -55,6 +56,8 @@ Application::Application() {
   task_dispatcher_ = std::make_unique<TaskDispatcher>();
   scene_           = std::make_shared<Scene>();
   renderer_        = std::make_shared<Renderer>();
+
+  task_dispatcher_->PushHandler(scene_->GetCamera());
 }
 
 Application::~Application() {
@@ -67,14 +70,29 @@ Application::~Application() {
 
 void Application::Run() {
   while (!glfwWindowShouldClose(window_)) {
+    float dt = GetDeltaTime();
 
     if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
       glfwSetWindowShouldClose(window_, true);
     }
 
     // handle logic
-    Command test_command(Command::Type::Logic);
-    task_dispatcher_->Run(&test_command);
+    glm::vec3 direction(0.0f);
+    if (Input::IsKeyPressed(GLFW_KEY_A)) {
+      direction += glm::vec3(-1.0f, 0.0f, 0.0f);
+    } else if (Input::IsKeyPressed(GLFW_KEY_D)) {
+      direction += glm::vec3(1.0f, 0.0f, 0.0f);
+    }
+    if (Input::IsKeyPressed(GLFW_KEY_W)) {
+      direction += glm::vec3(0.0f, 1.0f, 0.0f);
+    } else if (Input::IsKeyPressed(GLFW_KEY_S)) {
+      direction += glm::vec3(0.0f, -1.0f, 0.0f);
+    }
+    if (direction != glm::vec3(0.0f)) direction = glm::normalize(direction);
+    float       velocity = 1.0f;
+    MoveCommand cmd(direction, velocity * dt);
+
+    task_dispatcher_->Run(&cmd);
 
     // handle render
     auto entities = scene_->GetAllEntitiesWith<RenderInfo>();
@@ -83,20 +101,27 @@ void Application::Run() {
     glfwGetFramebufferSize(window_, &width, &height);
 
     glViewport(0, 0, width, height);
+    camera->OnWindowResize(width, height);
+
+    // TODO: do not control camera zoom level by keyboard.
+    if (Input::IsKeyPressed(GLFW_KEY_UP)) {
+      camera->OnMouseScroll(1.0f * dt);
+    } else if (Input::IsKeyPressed(GLFW_KEY_DOWN)) {
+      camera->OnMouseScroll(-1.0f * dt);
+    }
 
     for (auto& entity : entities) {
       auto& transform = entity.GetComponent<Transform>();
 
-      // rotate
-      transform.rotation.z += 0.1f;
+      // // rotate
+      // transform.rotation.z += 0.1f;
 
       RenderInfo&   render_info = entity.GetComponent<RenderInfo>();
       RenderCommand render_command;
       render_command.SetViewProjectionMatrix(camera->GetViewProjectionMatrix());
       render_command.SetModelMatrix(
           entity.GetComponent<Transform>().GetModelMatrix());
-      render_command.SetShader(render_info.shader);
-      render_command.SetVertexArray(render_info.vertex_array);
+      render_command.SetRenderInfo(render_info);
       renderer_->Run(&render_command);
     }
 
@@ -104,6 +129,13 @@ void Application::Run() {
 
     glfwPollEvents();
   }
+}
+
+float Application::GetDeltaTime() {
+  float current_time = static_cast<float>(glfwGetTime());
+  float delta_time   = current_time - prev_time_;
+  prev_time_         = current_time;
+  return delta_time;
 }
 
 }  // namespace MEngine

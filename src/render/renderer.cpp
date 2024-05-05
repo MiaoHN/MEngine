@@ -23,18 +23,23 @@ void Renderer::Run(Command* command) {
 
   RenderCommand* cmd = dynamic_cast<RenderCommand*>(command);
 
-  glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+  glClearColor(0.6f, 0.6f, 0.6f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
-  auto shader = cmd->GetShader();
+  auto shader  = cmd->GetRenderInfo().shader;
+  auto texture = cmd->GetRenderInfo().texture;
+
+  texture->Bind();
 
   shader->SetUniform("model", cmd->GetModelMatrix());
   shader->SetUniform("view_proj", cmd->GetViewProjectionMatrix());
+  shader->SetUniform("texture1", 0);
 
-  shader->Bind();
-  cmd->GetVertexArray()->Bind();
+  auto vertex_array = cmd->GetRenderInfo().vertex_array;
 
-  glDrawArrays(GL_TRIANGLES, 0, 3);
+  vertex_array->Bind();
+
+  glDrawElements(GL_TRIANGLES, vertex_array->GetCount(), GL_UNSIGNED_INT, 0);
 }
 
 }  // namespace MEngine
