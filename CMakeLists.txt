@@ -39,6 +39,7 @@ set(SOURCE_RENDER
   src/render/shader.cpp
   src/render/texture.cpp
   src/render/renderer.cpp
+  src/render/frame_buffer.cpp
 )
 
 set(SOURCE_SCENE

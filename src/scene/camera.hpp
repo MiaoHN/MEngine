@@ -17,12 +17,15 @@
 
 #include "core/command.hpp"
 #include "core/task_handler.hpp"
+#include "core/logger.hpp"
 
 namespace MEngine {
 
 class OrthographicCamera : public TaskHandler {
  public:
   OrthographicCamera(float left, float right, float bottom, float top) {
+    logger_ = Logger::Get("OrthographicCamera");
+
     projection_ = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
     view_       = glm::mat4(1.0f);
 
@@ -101,6 +104,8 @@ class OrthographicCamera : public TaskHandler {
 
   float aspect_ratio_ = 0.0f;
   float zoom_level_   = 1.0f;
+
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 }  // namespace MEngine

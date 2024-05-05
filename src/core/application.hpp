@@ -19,6 +19,7 @@ struct GLFWwindow;
 
 namespace MEngine {
 
+class FrameBuffer;
 class TaskDispatcher;
 class TaskHandler;
 class ScriptEngine;
@@ -70,6 +71,11 @@ class Application {
    *
    */
   std::shared_ptr<Scene> scene_;
+
+  std::shared_ptr<FrameBuffer> frame_buffer_;
+
+  int viewport_width_;
+  int viewport_height_;
 
   GLFWwindow* window_;
 
