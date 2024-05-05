@@ -20,3 +20,7 @@
 [submodule "deps/lua"]
 	path = deps/lua
 	url = https://github.com/lua/lua.git
+[submodule "deps/imgui"]
+	path = deps/imgui
+	url = https://github.com/ocornut/imgui.git
+	branch = docking
