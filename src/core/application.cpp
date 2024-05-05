@@ -9,6 +9,7 @@
 
 #include "core/command.hpp"
 #include "core/input.hpp"
+#include "core/script_engine.hpp"
 #include "core/task_dispatcher.hpp"
 #include "core/task_handler.hpp"
 #include "render/gl.hpp"
@@ -58,6 +59,10 @@ Application::Application() {
   renderer_        = std::make_shared<Renderer>();
 
   task_dispatcher_->PushHandler(scene_->GetCamera());
+
+  script_engine_ = std::make_shared<ScriptEngine>();
+
+  script_engine_->LoadScript("res/scripts/test.lua");
 }
 
 Application::~Application() {

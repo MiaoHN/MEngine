@@ -8,12 +8,20 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
 add_subdirectory(deps/glfw)
 
+# setup lua
+set(LUA_BUILD_AS_DLL OFF CACHE BOOL "Build Lua as a DLL")
+file(GLOB LUA_SOURCE_FILES deps/lua/*.c)
+list(REMOVE_ITEM LUA_SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/deps/lua/onelua.c")
+add_library(lua STATIC ${LUA_SOURCE_FILES})
+target_include_directories(lua PUBLIC deps/lua)
+
 set(SOURCE_CORE
   src/core/main.cpp
   src/core/application.cpp
   src/core/logger.cpp
   src/core/task_dispatcher.cpp
   src/core/task_handler.cpp
+  src/core/script_engine.cpp
 )
 
 set(SOURCE_RENDER
@@ -41,10 +49,12 @@ target_include_directories(${PROJECT_NAME}
     deps/entt/single_include
     deps/glm
     deps/stb
+    deps/lua
 )
 
 target_link_libraries(${PROJECT_NAME}
     glfw
+    lua
 )
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

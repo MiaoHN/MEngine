@@ -21,6 +21,7 @@ namespace MEngine {
 
 class TaskDispatcher;
 class TaskHandler;
+class ScriptEngine;
 class Scene;
 
 /**
@@ -51,6 +52,8 @@ class Application {
 
   float GetDeltaTime();
 
+  std::shared_ptr<Scene> GetScene() { return scene_; }
+
   static Application* GetInstance();
 
  private:
@@ -71,6 +74,8 @@ class Application {
   float prev_time_;
 
   std::shared_ptr<TaskHandler> renderer_;
+
+  std::shared_ptr<ScriptEngine> script_engine_;
 
   std::shared_ptr<spdlog::logger> logger_;
 };
