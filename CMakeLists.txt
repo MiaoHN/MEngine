@@ -15,6 +15,16 @@ list(REMOVE_ITEM LUA_SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/deps/lua/onelua.c
 add_library(lua STATIC ${LUA_SOURCE_FILES})
 target_include_directories(lua PUBLIC deps/lua)
 
+# setup imgui
+file(GLOB IMGUI_SOURCE_FILES deps/imgui/*.cpp
+  deps/imgui/backends/imgui_impl_glfw.cpp
+  deps/imgui/backends/imgui_impl_opengl3.cpp
+)
+add_library(imgui STATIC ${IMGUI_SOURCE_FILES})
+target_include_directories(imgui PUBLIC deps/imgui)
+target_include_directories(imgui PUBLIC deps/imgui/backends)
+target_link_libraries(imgui glfw)
+
 set(SOURCE_CORE
   src/core/main.cpp
   src/core/application.cpp
@@ -55,6 +65,7 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     glfw
     lua
+    imgui
 )
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

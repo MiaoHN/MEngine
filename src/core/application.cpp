@@ -4,6 +4,12 @@
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 
+#define IMGUI_IMPL_OPENGL_LOADER_GLAD
+#include <backends/imgui_impl_opengl3.cpp>
+#include <backends/imgui_impl_glfw.cpp>
+
+#include <imgui.h>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -34,6 +40,9 @@ Application::Application() {
   logger_ = Logger::Get("Application");
   logger_->info("Application started");
   prev_time_ = glfwGetTime();
+  frame_time_ = glfwGetTime();
+  frame_count_ = 0;
+  fps_ = 0;
 
   glfwInit();
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
@@ -63,6 +72,18 @@ Application::Application() {
   script_engine_ = std::make_shared<ScriptEngine>();
 
   script_engine_->LoadScript("res/scripts/test.lua");
+
+  // ImGUI setup
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGuiIO& io = ImGui::GetIO();
+  (void)io;
+  ImGui::StyleColorsDark();
+
+  ImGui_ImplGlfw_InitForOpenGL(window_, true);
+  ImGui_ImplOpenGL3_Init("#version 330");
+
+  logger_->info("Application initialized");
 }
 
 Application::~Application() {
@@ -118,9 +139,6 @@ void Application::Run() {
     for (auto& entity : entities) {
       auto& transform = entity.GetComponent<Transform>();
 
-      // // rotate
-      // transform.rotation.z += 0.1f;
-
       RenderInfo&   render_info = entity.GetComponent<RenderInfo>();
       RenderCommand render_command;
       render_command.SetViewProjectionMatrix(camera->GetViewProjectionMatrix());
@@ -129,6 +147,19 @@ void Application::Run() {
       render_command.SetRenderInfo(render_info);
       renderer_->Run(&render_command);
     }
+
+    // ImGui test
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    // print fps
+    ImGui::Begin("Information");
+    ImGui::Text("FPS: %d", GetFPS());
+    ImGui::End();
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     glfwSwapBuffers(window_);
 
@@ -140,6 +171,15 @@ float Application::GetDeltaTime() {
   float current_time = static_cast<float>(glfwGetTime());
   float delta_time   = current_time - prev_time_;
   prev_time_         = current_time;
+
+  frame_count_++;
+
+  if (current_time - frame_time_ >= 1.0f) {
+    fps_ = frame_count_;
+    frame_count_ = 0;
+    frame_time_  = current_time;
+  }
+
   return delta_time;
 }
 

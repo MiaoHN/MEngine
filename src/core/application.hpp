@@ -52,6 +52,8 @@ class Application {
 
   float GetDeltaTime();
 
+  int GetFPS() { return fps_;}
+
   std::shared_ptr<Scene> GetScene() { return scene_; }
 
   static Application* GetInstance();
@@ -72,6 +74,10 @@ class Application {
   GLFWwindow* window_;
 
   float prev_time_;
+
+  int frame_count_;
+  int fps_;
+  float frame_time_;
 
   std::shared_ptr<TaskHandler> renderer_;
 
