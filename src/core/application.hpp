@@ -76,6 +76,7 @@ class Application {
 
   int viewport_width_;
   int viewport_height_;
+  bool viewport_resized_;
 
   GLFWwindow* window_;
 

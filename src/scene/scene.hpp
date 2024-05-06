@@ -15,9 +15,9 @@
 #include <memory>
 #include <vector>
 
+#include "core/logger.hpp"
 #include "scene/camera.hpp"
 #include "scene/entity.hpp"
-#include "core/logger.hpp"
 
 namespace MEngine {
 
@@ -32,6 +32,12 @@ class Scene {
     return entity;
   }
 
+  void DestroyEntity(Entity entity) {
+    // TODO
+    // registry_.destroy(entity.GetHandle());
+    // std::remove(entities_.begin(), entities_.end(), entity);
+  }
+
   template <typename... Components>
   auto GetAllEntitiesWith() {
     auto                view = registry_.view<Components...>();
@@ -41,6 +47,8 @@ class Scene {
     }
     return entities;
   }
+
+  std::vector<Entity>& GetAllEntities() { return entities_; }
 
   std::shared_ptr<OrthographicCamera> GetCamera() { return camera_; }
 
