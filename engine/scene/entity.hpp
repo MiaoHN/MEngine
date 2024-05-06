@@ -44,6 +44,12 @@ class Entity {
 
   entt::entity GetHandle() const { return handle_; }
 
+  bool operator==(const Entity& other) const {
+    return handle_ == other.handle_ && registry_ == other.registry_;
+  }
+
+  bool operator!=(const Entity& other) const { return !(*this == other); }
+
  private:
   entt::entity    handle_{entt::null};
   entt::registry* registry_{nullptr};

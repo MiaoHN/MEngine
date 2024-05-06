@@ -26,51 +26,79 @@ target_include_directories(imgui PUBLIC deps/imgui/backends)
 target_link_libraries(imgui glfw)
 
 set(SOURCE_CORE
-  src/core/main.cpp
-  src/core/application.cpp
-  src/core/logger.cpp
-  src/core/task_dispatcher.cpp
-  src/core/task_handler.cpp
-  src/core/script_engine.cpp
+  engine/core/entry_point.cpp
+  engine/core/application.cpp
+  engine/core/logger.cpp
+  engine/core/task_dispatcher.cpp
+  engine/core/task_handler.cpp
+  engine/core/script_engine.cpp
 )
 
 set(SOURCE_RENDER
-  src/render/gl.cpp
-  src/render/shader.cpp
-  src/render/texture.cpp
-  src/render/renderer.cpp
-  src/render/frame_buffer.cpp
+  engine/render/gl.cpp
+  engine/render/shader.cpp
+  engine/render/texture.cpp
+  engine/render/renderer.cpp
+  engine/render/frame_buffer.cpp
 )
 
 set(SOURCE_SCENE
-  src/scene/scene.cpp
+  engine/scene/scene.cpp
 )
 
-add_executable(${PROJECT_NAME}
+add_library(engine
   ${SOURCE_CORE}
   ${SOURCE_RENDER}
   ${SOURCE_SCENE}
   deps/glad/src/glad.c
 )
 
-target_include_directories(${PROJECT_NAME}
-    PRIVATE deps/spdlog/include
-    src
-    deps/glad/include
-    deps/entt/single_include
-    deps/glm
-    deps/stb
-    deps/lua
+target_include_directories(engine
+  PRIVATE
+  deps/spdlog/include
+  deps/entt/single_include
+  deps/glm
+  deps/glad/include
+  deps/stb
+  deps/lua
+  engine
 )
 
-target_link_libraries(${PROJECT_NAME}
-    glfw
-    lua
-    imgui
+target_link_libraries(engine
+  glfw
+  lua
+  imgui
 )
 
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/res
-    $<TARGET_FILE_DIR:${PROJECT_NAME}>/res
+add_executable(editor
+  editor/src/editor.cpp
+)
+
+target_include_directories(editor
+  PRIVATE
+  deps/spdlog/include
+  deps/entt/single_include
+  deps/glm
+  deps/glad/include
+  deps/stb
+  deps/imgui
+  deps/imgui/backends
+  engine
+  editor/src
+)
+
+target_link_libraries(editor
+  engine
+)
+
+add_custom_command(TARGET editor POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${CMAKE_SOURCE_DIR}/editor/res
+  $<TARGET_FILE_DIR:editor>/res
+)
+
+add_custom_command(TARGET editor POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy
+  ${CMAKE_SOURCE_DIR}/editor/res/imgui.ini
+  $<TARGET_FILE_DIR:editor>/imgui.ini
 )

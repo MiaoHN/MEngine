@@ -14,6 +14,7 @@
 #include <memory>
 
 #include "core/logger.hpp"
+#include "scene/entity.hpp"
 
 struct GLFWwindow;
 
@@ -42,6 +43,8 @@ class Application {
    *
    */
   ~Application();
+
+  virtual void Initialize();
 
   /**
    * @brief Run the game loop.
@@ -78,6 +81,8 @@ class Application {
   int viewport_height_;
   bool viewport_resized_;
 
+  Entity selected_entity_;
+
   GLFWwindow* window_;
 
   float prev_time_;
@@ -93,4 +98,7 @@ class Application {
   std::shared_ptr<spdlog::logger> logger_;
 };
 
+
 }  // namespace MEngine
+
+MEngine::Application* CreateApplication();

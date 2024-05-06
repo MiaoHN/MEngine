@@ -1,4 +1,5 @@
-#include "core/application.hpp"
+#include "core/entry_point.hpp"
+
 #include "core/logger.hpp"
 
 using namespace MEngine;
@@ -8,12 +9,15 @@ int main(int argc, char const* argv[]) {
 
   logger->info("Starting application");
 
-  Application* app = new Application();
+  Application* app = CreateApplication();
+
+  app->Initialize();
 
   app->Run();
 
   delete app;
 
   logger->info("Application terminated successfully");
+
   return 0;
 }

@@ -98,6 +98,10 @@ Application::~Application() {
   logger_->info("Application terminated");
 }
 
+void Application::Initialize() {
+  // NOTE: This is a default implementation.
+}
+
 void Application::Run() {
   while (!glfwWindowShouldClose(window_)) {
     float dt = GetDeltaTime();
@@ -250,12 +254,42 @@ void Application::Run() {
     ImGui::Begin("Scene");
     std::vector<Entity>& entities = scene_->GetAllEntities();
     for (Entity& entity : entities) {
-      ImGui::Text("Hello, world!");
-      ImGui::Text("%s", entity.GetComponent<Tag>().tag.c_str());
-      ImGui::SameLine();
-      if (ImGui::Button("Del")) {
-        scene_->DestroyEntity(entity);
+      auto& tag = entity.GetComponent<Tag>().tag;
+      ImGuiTreeNodeFlags flags = ((entity == selected_entity_) ? ImGuiTreeNodeFlags_Selected : 0) | ImGuiTreeNodeFlags_OpenOnArrow;
+      bool opened = ImGui::TreeNodeEx((void*)(intptr_t)entity.GetHandle(), flags, "%s", tag.c_str());
+      if (ImGui::IsItemClicked()) {
+        selected_entity_ = entity;
       }
+
+      bool entity_deleted = false;
+      if (ImGui::BeginPopupContextItem()) {
+        if (ImGui::MenuItem("Delete")) {
+          entity_deleted = true;
+        }
+        ImGui::EndPopup();
+      }
+
+      if (opened) {
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+        bool opened = ImGui::TreeNodeEx((void*)9817239, flags, tag.c_str());
+        if (opened) {
+          ImGui::TreePop();
+        }
+        ImGui::TreePop();
+      }
+
+      if (entity_deleted) {
+        scene_->DestroyEntity(entity);
+        if (entity == selected_entity_) {
+          selected_entity_ = Entity();
+        }
+      }
+      // ImGui::Text("Hello, world!");
+      // ImGui::Text("%s", entity.GetComponent<Tag>().tag.c_str());
+      // ImGui::SameLine();
+      // if (ImGui::Button("Del")) {
+      //   scene_->DestroyEntity(entity);
+      // }
     }
     ImGui::End();
 
