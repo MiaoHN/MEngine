@@ -46,6 +46,8 @@ class Application {
 
   virtual void Initialize();
 
+  virtual void OnUpdate(float dt);
+
   /**
    * @brief Run the game loop.
    *
@@ -56,13 +58,13 @@ class Application {
 
   float GetDeltaTime();
 
-  int GetFPS() { return fps_;}
+  int GetFPS() { return fps_; }
 
   std::shared_ptr<Scene> GetScene() { return scene_; }
 
   static Application* GetInstance();
 
- private:
+ protected:
   /**
    * @brief task_dispatcher_ is a unique pointer to the TaskDispatcher class.
    *
@@ -77,8 +79,8 @@ class Application {
 
   std::shared_ptr<FrameBuffer> frame_buffer_;
 
-  int viewport_width_;
-  int viewport_height_;
+  int  viewport_width_;
+  int  viewport_height_;
   bool viewport_resized_;
 
   Entity selected_entity_;
@@ -87,8 +89,8 @@ class Application {
 
   float prev_time_;
 
-  int frame_count_;
-  int fps_;
+  int   frame_count_;
+  int   fps_;
   float frame_time_;
 
   std::shared_ptr<TaskHandler> renderer_;
@@ -97,7 +99,6 @@ class Application {
 
   std::shared_ptr<spdlog::logger> logger_;
 };
-
 
 }  // namespace MEngine
 

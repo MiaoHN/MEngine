@@ -13,6 +13,11 @@
 
 #include "core/application.hpp"
 #include "core/entry_point.hpp"
+#include "core/script_engine.hpp"
+#include "core/task_handler.hpp"
+#include "render/frame_buffer.hpp"
+#include "scene/entity.hpp"
+#include "scene/scene.hpp"
 
 using namespace MEngine;
 
@@ -22,6 +27,21 @@ class Editor : public Application {
   ~Editor();
 
   void Initialize() override;
+
+  void OnUpdate(float dt) override;
+
+ private:
+  int  viewport_width_   = 1280;
+  int  viewport_height_  = 720;
+  bool viewport_resized_ = false;
+
+  std::shared_ptr<Scene> active_scene_;
+
+  std::shared_ptr<FrameBuffer> frame_buffer_;
+
+  std::shared_ptr<TaskHandler> renderer_;
+
+  std::shared_ptr<ScriptEngine> script_engine_;
 };
 
 ::MEngine::Application* CreateApplication();
