@@ -51,6 +51,10 @@ class Scene {
   std::vector<Entity>& GetAllEntities() { return entities_; }
 
   std::shared_ptr<OrthographicCamera> GetCamera() { return camera_; }
+  
+  void SetCamera(std::shared_ptr<OrthographicCamera> camera) {
+    camera_ = camera;
+  }
 
   void LoadScene(const std::string& path);
   void SaveScene(const std::string& path);
