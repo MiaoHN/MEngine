@@ -5,6 +5,9 @@
 
 #include <backends/imgui_impl_glfw.cpp>
 #include <backends/imgui_impl_opengl3.cpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "core/input.hpp"
 #include "core/logger.hpp"
@@ -64,7 +67,7 @@ void Editor::Initialize() {
 
   entity.AddComponent<Tag>("checkerboard");
 
-  camera_   = std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
+  camera_ = std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
 
   active_scene_->SetCamera(camera_);
 
@@ -273,6 +276,24 @@ void Editor::OnUpdate(float dt) {
       }
     }
   }
+  ImGui::End();
+
+  ImGui::Begin("Properties");
+
+  if (selected_entity_.GetHandle() != entt::null) {
+    auto& tag = selected_entity_.GetComponent<Tag>().tag;
+    ImGui::Text("Entity: %s", tag.c_str());
+    ImGui::Separator();
+
+    if (ImGui::TreeNodeEx("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+      auto& transform = selected_entity_.GetComponent<Transform>();
+      ImGui::DragFloat3("Position", glm::value_ptr(transform.position), 0.1f);
+      ImGui::DragFloat3("Rotation", glm::value_ptr(transform.rotation), 0.1f);
+      ImGui::DragFloat3("Scale", glm::value_ptr(transform.scale), 0.1f);
+      ImGui::TreePop();
+    }
+  }
+
   ImGui::End();
 
   ImGui::Begin("Log");
