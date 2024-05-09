@@ -7,7 +7,7 @@
 
 namespace MEngine {
 
-Texture::Texture(const std::string& path) {
+Texture::Texture(const std::string& path) : path_(path) {
   logger_ = Logger::Get("Texture");
 
   glGenTextures(1, &id_);
@@ -18,7 +18,8 @@ Texture::Texture(const std::string& path) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-  unsigned char* data = stbi_load(path.c_str(), &width_, &height_, &channels_, 0);
+  unsigned char* data =
+      stbi_load(path.c_str(), &width_, &height_, &channels_, 0);
   if (data) {
     GLenum format;
     if (channels_ == 1) {

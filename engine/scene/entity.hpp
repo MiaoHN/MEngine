@@ -34,7 +34,7 @@ class Entity {
 
   template <typename T>
   bool HasComponent() {
-    return registry_->has<T>(handle_);
+    return registry_->all_of<T>(handle_);
   }
 
   template <typename T>

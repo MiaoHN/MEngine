@@ -27,7 +27,12 @@ class Texture {
   void Unbind() const;
 
   int GetWidth() const { return width_; }
+
   int GetHeight() const { return height_; }
+
+  std::string GetPath() const { return path_; }
+
+  const unsigned int GetID() const { return id_; }
 
  private:
   unsigned int id_;
@@ -36,6 +41,8 @@ class Texture {
   int          channels_;
 
   std::shared_ptr<spdlog::logger> logger_;
+
+  std::string path_;
 };
 
 }  // namespace MEngine

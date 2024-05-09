@@ -29,6 +29,10 @@ class Shader {
   void Bind();
   void Unbind();
 
+  std::string GetVertPath() const { return vert_path_; }
+
+  std::string GetFragPath() const { return frag_path_; }
+
   template <typename T>
   void SetUniform(const std::string& name, T value) {
     logger_->error("SetUniform not implemented for this type");
@@ -82,6 +86,9 @@ class Shader {
   static std::vector<char> read_file(const std::string& path);
 
   std::shared_ptr<spdlog::logger> logger_;
+
+  std::string vert_path_;
+  std::string frag_path_;
 };
 
 }  // namespace MEngine

@@ -21,7 +21,7 @@ Editor::~Editor() {}
 void Editor::Initialize() {
   active_scene_ = std::make_shared<Scene>();
 
-  Entity entity = active_scene_->CreateEntity();
+  Entity entity = active_scene_->CreateEntity("Checkerboard");
 
   auto shader = std::make_shared<Shader>("res/shaders/test_vert.glsl",
                                          "res/shaders/test_frag.glsl");
@@ -65,8 +65,6 @@ void Editor::Initialize() {
                                  glm::vec3(0.0f, 0.0f, 0.0f),
                                  glm::vec3(1.0f, 1.0f, 1.0f));
 
-  entity.AddComponent<Tag>("checkerboard");
-
   camera_ = std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
 
   active_scene_->SetCamera(camera_);
@@ -99,22 +97,22 @@ void Editor::OnUpdate(float dt) {
     glfwSetWindowShouldClose(window_, true);
   }
   // handle logic
-  glm::vec3 direction(0.0f);
-  if (Input::IsKeyPressed(GLFW_KEY_A)) {
-    direction += glm::vec3(-1.0f, 0.0f, 0.0f);
-  } else if (Input::IsKeyPressed(GLFW_KEY_D)) {
-    direction += glm::vec3(1.0f, 0.0f, 0.0f);
-  }
-  if (Input::IsKeyPressed(GLFW_KEY_W)) {
-    direction += glm::vec3(0.0f, 1.0f, 0.0f);
-  } else if (Input::IsKeyPressed(GLFW_KEY_S)) {
-    direction += glm::vec3(0.0f, -1.0f, 0.0f);
-  }
-  if (direction != glm::vec3(0.0f)) direction = glm::normalize(direction);
-  float       velocity = 1.0f;
-  MoveCommand cmd(direction, velocity * dt);
+  // glm::vec3 direction(0.0f);
+  // if (Input::IsKeyPressed(GLFW_KEY_A)) {
+  //   direction += glm::vec3(-1.0f, 0.0f, 0.0f);
+  // } else if (Input::IsKeyPressed(GLFW_KEY_D)) {
+  //   direction += glm::vec3(1.0f, 0.0f, 0.0f);
+  // }
+  // if (Input::IsKeyPressed(GLFW_KEY_W)) {
+  //   direction += glm::vec3(0.0f, 1.0f, 0.0f);
+  // } else if (Input::IsKeyPressed(GLFW_KEY_S)) {
+  //   direction += glm::vec3(0.0f, -1.0f, 0.0f);
+  // }
+  // if (direction != glm::vec3(0.0f)) direction = glm::normalize(direction);
+  // float       velocity = 1.0f;
+  // MoveCommand cmd(direction, velocity * dt);
 
-  task_dispatcher_->Run(&cmd);
+  // task_dispatcher_->Run(&cmd);
 
   // handle render
   auto render_entities = active_scene_->GetAllEntitiesWith<RenderInfo>();
@@ -125,11 +123,11 @@ void Editor::OnUpdate(float dt) {
   }
 
   // TODO: do not control camera zoom level by keyboard.
-  if (Input::IsKeyPressed(GLFW_KEY_UP)) {
-    camera->OnMouseScroll(1.0f * dt);
-  } else if (Input::IsKeyPressed(GLFW_KEY_DOWN)) {
-    camera->OnMouseScroll(-1.0f * dt);
-  }
+  // if (Input::IsKeyPressed(GLFW_KEY_UP)) {
+  //   camera->OnMouseScroll(1.0f * dt);
+  // } else if (Input::IsKeyPressed(GLFW_KEY_DOWN)) {
+  //   camera->OnMouseScroll(-1.0f * dt);
+  // }
 
   frame_buffer_->Bind();
   frame_buffer_->Clear();
@@ -240,6 +238,11 @@ void Editor::OnUpdate(float dt) {
 
   ImGui::Begin("Scene");
   std::vector<Entity>& entities = active_scene_->GetAllEntities();
+
+  if (ImGui::Button("Create Entity")) {
+    active_scene_->CreateEntity();
+  }
+
   for (Entity& entity : entities) {
     auto&              tag = entity.GetComponent<Tag>().tag;
     ImGuiTreeNodeFlags flags =
@@ -271,9 +274,7 @@ void Editor::OnUpdate(float dt) {
 
     if (entity_deleted) {
       active_scene_->DestroyEntity(entity);
-      if (entity == selected_entity_) {
-        selected_entity_ = Entity();
-      }
+      selected_entity_ = Entity();
     }
   }
   ImGui::End();
@@ -282,15 +283,69 @@ void Editor::OnUpdate(float dt) {
 
   if (selected_entity_.GetHandle() != entt::null) {
     auto& tag = selected_entity_.GetComponent<Tag>().tag;
-    ImGui::Text("Entity: %s", tag.c_str());
+    char  buffer[256];
+    memset(buffer, 0, sizeof(buffer));
+    strcpy(buffer, tag.c_str());
+    if (ImGui::InputText("Name", buffer, sizeof(buffer))) {
+      tag = std::string(buffer);
+    }
+
     ImGui::Separator();
 
-    if (ImGui::TreeNodeEx("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-      auto& transform = selected_entity_.GetComponent<Transform>();
-      ImGui::DragFloat3("Position", glm::value_ptr(transform.position), 0.1f);
-      ImGui::DragFloat3("Rotation", glm::value_ptr(transform.rotation), 0.1f);
-      ImGui::DragFloat3("Scale", glm::value_ptr(transform.scale), 0.1f);
-      ImGui::TreePop();
+    if (ImGui::Button("Add Component")) {
+      ImGui::OpenPopup("AddComponentPopup");
+    }
+
+    if (ImGui::BeginPopup("AddComponentPopup")) {
+      if (ImGui::MenuItem("Transform")) {
+        selected_entity_.AddComponent<Transform>();
+        ImGui::CloseCurrentPopup();
+      }
+
+      if (ImGui::MenuItem("Render Info")) {
+        selected_entity_.AddComponent<RenderInfo>();
+        ImGui::CloseCurrentPopup();
+      }
+
+      ImGui::EndPopup();
+    }
+
+    // add button to remove component
+    if (selected_entity_.HasComponent<Transform>()) {
+      if (ImGui::Button("Remove Transform")) {
+        selected_entity_.RemoveComponent<Transform>();
+      }
+    }
+
+    if (selected_entity_.HasComponent<RenderInfo>()) {
+      if (ImGui::Button("Remove Render Info")) {
+        selected_entity_.RemoveComponent<RenderInfo>();
+      }
+    }
+
+    if (selected_entity_.HasComponent<Transform>()) {
+      if (ImGui::TreeNodeEx("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto& transform = selected_entity_.GetComponent<Transform>();
+        ImGui::DragFloat3("Position", glm::value_ptr(transform.position), 0.1f);
+        ImGui::DragFloat3("Rotation", glm::value_ptr(transform.rotation), 0.1f);
+        ImGui::DragFloat3("Scale", glm::value_ptr(transform.scale), 0.1f);
+        ImGui::TreePop();
+      }
+    }
+
+    if (selected_entity_.HasComponent<RenderInfo>()) {
+      if (ImGui::TreeNodeEx("Render Info", ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto& render_info = selected_entity_.GetComponent<RenderInfo>();
+        ImGui::Text("Vertex Shader: %s",
+                    render_info.shader->GetVertPath().c_str());
+        ImGui::Text("Fragment Shader: %s",
+                    render_info.shader->GetFragPath().c_str());
+        ImGui::Text("Texture: %s", render_info.texture->GetPath().c_str());
+
+        ImGui::Image((void*)(intptr_t)render_info.texture->GetID(),
+                     ImVec2(100, 100));
+        ImGui::TreePop();
+      }
     }
   }
 

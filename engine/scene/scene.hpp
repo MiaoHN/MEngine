@@ -26,16 +26,23 @@ class Scene {
   Scene();
   ~Scene();
 
-  Entity CreateEntity() {
+  Entity CreateEntity(const std::string& name = "Unnamed Entity") {
     Entity entity = Entity(registry_.create(), &registry_);
+    entity.AddComponent<Tag>(name);
     entities_.push_back(entity);
     return entity;
   }
 
   void DestroyEntity(Entity entity) {
     // TODO
-    // registry_.destroy(entity.GetHandle());
-    // std::remove(entities_.begin(), entities_.end(), entity);
+    registry_.destroy(entity.GetHandle());
+
+    for (auto it = entities_.begin(); it != entities_.end(); ++it) {
+      if (*it == entity) {
+        entities_.erase(it);
+        break;
+      }
+    }
   }
 
   template <typename... Components>
@@ -51,7 +58,7 @@ class Scene {
   std::vector<Entity>& GetAllEntities() { return entities_; }
 
   std::shared_ptr<OrthographicCamera> GetCamera() { return camera_; }
-  
+
   void SetCamera(std::shared_ptr<OrthographicCamera> camera) {
     camera_ = camera;
   }

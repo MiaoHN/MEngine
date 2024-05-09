@@ -6,7 +6,8 @@
 
 namespace MEngine {
 
-Shader::Shader(const std::string& vert_path, const std::string& frag_path) {
+Shader::Shader(const std::string& vert_path, const std::string& frag_path)
+    : vert_path_(vert_path), frag_path_(frag_path) {
   logger_                    = Logger::Get("Shader");
   std::vector<char> vert_src = read_file(vert_path);
   std::vector<char> frag_src = read_file(frag_path);
