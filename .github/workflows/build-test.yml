@@ -17,6 +17,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
+      with:
+        submodules: recursive
 
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
