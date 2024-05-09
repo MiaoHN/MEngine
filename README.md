@@ -12,7 +12,7 @@ a simple game engine!
 - ImGui Debugging
 - 2D Rendering
 
-## Build
+## Quick start
 
 ### Third-party Dependences
 
@@ -38,7 +38,7 @@ git clone --recursive https://github.com/MiaoHN/MEngine.git
 ### Environment
 
 > [!IMPORTANT]
-> Only test building on Windows11.
+> Only test building on **Windows11**.
 
 Build environment:
 
