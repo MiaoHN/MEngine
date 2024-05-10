@@ -11,7 +11,7 @@ on:
       - dev
 
 jobs:
-  build:
+  build-windows-msvc:
     runs-on: windows-latest
 
     steps:
@@ -22,6 +22,38 @@ jobs:
 
     - name: Setup MSVC
       uses: ilammy/msvc-dev-cmd@v1
+
+    - name: Install CMake
+      uses: threeal/cmake-action@main
+      with:
+        run-build: false
+
+    - name: Configure and build
+      run: |
+        cd build
+        cmake ..
+        cmake --build .
+
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure
+  
+  build-windows-clang:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Setup Clang
+      uses: egor-tensin/setup-clang@v1
+      with:
+        version: latest
+        platform: x64
+
 
     - name: Install CMake
       uses: threeal/cmake-action@main

@@ -43,7 +43,6 @@ git clone --recursive https://github.com/MiaoHN/MEngine.git
 Build environment:
 
 - Windows 11
-- Visual Studio Community 2022 Release - x86_amd64
 - CMake 3.29.2
 
 ### Build
