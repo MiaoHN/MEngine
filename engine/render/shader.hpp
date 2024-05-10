@@ -15,6 +15,7 @@
 
 #include <glm/glm.hpp>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/logger.hpp"
@@ -24,6 +25,8 @@ namespace MEngine {
 class Shader {
  public:
   Shader(const std::string& vert_path, const std::string& frag_path);
+  Shader(const std::string& name, const std::string& vert_path,
+         const std::string& frag_path);
   ~Shader();
 
   void Bind();
@@ -32,6 +35,8 @@ class Shader {
   std::string GetVertPath() const { return vert_path_; }
 
   std::string GetFragPath() const { return frag_path_; }
+
+  const std::string& GetName() const { return name_; }
 
   template <typename T>
   void SetUniform(const std::string& name, T value) {
@@ -85,10 +90,35 @@ class Shader {
 
   static std::vector<char> read_file(const std::string& path);
 
+  std::string name_;
+
   std::shared_ptr<spdlog::logger> logger_;
 
   std::string vert_path_;
   std::string frag_path_;
+};
+
+class ShaderLibrary {
+ public:
+  ShaderLibrary();
+  ~ShaderLibrary();
+
+  void Add(const std::string& name, const std::shared_ptr<Shader>& shader);
+
+  void Add(const std::shared_ptr<Shader>& shader);
+
+  std::shared_ptr<Shader> Load(const std::string& name,
+                               const std::string& vert_path,
+                               const std::string& frag_path);
+
+  std::shared_ptr<Shader> Get(const std::string& name);
+
+  bool Exists(const std::string& name) const;
+
+ private:
+  std::unordered_map<std::string, std::shared_ptr<Shader>> shaders_;
+
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 }  // namespace MEngine

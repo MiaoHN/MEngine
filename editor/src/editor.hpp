@@ -15,8 +15,8 @@
 #include "core/entry_point.hpp"
 #include "core/script_engine.hpp"
 #include "core/task_handler.hpp"
-#include "scene/camera.hpp"
 #include "render/frame_buffer.hpp"
+#include "scene/camera.hpp"
 #include "scene/entity.hpp"
 #include "scene/scene.hpp"
 
@@ -45,6 +45,9 @@ class Editor : public Application {
   std::shared_ptr<ScriptEngine> script_engine_;
 
   std::shared_ptr<OrthographicCamera> camera_ = nullptr;
+
+  ShaderLibrary  shader_library_;
+  TextureLibrary texture_library_;
 };
 
 ::MEngine::Application* CreateApplication();

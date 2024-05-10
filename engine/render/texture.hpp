@@ -21,6 +21,8 @@ namespace MEngine {
 class Texture {
  public:
   Texture(const std::string& path);
+
+  Texture(const std::string& name, const std::string& path);
   ~Texture();
 
   void Bind(unsigned int slot = 0) const;
@@ -29,6 +31,8 @@ class Texture {
   int GetWidth() const { return width_; }
 
   int GetHeight() const { return height_; }
+
+  const std::string& GetName() const { return name_; }
 
   std::string GetPath() const { return path_; }
 
@@ -43,6 +47,30 @@ class Texture {
   std::shared_ptr<spdlog::logger> logger_;
 
   std::string path_;
+
+  std::string name_;
+};
+
+class TextureLibrary {
+ public:
+  TextureLibrary();
+  ~TextureLibrary();
+
+  void Add(const std::string& name, const std::shared_ptr<Texture>& texture);
+
+  void Add(const std::shared_ptr<Texture>& texture);
+
+  std::shared_ptr<Texture> Load(const std::string& name,
+                                const std::string& path);
+
+  std::shared_ptr<Texture> Get(const std::string& name);
+
+  bool Exists(const std::string& name) const;
+
+ private:
+  std::unordered_map<std::string, std::shared_ptr<Texture>> textures_;
+
+  std::shared_ptr<spdlog::logger> logger_;
 };
 
 }  // namespace MEngine

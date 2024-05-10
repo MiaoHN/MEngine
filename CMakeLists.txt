@@ -32,6 +32,7 @@ set(SOURCE_CORE
   engine/core/task_dispatcher.cpp
   engine/core/task_handler.cpp
   engine/core/script_engine.cpp
+  engine/core/uuid.cpp
 )
 
 set(SOURCE_RENDER

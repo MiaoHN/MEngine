@@ -29,6 +29,7 @@ void Renderer::Run(Command* command) {
   auto shader  = cmd->GetRenderInfo().shader;
   auto texture = cmd->GetRenderInfo().texture;
 
+  shader->Bind();
   texture->Bind();
 
   shader->SetUniform("model", cmd->GetModelMatrix());
