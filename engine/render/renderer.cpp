@@ -32,7 +32,7 @@ void Renderer::Run(Command* command) {
   texture->Bind();
 
   shader->SetUniform("model", cmd->GetModelMatrix());
-  shader->SetUniform("view_proj", cmd->GetViewProjectionMatrix());
+  shader->SetUniform("proj_view", cmd->GetProjectionView());
   shader->SetUniform("texture1", 0);
 
   auto vertex_array = cmd->GetRenderInfo().vertex_array;

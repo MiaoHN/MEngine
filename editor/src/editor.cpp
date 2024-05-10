@@ -143,7 +143,7 @@ void Editor::OnUpdate(float dt) {
 
     RenderInfo&   render_info = entity.GetComponent<RenderInfo>();
     RenderCommand render_command;
-    render_command.SetViewProjectionMatrix(camera->GetViewProjectionMatrix());
+    render_command.SetViewProjectionMatrix(camera->GetProjectionView());
     render_command.SetModelMatrix(
         entity.GetComponent<Transform>().GetModelMatrix());
     render_command.SetRenderInfo(render_info);
@@ -237,11 +237,22 @@ void Editor::OnUpdate(float dt) {
   ImGui::End();
 
   ImGui::Begin("Scene");
-  std::vector<Entity>& entities = active_scene_->GetAllEntities();
 
-  if (ImGui::Button("Create Entity")) {
+  if (ImGui::Button("Create")) {
     active_scene_->CreateEntity();
   }
+
+  ImGui::SameLine();
+
+  // delete selected entity
+  if (ImGui::Button("Delete")) {
+    if (selected_entity_.GetHandle() != entt::null) {
+      active_scene_->DestroyEntity(selected_entity_);
+      selected_entity_ = Entity();
+    }
+  }
+
+  std::vector<Entity>& entities = active_scene_->GetAllEntities();
 
   for (Entity& entity : entities) {
     auto&              tag = entity.GetComponent<Tag>().tag;
@@ -254,14 +265,6 @@ void Editor::OnUpdate(float dt) {
       selected_entity_ = entity;
     }
 
-    bool entity_deleted = false;
-    if (ImGui::BeginPopupContextItem()) {
-      if (ImGui::MenuItem("Delete")) {
-        entity_deleted = true;
-      }
-      ImGui::EndPopup();
-    }
-
     if (opened) {
       ImGuiTreeNodeFlags flags =
           ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
@@ -270,11 +273,6 @@ void Editor::OnUpdate(float dt) {
         ImGui::TreePop();
       }
       ImGui::TreePop();
-    }
-
-    if (entity_deleted) {
-      active_scene_->DestroyEntity(entity);
-      selected_entity_ = Entity();
     }
   }
   ImGui::End();
@@ -326,9 +324,9 @@ void Editor::OnUpdate(float dt) {
     if (selected_entity_.HasComponent<Transform>()) {
       if (ImGui::TreeNodeEx("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto& transform = selected_entity_.GetComponent<Transform>();
-        ImGui::DragFloat3("Position", glm::value_ptr(transform.position), 0.1f);
-        ImGui::DragFloat3("Rotation", glm::value_ptr(transform.rotation), 0.1f);
-        ImGui::DragFloat3("Scale", glm::value_ptr(transform.scale), 0.1f);
+        ImGui::DragFloat2("Position", glm::value_ptr(transform.position), 0.1f);
+        ImGui::DragFloat("Rotation", &transform.rotation.z, 0.1f);
+        ImGui::DragFloat2("Scale", glm::value_ptr(transform.scale), 0.1f);
         ImGui::TreePop();
       }
     }

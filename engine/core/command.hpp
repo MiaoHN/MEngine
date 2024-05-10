@@ -76,7 +76,7 @@ class RenderCommand : public Command {
 
   const glm::mat4& GetModelMatrix() const { return model_matrix_; }
 
-  const glm::mat4& GetViewProjectionMatrix() const {
+  const glm::mat4& GetProjectionView() const {
     return view_projection_matrix_;
   }
 

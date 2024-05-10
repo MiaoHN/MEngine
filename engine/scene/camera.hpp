@@ -16,8 +16,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "core/command.hpp"
-#include "core/task_handler.hpp"
 #include "core/logger.hpp"
+#include "core/task_handler.hpp"
 
 namespace MEngine {
 
@@ -82,7 +82,7 @@ class OrthographicCamera : public TaskHandler {
 
   const glm::mat4& GetProjectionMatrix() const { return projection_; }
 
-  glm::mat4 GetViewProjectionMatrix() { return view_ * projection_; }
+  glm::mat4 GetProjectionView() { return projection_ * view_; }
 
   const glm::vec3& GetPosition() const { return position_; }
 
