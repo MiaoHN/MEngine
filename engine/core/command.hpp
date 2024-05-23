@@ -60,11 +60,11 @@ class RenderCommand : public Command {
 
   ~RenderCommand() {}
 
-  void SetRenderInfo(const RenderInfo& render_info) {
+  void SetRenderInfo(const Sprite& render_info) {
     render_info_ = render_info;
   }
 
-  RenderInfo& GetRenderInfo() { return render_info_; }
+  Sprite& GetRenderInfo() { return render_info_; }
 
   void SetModelMatrix(const glm::mat4& model_matrix) {
     model_matrix_ = model_matrix;
@@ -81,7 +81,7 @@ class RenderCommand : public Command {
   }
 
  private:
-  RenderInfo render_info_;
+  Sprite render_info_;
 
   glm::mat4 model_matrix_;
   glm::mat4 view_projection_matrix_;

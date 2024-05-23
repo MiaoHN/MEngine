@@ -83,6 +83,9 @@ void Application::Run() {
   while (!glfwWindowShouldClose(window_)) {
     float dt = GetDeltaTime();
 
+    glClearColor(0.6f, 0.6f, 0.6f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
     OnUpdate(dt);
 
     glfwSwapBuffers(window_);

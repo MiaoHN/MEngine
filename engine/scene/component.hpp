@@ -29,25 +29,26 @@ struct Tag {
   Tag() = default;
 };
 
-struct RenderInfo {
-  std::shared_ptr<Shader>          shader;
-  std::shared_ptr<Texture>         texture;
-  std::shared_ptr<GL::VertexArray> vertex_array;
-
-  RenderInfo(std::shared_ptr<Shader> shader, std::shared_ptr<Texture> texture,
-             std::shared_ptr<GL::VertexArray> vertex_array)
-      : shader(shader), texture(texture), vertex_array(vertex_array) {}
-  RenderInfo() = default;
-};
-
-struct Transform {
+struct Sprite {
   glm::vec3 position;
-  glm::vec3 rotation;
   glm::vec3 scale;
+  glm::vec3 rotation;
+  glm::vec4 color;
 
-  Transform(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale)
-      : position(position), rotation(rotation), scale(scale) {}
-  Transform() = default;
+  std::shared_ptr<Shader>  shader;
+  std::shared_ptr<Texture> texture;
+
+  Sprite(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation,
+         glm::vec4 color, std::shared_ptr<Shader> shader,
+         std::shared_ptr<Texture> texture)
+      : position(position),
+        scale(scale),
+        rotation(rotation),
+        color(color),
+        shader(shader),
+        texture(texture) {}
+
+  Sprite() = default;
 
   glm::mat4 GetModelMatrix() {
     glm::mat4 model = glm::mat4(1.0f);

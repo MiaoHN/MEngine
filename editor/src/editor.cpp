@@ -29,42 +29,14 @@ void Editor::Initialize() {
   auto texture =
       texture_library_.Load("checkerboard", "res/textures/checkerboard.png");
 
-  // checkboard six vertices with uv for test
-  float vertices[] = {
-      // positions        // texture coords
-      0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  // top right
-      0.5f,  -0.5f, 0.0f, 1.0f, 0.0f,  // bottom right
-      -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,  // bottom left
-      -0.5f, 0.5f,  0.0f, 0.0f, 1.0f   // top left
-  };
-  unsigned int indices[] = {
-      0, 1, 3,  // first triangle
-      1, 2, 3   // second triangle
-  };
+  auto& sprite = entity.AddComponent<Sprite>();
 
-  auto vertex_buffer = std::make_shared<GL::VertexBuffer>();
-  vertex_buffer->SetData(vertices, sizeof(vertices));
-  vertex_buffer->AddLayout({
-      {GL::ShaderDataType::Float3, "aPos"},
-      {GL::ShaderDataType::Float2, "aTexCoord"},
-  });
-
-  auto index_buffer = std::make_shared<GL::IndexBuffer>();
-  index_buffer->SetData(indices, 6);
-
-  auto vertex_array = std::make_shared<GL::VertexArray>();
-  vertex_array->SetVertexBuffer(vertex_buffer);
-  vertex_array->SetIndexBuffer(index_buffer);
-
-  auto& render_info = entity.AddComponent<RenderInfo>();
-
-  render_info.texture      = texture;
-  render_info.shader       = shader;
-  render_info.vertex_array = vertex_array;
-
-  entity.AddComponent<Transform>(glm::vec3(0.0f, 0.0f, 0.0f),
-                                 glm::vec3(0.0f, 0.0f, 0.0f),
-                                 glm::vec3(1.0f, 1.0f, 1.0f));
+  sprite.position = glm::vec3(0.0f, 0.0f, 0.0f);
+  sprite.scale    = glm::vec3(0.5f, 0.5f, 0.5f);
+  sprite.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+  sprite.color    = glm::vec4(1.0f);
+  sprite.texture  = texture;
+  sprite.shader   = shader;
 
   camera_ = std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
 
@@ -116,7 +88,7 @@ void Editor::OnUpdate(float dt) {
   // task_dispatcher_->Run(&cmd);
 
   // handle render
-  auto render_entities = active_scene_->GetAllEntitiesWith<RenderInfo>();
+  auto render_entities = active_scene_->GetAllEntitiesWith<Sprite>();
   auto camera          = active_scene_->GetCamera();
 
   if (viewport_resized_) {
@@ -140,13 +112,13 @@ void Editor::OnUpdate(float dt) {
   }
 
   for (auto& entity : render_entities) {
-    auto& transform = entity.GetComponent<Transform>();
+    auto& sprite = entity.GetComponent<Sprite>();
 
-    RenderInfo&   render_info = entity.GetComponent<RenderInfo>();
+    Sprite&       render_info = entity.GetComponent<Sprite>();
     RenderCommand render_command;
     render_command.SetViewProjectionMatrix(camera->GetProjectionView());
     render_command.SetModelMatrix(
-        entity.GetComponent<Transform>().GetModelMatrix());
+        entity.GetComponent<Sprite>().GetModelMatrix());
     render_command.SetRenderInfo(render_info);
     renderer_->Run(&render_command);
   }
@@ -262,20 +234,12 @@ void Editor::OnUpdate(float dt) {
         ImGuiTreeNodeFlags_OpenOnArrow;
     bool opened = ImGui::TreeNodeEx((void*)(intptr_t)entity.GetHandle(), flags,
                                     "%s", tag.c_str());
+
     if (ImGui::IsItemClicked()) {
       selected_entity_ = entity;
     }
-
-    if (opened) {
-      ImGuiTreeNodeFlags flags =
-          ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-      bool opened = ImGui::TreeNodeEx((void*)9817239, flags, tag.c_str());
-      if (opened) {
-        ImGui::TreePop();
-      }
-      ImGui::TreePop();
-    }
   }
+
   ImGui::End();
 
   ImGui::Begin("Properties");
@@ -284,7 +248,7 @@ void Editor::OnUpdate(float dt) {
     auto& tag = selected_entity_.GetComponent<Tag>().tag;
     char  buffer[256];
     memset(buffer, 0, sizeof(buffer));
-    strcpy(buffer, tag.c_str());
+    strcpy_s(buffer, sizeof(buffer), tag.c_str());
     if (ImGui::InputText("Name", buffer, sizeof(buffer))) {
       tag = std::string(buffer);
     }
@@ -296,87 +260,41 @@ void Editor::OnUpdate(float dt) {
     }
 
     if (ImGui::BeginPopup("AddComponentPopup")) {
-      if (ImGui::MenuItem("Transform")) {
-        selected_entity_.AddComponent<Transform>(glm::vec3(0.0f, 0.0f, 0.0f),
-                                                 glm::vec3(0.0f, 0.0f, 0.0f),
-                                                 glm::vec3(1.0f, 1.0f, 1.0f));
-        ImGui::CloseCurrentPopup();
-      }
+      if (ImGui::MenuItem("Sprite")) {
+        auto& sprite = selected_entity_.AddComponent<Sprite>();
 
-      if (ImGui::MenuItem("Render Info")) {
-        // temp
-        // checkboard six vertices with uv for test
-        float vertices[] = {
-            // positions        // texture coords
-            0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  // top right
-            0.5f,  -0.5f, 0.0f, 1.0f, 0.0f,  // bottom right
-            -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,  // bottom left
-            -0.5f, 0.5f,  0.0f, 0.0f, 1.0f   // top left
-        };
-        unsigned int indices[] = {
-            0, 1, 3,  // first triangle
-            1, 2, 3   // second triangle
-        };
+        sprite.position = glm::vec3(0.0f, 0.0f, 0.0f);
+        sprite.scale    = glm::vec3(0.5f, 0.5f, 0.5f);
+        sprite.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+        sprite.color    = glm::vec4(1.0f);
 
-        auto vertex_buffer = std::make_shared<GL::VertexBuffer>();
-        vertex_buffer->SetData(vertices, sizeof(vertices));
-        vertex_buffer->AddLayout({
-            {GL::ShaderDataType::Float3, "aPos"},
-            {GL::ShaderDataType::Float2, "aTexCoord"},
-        });
-
-        auto index_buffer = std::make_shared<GL::IndexBuffer>();
-        index_buffer->SetData(indices, 6);
-
-        auto vertex_array = std::make_shared<GL::VertexArray>();
-        vertex_array->SetVertexBuffer(vertex_buffer);
-        vertex_array->SetIndexBuffer(index_buffer);
-
-        auto& render_info = selected_entity_.AddComponent<RenderInfo>();
-
-        render_info.shader       = shader_library_.Get("default");
-        render_info.texture      = texture_library_.Get("checkerboard");
-        render_info.vertex_array = vertex_array;
+        sprite.shader  = shader_library_.Get("default");
+        sprite.texture = texture_library_.Get("checkerboard");
         ImGui::CloseCurrentPopup();
       }
 
       ImGui::EndPopup();
     }
 
-    // add button to remove component
-    if (selected_entity_.HasComponent<Transform>()) {
-      if (ImGui::Button("Remove Transform")) {
-        selected_entity_.RemoveComponent<Transform>();
+    if (selected_entity_.HasComponent<Sprite>()) {
+      if (ImGui::Button("Remove Sprite")) {
+        selected_entity_.RemoveComponent<Sprite>();
       }
     }
 
-    if (selected_entity_.HasComponent<RenderInfo>()) {
-      if (ImGui::Button("Remove Render Info")) {
-        selected_entity_.RemoveComponent<RenderInfo>();
-      }
-    }
-
-    if (selected_entity_.HasComponent<Transform>()) {
-      if (ImGui::TreeNodeEx("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-        auto& transform = selected_entity_.GetComponent<Transform>();
-        ImGui::DragFloat2("Position", glm::value_ptr(transform.position), 0.1f);
-        ImGui::DragFloat("Rotation", &transform.rotation.z, 0.1f);
-        ImGui::DragFloat2("Scale", glm::value_ptr(transform.scale), 0.1f);
-        ImGui::TreePop();
-      }
-    }
-
-    if (selected_entity_.HasComponent<RenderInfo>()) {
-      if (ImGui::TreeNodeEx("Render Info", ImGuiTreeNodeFlags_DefaultOpen)) {
-        auto& render_info = selected_entity_.GetComponent<RenderInfo>();
-        ImGui::Text("Vertex Shader: %s",
-                    render_info.shader->GetVertPath().c_str());
+    if (selected_entity_.HasComponent<Sprite>()) {
+      if (ImGui::TreeNodeEx("Sprite", ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto& sprite = selected_entity_.GetComponent<Sprite>();
+        ImGui::DragFloat2("Position", glm::value_ptr(sprite.position), 0.1f);
+        ImGui::DragFloat("Rotation", &sprite.rotation.z, 0.1f);
+        ImGui::DragFloat2("Scale", glm::value_ptr(sprite.scale), 0.1f);
+        ImGui::Text("Vertex Shader: %s", sprite.shader->GetVertPath().c_str());
         ImGui::Text("Fragment Shader: %s",
-                    render_info.shader->GetFragPath().c_str());
-        ImGui::Text("Texture: %s", render_info.texture->GetPath().c_str());
-
-        ImGui::Image((void*)(intptr_t)render_info.texture->GetID(),
+                    sprite.shader->GetFragPath().c_str());
+        ImGui::Text("Texture: %s", sprite.texture->GetPath().c_str());
+        ImGui::Image((void*)(intptr_t)sprite.texture->GetID(),
                      ImVec2(100, 100));
+
         ImGui::TreePop();
       }
     }

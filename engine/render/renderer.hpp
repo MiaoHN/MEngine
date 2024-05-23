@@ -15,6 +15,7 @@
 
 #include "core/logger.hpp"
 #include "core/task_handler.hpp"
+#include "render/gl.hpp"
 
 namespace MEngine {
 
@@ -28,6 +29,8 @@ class Renderer : public TaskHandler {
   void Run(Command* command) override;
 
  private:
+  std::shared_ptr<GL::VertexArray> vertex_array_;
+
   std::shared_ptr<spdlog::logger> logger_;
 };
 
