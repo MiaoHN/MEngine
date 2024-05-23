@@ -9,8 +9,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+// clang-format off
+// #include <ImGuizmo.h>
+// clang-format on
+
 #include "core/input.hpp"
-#include "core/logger.hpp"
 #include "core/task_dispatcher.hpp"
 #include "render/renderer.hpp"
 
@@ -57,7 +60,7 @@ void Editor::Initialize() {
   (void)io;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-  ImGui::StyleColorsDark();
+  ImGui::StyleColorsLight();
 
   ImGui_ImplGlfw_InitForOpenGL(window_, true);
   ImGui_ImplOpenGL3_Init("#version 330");
@@ -205,6 +208,7 @@ void Editor::OnUpdate(float dt) {
   } else {
     viewport_resized_ = false;
   }
+
   ImGui::Image((void*)(intptr_t)frame_buffer_->GetTextureId(), size,
                ImVec2(0, 1), ImVec2(1, 0));
   ImGui::End();
@@ -294,6 +298,8 @@ void Editor::OnUpdate(float dt) {
         ImGui::Text("Texture: %s", sprite.texture->GetPath().c_str());
         ImGui::Image((void*)(intptr_t)sprite.texture->GetID(),
                      ImVec2(100, 100));
+
+        // TODO: Add button to change shader and texture
 
         ImGui::TreePop();
       }

@@ -42,6 +42,8 @@ void VertexBuffer::SetLayout() {
       case ShaderDataType::Float4:
         stride += 4 * sizeof(float);
         break;
+      default:
+        break;
     }
   }
   for (const auto& layout : layouts_) {
@@ -66,6 +68,8 @@ void VertexBuffer::SetLayout() {
         glVertexAttribPointer(index, 4, GL_FLOAT, GL_FALSE, stride,
                               (const void*)offset);
         offset += 4 * sizeof(float);
+        break;
+      default:
         break;
     }
     index++;

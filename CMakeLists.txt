@@ -25,6 +25,14 @@ target_include_directories(imgui PUBLIC deps/imgui)
 target_include_directories(imgui PUBLIC deps/imgui/backends)
 target_link_libraries(imgui glfw)
 
+# setup ImGuiZmo
+file(GLOB IMGUIZMO_SOURCE_FILES deps/ImGuizmo/*.cpp)
+add_library(ImGuizmo STATIC ${IMGUIZMO_SOURCE_FILES})
+target_include_directories(ImGuizmo PUBLIC
+  deps/ImGuizmo
+  deps/imgui
+)
+
 set(SOURCE_CORE
   engine/core/entry_point.cpp
   engine/core/application.cpp
@@ -69,6 +77,7 @@ target_link_libraries(engine
   glfw
   lua
   imgui
+  ImGuizmo
 )
 
 add_executable(editor
@@ -84,6 +93,7 @@ target_include_directories(editor
   deps/stb
   deps/imgui
   deps/imgui/backends
+  deps/ImGuizmo
   engine
   editor/src
 )
