@@ -24,18 +24,28 @@ Editor::~Editor() {}
 void Editor::Initialize() {
   active_scene_ = std::make_shared<Scene>();
 
-  Entity entity = active_scene_->CreateEntity("Checkerboard");
-
-  auto texture =
+  auto texture1 =
       texture_library_.Load("checkerboard", "res/textures/checkerboard.png");
 
-  auto& sprite = entity.AddComponent<Sprite>();
+  auto texture2 = texture_library_.Load("wall", "res/textures/wall.jpg");
 
-  sprite.position = glm::vec3(0.0f, 0.0f, 0.0f);
-  sprite.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
-  sprite.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
-  sprite.color    = glm::vec4(1.0f);
-  sprite.texture  = texture;
+  Entity entity1 = active_scene_->CreateEntity("Checkerboard");
+  auto&  sprite1 = entity1.AddComponent<Sprite>();
+
+  sprite1.position = glm::vec3(0.5f, 0.0f, 0.0f);
+  sprite1.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
+  sprite1.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+  sprite1.color    = glm::vec4(1.0f);
+  sprite1.texture  = texture1;
+
+  Entity entity2 = active_scene_->CreateEntity("Wall");
+  auto&  sprite2 = entity2.AddComponent<Sprite>();
+
+  sprite2.position = glm::vec3(-0.5f, 0.0f, 0.0f);
+  sprite2.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
+  sprite2.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+  sprite2.color    = glm::vec4(1.0f);
+  sprite2.texture  = texture2;
 
   camera_ = std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
 
