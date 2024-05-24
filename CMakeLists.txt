@@ -48,6 +48,7 @@ set(SOURCE_RENDER
   engine/render/shader.cpp
   engine/render/texture.cpp
   engine/render/renderer.cpp
+  engine/render/render_pipeline.cpp
   engine/render/frame_buffer.cpp
 )
 

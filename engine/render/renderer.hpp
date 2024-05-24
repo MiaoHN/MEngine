@@ -11,25 +11,26 @@
 
 #pragma once
 
+#include <glm/glm.hpp>
 #include <memory>
 
 #include "core/logger.hpp"
-#include "core/task_handler.hpp"
 #include "render/gl.hpp"
 
 namespace MEngine {
 
-class Command;
+struct Sprite;
+class RenderPipeline;
 
-class Renderer : public TaskHandler {
+class Renderer {
  public:
   Renderer();
   ~Renderer();
 
-  void Run(Command* command) override;
+  void RenderSprite(Sprite& sprite, const glm::mat4& proj_view);
 
  private:
-  std::shared_ptr<GL::VertexArray> vertex_array_;
+  std::shared_ptr<RenderPipeline> pipeline_;
 
   std::shared_ptr<spdlog::logger> logger_;
 };

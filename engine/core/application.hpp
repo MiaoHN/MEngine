@@ -25,6 +25,7 @@ class TaskDispatcher;
 class TaskHandler;
 class ScriptEngine;
 class Scene;
+class Renderer;
 
 /**
  * @brief Application class is the main class that runs the game loop.
@@ -93,7 +94,7 @@ class Application {
   int   fps_;
   float frame_time_;
 
-  std::shared_ptr<TaskHandler> renderer_;
+  std::shared_ptr<Renderer> renderer_;
 
   std::shared_ptr<ScriptEngine> script_engine_;
 

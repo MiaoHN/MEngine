@@ -26,20 +26,16 @@ void Editor::Initialize() {
 
   Entity entity = active_scene_->CreateEntity("Checkerboard");
 
-  auto shader = shader_library_.Load("default", "res/shaders/default_vert.glsl",
-                                     "res/shaders/default_frag.glsl");
-
   auto texture =
       texture_library_.Load("checkerboard", "res/textures/checkerboard.png");
 
   auto& sprite = entity.AddComponent<Sprite>();
 
   sprite.position = glm::vec3(0.0f, 0.0f, 0.0f);
-  sprite.scale    = glm::vec3(0.5f, 0.5f, 0.5f);
+  sprite.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
   sprite.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
   sprite.color    = glm::vec4(1.0f);
   sprite.texture  = texture;
-  sprite.shader   = shader;
 
   camera_ = std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
 
@@ -72,38 +68,12 @@ void Editor::OnUpdate(float dt) {
   if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
     glfwSetWindowShouldClose(window_, true);
   }
-  // handle logic
-  // glm::vec3 direction(0.0f);
-  // if (Input::IsKeyPressed(GLFW_KEY_A)) {
-  //   direction += glm::vec3(-1.0f, 0.0f, 0.0f);
-  // } else if (Input::IsKeyPressed(GLFW_KEY_D)) {
-  //   direction += glm::vec3(1.0f, 0.0f, 0.0f);
-  // }
-  // if (Input::IsKeyPressed(GLFW_KEY_W)) {
-  //   direction += glm::vec3(0.0f, 1.0f, 0.0f);
-  // } else if (Input::IsKeyPressed(GLFW_KEY_S)) {
-  //   direction += glm::vec3(0.0f, -1.0f, 0.0f);
-  // }
-  // if (direction != glm::vec3(0.0f)) direction = glm::normalize(direction);
-  // float       velocity = 1.0f;
-  // MoveCommand cmd(direction, velocity * dt);
 
-  // task_dispatcher_->Run(&cmd);
-
-  // handle render
-  auto render_entities = active_scene_->GetAllEntitiesWith<Sprite>();
-  auto camera          = active_scene_->GetCamera();
+  auto camera = active_scene_->GetCamera();
 
   if (viewport_resized_) {
     camera->OnWindowResize(viewport_width_, viewport_height_);
   }
-
-  // TODO: do not control camera zoom level by keyboard.
-  // if (Input::IsKeyPressed(GLFW_KEY_UP)) {
-  //   camera->OnMouseScroll(1.0f * dt);
-  // } else if (Input::IsKeyPressed(GLFW_KEY_DOWN)) {
-  //   camera->OnMouseScroll(-1.0f * dt);
-  // }
 
   frame_buffer_->Bind();
   frame_buffer_->Clear();
@@ -114,20 +84,47 @@ void Editor::OnUpdate(float dt) {
     frame_buffer_->AttachRenderBuffer();
   }
 
-  for (auto& entity : render_entities) {
+  for (auto& entity : active_scene_->GetAllEntitiesWith<Sprite>()) {
     auto& sprite = entity.GetComponent<Sprite>();
-
-    Sprite&       render_info = entity.GetComponent<Sprite>();
-    RenderCommand render_command;
-    render_command.SetViewProjectionMatrix(camera->GetProjectionView());
-    render_command.SetModelMatrix(
-        entity.GetComponent<Sprite>().GetModelMatrix());
-    render_command.SetRenderInfo(render_info);
-    renderer_->Run(&render_command);
+    renderer_->RenderSprite(sprite, camera->GetProjectionView());
   }
 
   frame_buffer_->Unbind();
 
+  BeginImGui();
+
+  bool open = false;
+  if (ImGui::BeginMenuBar()) {
+    if (ImGui::BeginMenu("File")) {
+      ImGui::MenuItem("Open", NULL, &open);
+
+      ImGui::EndMenu();
+    }
+
+    ImGui::EndMenuBar();
+  }
+
+  ShowImGuiViewport();
+
+  ShowImGuiScene();
+
+  ShowImGuiProperties();
+
+  ImGui::Begin("Log");
+  ImGui::Text("Hello, world!");
+  ImGui::End();
+
+  // print fps
+  ImGui::Begin("Information");
+  ImGui::Text("FPS: %d", GetFPS());
+  ImGui::End();
+
+  ImGui::End();
+
+  EndImGui();
+}
+
+void Editor::BeginImGui() {
   // ImGui test
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
@@ -185,34 +182,14 @@ void Editor::OnUpdate(float dt) {
     ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
   }
+}
 
-  bool open = false;
-  if (ImGui::BeginMenuBar()) {
-    if (ImGui::BeginMenu("File")) {
-      ImGui::MenuItem("Open", NULL, &open);
+void Editor::EndImGui() {
+  ImGui::Render();
+  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
 
-      ImGui::EndMenu();
-    }
-
-    ImGui::EndMenuBar();
-  }
-
-  // draw frame buffer on scene using ImGui
-  ImGui::Begin("Viewport");
-  ImVec2 size = ImGui::GetContentRegionAvail();
-  if (viewport_width_ != size.x || viewport_height_ != size.y) {
-    viewport_width_   = size.x;
-    viewport_height_  = size.y;
-    viewport_resized_ = true;
-    frame_buffer_->Resize(viewport_width_, viewport_height_);
-  } else {
-    viewport_resized_ = false;
-  }
-
-  ImGui::Image((void*)(intptr_t)frame_buffer_->GetTextureId(), size,
-               ImVec2(0, 1), ImVec2(1, 0));
-  ImGui::End();
-
+void Editor::ShowImGuiScene() {
   ImGui::Begin("Scene");
 
   if (ImGui::Button("Create")) {
@@ -245,7 +222,26 @@ void Editor::OnUpdate(float dt) {
   }
 
   ImGui::End();
+}
 
+void Editor::ShowImGuiViewport() {
+  ImGui::Begin("Viewport");
+  ImVec2 size = ImGui::GetContentRegionAvail();
+  if (viewport_width_ != size.x || viewport_height_ != size.y) {
+    viewport_width_   = size.x;
+    viewport_height_  = size.y;
+    viewport_resized_ = true;
+    frame_buffer_->Resize(viewport_width_, viewport_height_);
+  } else {
+    viewport_resized_ = false;
+  }
+
+  ImGui::Image((void*)(intptr_t)frame_buffer_->GetTextureId(), size,
+               ImVec2(0, 1), ImVec2(1, 0));
+  ImGui::End();
+}
+
+void Editor::ShowImGuiProperties() {
   ImGui::Begin("Properties");
 
   if (selected_entity_.GetHandle() != entt::null) {
@@ -268,11 +264,10 @@ void Editor::OnUpdate(float dt) {
         auto& sprite = selected_entity_.AddComponent<Sprite>();
 
         sprite.position = glm::vec3(0.0f, 0.0f, 0.0f);
-        sprite.scale    = glm::vec3(0.5f, 0.5f, 0.5f);
+        sprite.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
         sprite.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
         sprite.color    = glm::vec4(1.0f);
 
-        sprite.shader  = shader_library_.Get("default");
         sprite.texture = texture_library_.Get("checkerboard");
         ImGui::CloseCurrentPopup();
       }
@@ -292,9 +287,6 @@ void Editor::OnUpdate(float dt) {
         ImGui::DragFloat2("Position", glm::value_ptr(sprite.position), 0.1f);
         ImGui::DragFloat("Rotation", &sprite.rotation.z, 0.1f);
         ImGui::DragFloat2("Scale", glm::value_ptr(sprite.scale), 0.1f);
-        ImGui::Text("Vertex Shader: %s", sprite.shader->GetVertPath().c_str());
-        ImGui::Text("Fragment Shader: %s",
-                    sprite.shader->GetFragPath().c_str());
         ImGui::Text("Texture: %s", sprite.texture->GetPath().c_str());
         ImGui::Image((void*)(intptr_t)sprite.texture->GetID(),
                      ImVec2(100, 100));
@@ -307,20 +299,6 @@ void Editor::OnUpdate(float dt) {
   }
 
   ImGui::End();
-
-  ImGui::Begin("Log");
-  ImGui::Text("Hello, world!");
-  ImGui::End();
-
-  // print fps
-  ImGui::Begin("Information");
-  ImGui::Text("FPS: %d", GetFPS());
-  ImGui::End();
-
-  ImGui::End();
-
-  ImGui::Render();
-  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 Application* CreateApplication() { return new Editor(); }

@@ -31,6 +31,13 @@ class Editor : public Application {
 
   void OnUpdate(float dt) override;
 
+  void BeginImGui();
+  void EndImGui();
+
+  void ShowImGuiScene();
+  void ShowImGuiViewport();
+  void ShowImGuiProperties();
+
  private:
   int  viewport_width_   = 1280;
   int  viewport_height_  = 720;
@@ -39,8 +46,6 @@ class Editor : public Application {
   std::shared_ptr<Scene> active_scene_;
 
   std::shared_ptr<FrameBuffer> frame_buffer_;
-
-  std::shared_ptr<TaskHandler> renderer_;
 
   std::shared_ptr<ScriptEngine> script_engine_;
 

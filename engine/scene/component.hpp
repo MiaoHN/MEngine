@@ -35,17 +35,14 @@ struct Sprite {
   glm::vec3 rotation;
   glm::vec4 color;
 
-  std::shared_ptr<Shader>  shader;
   std::shared_ptr<Texture> texture;
 
   Sprite(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation,
-         glm::vec4 color, std::shared_ptr<Shader> shader,
-         std::shared_ptr<Texture> texture)
+         glm::vec4 color, std::shared_ptr<Texture> texture)
       : position(position),
         scale(scale),
         rotation(rotation),
         color(color),
-        shader(shader),
         texture(texture) {}
 
   Sprite() = default;

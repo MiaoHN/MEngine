@@ -4,7 +4,9 @@
 
 #include "core/command.hpp"
 #include "render/gl.hpp"
+#include "render/render_pipeline.hpp"
 #include "render/shader.hpp"
+#include "scene/component.hpp"
 
 namespace MEngine {
 
@@ -33,37 +35,37 @@ Renderer::Renderer() {
   auto index_buffer = std::make_shared<GL::IndexBuffer>();
   index_buffer->SetData(indices, 6);
 
-  vertex_array_ = std::make_shared<GL::VertexArray>();
-  vertex_array_->SetVertexBuffer(vertex_buffer);
-  vertex_array_->SetIndexBuffer(index_buffer);
+  auto vertex_array = std::make_shared<GL::VertexArray>();
+  vertex_array->SetVertexBuffer(vertex_buffer);
+  vertex_array->SetIndexBuffer(index_buffer);
+
+  // TODO: 默认 shader 怎么存放
+  auto shader = std::make_shared<Shader>("res/shaders/default_vert.glsl",
+                                         "res/shaders/default_frag.glsl");
+  shader->Bind();
+  shader->SetUniform("texture1", 0);
+  shader->Unbind();
+
+  pipeline_ = std::make_shared<RenderPipeline>();
+
+  pipeline_->SetVertexArray(vertex_array);
+  pipeline_->SetShader(shader);
 }
 
 Renderer::~Renderer() {}
 
-void Renderer::Run(Command* command) {
-  if (command->IsCancelled()) {
-    return;
-  }
-  if (command->GetType() != Command::Type::Render) {
-    logger_->error("Invalid command type");
-    return;
-  }
-
-  RenderCommand* cmd = dynamic_cast<RenderCommand*>(command);
-
-  auto shader  = cmd->GetRenderInfo().shader;
-  auto texture = cmd->GetRenderInfo().texture;
+void Renderer::RenderSprite(Sprite& sprite, const glm::mat4& proj_view) {
+  auto shader  = pipeline_->GetShader();
+  auto texture = sprite.texture;
 
   shader->Bind();
   texture->Bind();
 
-  shader->SetUniform("model", cmd->GetModelMatrix());
-  shader->SetUniform("proj_view", cmd->GetProjectionView());
+  shader->SetUniform("model", sprite.GetModelMatrix());
+  shader->SetUniform("proj_view", proj_view);
   shader->SetUniform("texture1", 0);
 
-  vertex_array_->Bind();
-
-  glDrawElements(GL_TRIANGLES, vertex_array_->GetCount(), GL_UNSIGNED_INT, 0);
+  pipeline_->Execute();
 }
 
 }  // namespace MEngine
