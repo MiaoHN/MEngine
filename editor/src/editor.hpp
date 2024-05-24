@@ -49,7 +49,7 @@ class Editor : public Application {
 
   std::shared_ptr<ScriptEngine> script_engine_;
 
-  std::shared_ptr<OrthographicCamera> camera_ = nullptr;
+  std::shared_ptr<OrthographicCamera> editor_camera_ = nullptr;
 
   ShaderLibrary  shader_library_;
   TextureLibrary texture_library_;

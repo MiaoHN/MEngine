@@ -47,13 +47,10 @@ void Editor::Initialize() {
   sprite2.color    = glm::vec4(1.0f);
   sprite2.texture  = texture2;
 
-  camera_ = std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
-
-  active_scene_->SetCamera(camera_);
+  editor_camera_ =
+      std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
 
   renderer_ = std::make_shared<Renderer>();
-
-  task_dispatcher_->PushHandler(active_scene_->GetCamera());
 
   script_engine_ = std::make_shared<ScriptEngine>();
 
@@ -79,10 +76,8 @@ void Editor::OnUpdate(float dt) {
     glfwSetWindowShouldClose(window_, true);
   }
 
-  auto camera = active_scene_->GetCamera();
-
   if (viewport_resized_) {
-    camera->OnWindowResize(viewport_width_, viewport_height_);
+    editor_camera_->OnWindowResize(viewport_width_, viewport_height_);
   }
 
   frame_buffer_->Bind();
@@ -96,7 +91,7 @@ void Editor::OnUpdate(float dt) {
 
   for (auto& entity : active_scene_->GetAllEntitiesWith<Sprite>()) {
     auto& sprite = entity.GetComponent<Sprite>();
-    renderer_->RenderSprite(sprite, camera->GetProjectionView());
+    renderer_->RenderSprite(sprite, editor_camera_->GetProjectionView());
   }
 
   frame_buffer_->Unbind();
@@ -127,6 +122,36 @@ void Editor::OnUpdate(float dt) {
   // print fps
   ImGui::Begin("Information");
   ImGui::Text("FPS: %d", GetFPS());
+  // control editor camera
+  ImGui::Text("Camera Control");
+  if (ImGui::DragFloat2("Position",
+                        glm::value_ptr(editor_camera_->GetPosition()), 0.1f)) {
+    editor_camera_->RecalculateViewMatrix();
+  }
+  if (ImGui::DragFloat("Rotation", &editor_camera_->GetRotation(), 0.1f)) {
+    editor_camera_->RecalculateViewMatrix();
+  }
+  if (ImGui::DragFloat("Zoom Level", &editor_camera_->GetZoomLevel(), 0.1f)) {
+    editor_camera_->SetProjection(
+        -editor_camera_->GetAspectRatio() * editor_camera_->GetZoomLevel(),
+        editor_camera_->GetAspectRatio() * editor_camera_->GetZoomLevel(),
+        -editor_camera_->GetZoomLevel(), editor_camera_->GetZoomLevel());
+  }
+  if (ImGui::DragFloat("Aspect Ratio", &editor_camera_->GetAspectRatio(),
+                       0.1f)) {
+    editor_camera_->SetProjection(
+        -editor_camera_->GetAspectRatio() * editor_camera_->GetZoomLevel(),
+        editor_camera_->GetAspectRatio() * editor_camera_->GetZoomLevel(),
+        -editor_camera_->GetZoomLevel(), editor_camera_->GetZoomLevel());
+  }
+
+  if (ImGui::Button("Reset Camera")) {
+    editor_camera_->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
+    editor_camera_->SetRotation(0.0f);
+    editor_camera_->SetZoomLevel(1.0f);
+    editor_camera_->SetAspectRatio((float)viewport_width_ / viewport_height_);
+  }
+
   ImGui::End();
 
   ImGui::End();
@@ -248,6 +273,7 @@ void Editor::ShowImGuiViewport() {
 
   ImGui::Image((void*)(intptr_t)frame_buffer_->GetTextureId(), size,
                ImVec2(0, 1), ImVec2(1, 0));
+
   ImGui::End();
 }
 

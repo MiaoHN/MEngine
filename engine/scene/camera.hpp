@@ -82,11 +82,18 @@ class OrthographicCamera : public TaskHandler {
 
   const glm::mat4& GetProjectionMatrix() const { return projection_; }
 
-  glm::mat4 GetProjectionView() { return projection_ * view_; }
+  glm::mat4 GetProjectionView() {
+    RecalculateViewMatrix();
+    return projection_ * view_;
+  }
 
   const glm::vec3& GetPosition() const { return position_; }
 
-  float GetRotation() const { return rotation_; }
+  glm::vec3& GetPosition() { return position_; }
+
+  const float& GetRotation() const { return rotation_; }
+
+  float& GetRotation() { return rotation_; }
 
   void RecalculateViewMatrix() {
     glm::mat4 transform = glm::translate(glm::mat4(1.0f), position_) *
@@ -94,6 +101,22 @@ class OrthographicCamera : public TaskHandler {
                                       glm::vec3(0, 0, 1));
 
     view_ = glm::inverse(transform);
+  }
+
+  const float& GetZoomLevel() const { return zoom_level_; }
+  float&       GetZoomLevel() { return zoom_level_; }
+  const float& GetAspectRatio() const { return aspect_ratio_; }
+  float&       GetAspectRatio() { return aspect_ratio_; }
+
+  void SetZoomLevel(float zoom_level) {
+    zoom_level_ = zoom_level;
+    SetProjection(-aspect_ratio_ * zoom_level_, aspect_ratio_ * zoom_level_,
+                  -zoom_level_, zoom_level_);
+  }
+  void SetAspectRatio(float aspect_ratio) {
+    aspect_ratio_ = aspect_ratio;
+    SetProjection(-aspect_ratio_ * zoom_level_, aspect_ratio_ * zoom_level_,
+                  -zoom_level_, zoom_level_);
   }
 
  private:
