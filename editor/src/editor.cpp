@@ -30,7 +30,7 @@ void Editor::Initialize() {
   auto texture2 = texture_library_.Load("wall", "res/textures/wall.jpg");
 
   Entity entity1 = active_scene_->CreateEntity("Checkerboard");
-  auto&  sprite1 = entity1.AddComponent<Sprite>();
+  auto&  sprite1 = entity1.AddComponent<Sprite2D>();
 
   sprite1.position = glm::vec3(0.5f, 0.0f, 0.0f);
   sprite1.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
@@ -39,7 +39,7 @@ void Editor::Initialize() {
   sprite1.texture  = texture1;
 
   Entity entity2 = active_scene_->CreateEntity("Wall");
-  auto&  sprite2 = entity2.AddComponent<Sprite>();
+  auto&  sprite2 = entity2.AddComponent<Sprite2D>();
 
   sprite2.position = glm::vec3(-0.5f, 0.0f, 0.0f);
   sprite2.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
@@ -89,8 +89,8 @@ void Editor::OnUpdate(float dt) {
     frame_buffer_->AttachRenderBuffer();
   }
 
-  for (auto& entity : active_scene_->GetAllEntitiesWith<Sprite>()) {
-    auto& sprite = entity.GetComponent<Sprite>();
+  for (auto& entity : active_scene_->GetAllEntitiesWith<Sprite2D>()) {
+    auto& sprite = entity.GetComponent<Sprite2D>();
     renderer_->RenderSprite(sprite, editor_camera_->GetProjectionView());
   }
 
@@ -296,8 +296,8 @@ void Editor::ShowImGuiProperties() {
     }
 
     if (ImGui::BeginPopup("AddComponentPopup")) {
-      if (ImGui::MenuItem("Sprite")) {
-        auto& sprite = selected_entity_.AddComponent<Sprite>();
+      if (ImGui::MenuItem("Sprite2D")) {
+        auto& sprite = selected_entity_.AddComponent<Sprite2D>();
 
         sprite.position = glm::vec3(0.0f, 0.0f, 0.0f);
         sprite.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
@@ -311,15 +311,15 @@ void Editor::ShowImGuiProperties() {
       ImGui::EndPopup();
     }
 
-    if (selected_entity_.HasComponent<Sprite>()) {
-      if (ImGui::Button("Remove Sprite")) {
-        selected_entity_.RemoveComponent<Sprite>();
+    if (selected_entity_.HasComponent<Sprite2D>()) {
+      if (ImGui::Button("Remove Sprite2D")) {
+        selected_entity_.RemoveComponent<Sprite2D>();
       }
     }
 
-    if (selected_entity_.HasComponent<Sprite>()) {
-      if (ImGui::TreeNodeEx("Sprite", ImGuiTreeNodeFlags_DefaultOpen)) {
-        auto& sprite = selected_entity_.GetComponent<Sprite>();
+    if (selected_entity_.HasComponent<Sprite2D>()) {
+      if (ImGui::TreeNodeEx("Sprite2D", ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto& sprite = selected_entity_.GetComponent<Sprite2D>();
         ImGui::DragFloat2("Position", glm::value_ptr(sprite.position), 0.1f);
         ImGui::DragFloat("Rotation", &sprite.rotation.z, 0.1f);
         ImGui::DragFloat2("Scale", glm::value_ptr(sprite.scale), 0.1f);

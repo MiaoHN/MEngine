@@ -19,7 +19,7 @@
 
 namespace MEngine {
 
-struct Sprite;
+struct Sprite2D;
 class RenderPipeline;
 
 class Renderer {
@@ -27,7 +27,7 @@ class Renderer {
   Renderer();
   ~Renderer();
 
-  void RenderSprite(Sprite& sprite, const glm::mat4& proj_view);
+  void RenderSprite(Sprite2D& sprite, const glm::mat4& proj_view);
 
  private:
   std::shared_ptr<RenderPipeline> pipeline_;

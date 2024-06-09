@@ -54,7 +54,7 @@ Renderer::Renderer() {
 
 Renderer::~Renderer() {}
 
-void Renderer::RenderSprite(Sprite& sprite, const glm::mat4& proj_view) {
+void Renderer::RenderSprite(Sprite2D& sprite, const glm::mat4& proj_view) {
   auto shader  = pipeline_->GetShader();
   auto texture = sprite.texture;
 

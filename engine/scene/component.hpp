@@ -29,7 +29,7 @@ struct Tag {
   Tag() = default;
 };
 
-struct Sprite {
+struct Sprite2D {
   glm::vec3 position;
   glm::vec3 scale;
   glm::vec3 rotation;
@@ -37,7 +37,7 @@ struct Sprite {
 
   std::shared_ptr<Texture> texture;
 
-  Sprite(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation,
+  Sprite2D(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation,
          glm::vec4 color, std::shared_ptr<Texture> texture)
       : position(position),
         scale(scale),
@@ -45,7 +45,7 @@ struct Sprite {
         color(color),
         texture(texture) {}
 
-  Sprite() = default;
+  Sprite2D() = default;
 
   glm::mat4 GetModelMatrix() {
     glm::mat4 model = glm::mat4(1.0f);
@@ -59,6 +59,26 @@ struct Sprite {
     model           = glm::scale(model, scale);
     return model;
   }
+};
+
+struct AABB {
+  glm::vec3 position;
+  glm::vec3 scale;
+
+  AABB(glm::vec3 position, glm::vec3 scale)
+      : position(position), scale(scale) {}
+
+  AABB() = default;
+};
+
+struct Circle {
+  glm::vec3 position;
+  float radius;
+
+  Circle(glm::vec3 position, float radius)
+      : position(position), radius(radius) {}
+
+  Circle() = default;
 };
 
 }  // namespace MEngine
