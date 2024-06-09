@@ -37,8 +37,6 @@ set(SOURCE_CORE
   engine/core/entry_point.cpp
   engine/core/application.cpp
   engine/core/logger.cpp
-  engine/core/task_dispatcher.cpp
-  engine/core/task_handler.cpp
   engine/core/script_engine.cpp
   engine/core/uuid.cpp
 )

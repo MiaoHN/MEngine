@@ -17,14 +17,13 @@
 
 #include "core/command.hpp"
 #include "core/logger.hpp"
-#include "core/task_handler.hpp"
 #include "scene/component.hpp"
 
 namespace MEngine {
 
-class OrthographicCamera : public TaskHandler {
+class OrthographicCamera {
  public:
-  OrthographicCamera(CameraInfo& camera_info) : camera_info_(camera_info) {
+  OrthographicCamera(Camera2D& camera_info) : camera_info_(camera_info) {
     logger_ = Logger::Get("OrthographicCamera");
 
     projection_ = glm::ortho(
@@ -37,26 +36,6 @@ class OrthographicCamera : public TaskHandler {
   }
 
   ~OrthographicCamera() = default;
-
-  void Run(Command* cmd) override {
-    switch (cmd->GetType()) {
-      case Command::Type::Move: {
-        auto move_cmd = static_cast<MoveCommand*>(cmd);
-        camera_info_.position +=
-            move_cmd->GetDirection() * move_cmd->GetVelocity();
-        RecalculateViewMatrix();
-        break;
-      }
-      case Command::Type::Rotate: {
-        auto rotate_cmd = static_cast<RotateCommand*>(cmd);
-        camera_info_.rotation += rotate_cmd->GetAngle();
-        RecalculateViewMatrix();
-        break;
-      }
-      default:
-        break;
-    }
-  }
 
   void OnWindowResize(float width, float height) {
     camera_info_.aspect_ratio = width / height;
@@ -133,7 +112,7 @@ class OrthographicCamera : public TaskHandler {
   glm::mat4 view_;
   glm::mat4 projection_;
 
-  CameraInfo& camera_info_;
+  Camera2D& camera_info_;
 
   std::shared_ptr<spdlog::logger> logger_;
 };

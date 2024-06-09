@@ -10,8 +10,6 @@
 #include "core/command.hpp"
 #include "core/input.hpp"
 #include "core/script_engine.hpp"
-#include "core/task_dispatcher.hpp"
-#include "core/task_handler.hpp"
 #include "render/frame_buffer.hpp"
 #include "render/gl.hpp"
 #include "render/renderer.hpp"
@@ -58,8 +56,6 @@ Application::Application() {
     exit(-1);
   }
 
-  task_dispatcher_ = std::make_unique<TaskDispatcher>();
-
   logger_->info("Application initialized");
 }
 
@@ -83,8 +79,12 @@ void Application::Run() {
   while (!glfwWindowShouldClose(window_)) {
     float dt = GetDeltaTime();
 
+    glEnable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glClearColor(0.6f, 0.6f, 0.6f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     OnUpdate(dt);
 

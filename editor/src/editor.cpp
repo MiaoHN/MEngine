@@ -16,7 +16,6 @@
 // clang-format on
 
 #include "core/input.hpp"
-#include "core/task_dispatcher.hpp"
 #include "render/renderer.hpp"
 
 Editor::Editor() {}
@@ -29,30 +28,41 @@ void Editor::Initialize() {
   auto texture1 =
       texture_library_.Load("checkerboard", "res/textures/checkerboard.png");
 
-  auto texture2 = texture_library_.Load("wall", "res/textures/wall.jpg");
+  auto texture2 =
+      texture_library_.Load("qoguldsd", "res/textures/qoguldsd.png");
 
   Entity entity1 = active_scene_->CreateEntity("Checkerboard");
   auto&  sprite1 = entity1.AddComponent<Sprite2D>();
 
-  sprite1.position = glm::vec3(0.5f, 0.0f, 0.0f);
-  sprite1.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
+  sprite1.position = glm::vec3(0.5f, 0.0f, -1.0f);
+  sprite1.scale = glm::vec3(texture1->GetWidth() / 32, texture1->GetHeight() / 32, 1.0f);
   sprite1.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
   sprite1.color    = glm::vec4(1.0f);
   sprite1.texture  = texture1;
 
-  auto& camera_info = entity1.AddComponent<CameraInfo>(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, true);
+  Entity entity2 = active_scene_->CreateEntity("qoguldsd");
+  auto&  sprite2 = entity2.AddComponent<AnimatedSprite2D>();
 
-  Entity entity2 = active_scene_->CreateEntity("Wall");
-  auto&  sprite2 = entity2.AddComponent<Sprite2D>();
+  sprite2.position = glm::vec3(0.5f, 0.0f, 0.0f);
+  sprite2.scale = glm::vec3(texture2->GetWidth() / 32, texture2->GetHeight() / 32, 1.0f);
+  sprite2.rotation      = glm::vec3(0.0f, 0.0f, 0.0f);
+  sprite2.color         = glm::vec4(1.0f);
+  sprite2.texture       = texture2;
+  sprite2.frame_time    = 0.1f;
+  sprite2.current_frame = 0;
+  sprite2.current_time  = 0.0f;
 
-  sprite2.position = glm::vec3(-0.5f, 0.0f, 0.0f);
-  sprite2.scale    = glm::vec3(1.0f, 1.0f, 1.0f);
-  sprite2.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
-  sprite2.color    = glm::vec4(1.0f);
-  sprite2.texture  = texture2;
+  texture2->SetHFrames(6);
+  texture2->SetVFrames(1);
+
+  auto& camera_info =
+      entity2.AddComponent<Camera2D>(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, true);
+  camera_info.SetZoomLevel(100.0f);
 
   editor_camera_info_ =
-      std::make_shared<CameraInfo>(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, true);
+      std::make_shared<Camera2D>(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, true);
+
+  editor_camera_info_->SetZoomLevel(100.0f);
 
   renderer_ = std::make_shared<Renderer>();
 
@@ -67,7 +77,7 @@ void Editor::Initialize() {
   (void)io;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-  ImGui::StyleColorsLight();
+  ImGui::StyleColorsDark();
 
   ImGui_ImplGlfw_InitForOpenGL(window_, true);
   ImGui_ImplOpenGL3_Init("#version 330");
@@ -98,19 +108,40 @@ void Editor::OnUpdate(float dt) {
       auto& sprite = entity.GetComponent<Sprite2D>();
       renderer_->RenderSprite(sprite, editor_camera_info_->GetProjectionView());
     }
+    for (auto& entity : active_scene_->GetAllEntitiesWith<AnimatedSprite2D>()) {
+      auto& sprite = entity.GetComponent<AnimatedSprite2D>();
+      renderer_->RenderSprite(sprite, editor_camera_info_->GetProjectionView());
+    }
   } else {
     bool has_primary_camera = false;
-    for (auto& entity : active_scene_->GetAllEntitiesWith<CameraInfo>()) {
-      auto& camera_info = entity.GetComponent<CameraInfo>();
-      auto& sprite      = entity.GetComponent<Sprite2D>();
+    for (auto& entity : active_scene_->GetAllEntitiesWith<Camera2D>()) {
+      auto& camera_info = entity.GetComponent<Camera2D>();
+      glm::vec3 position;
+      float     rotation;
+      if (entity.HasComponent<Sprite2D>()) {
+        auto& sprite = entity.GetComponent<Sprite2D>();
+        position = sprite.position;
+        rotation = sprite.rotation.z;
+      } else if (entity.HasComponent<AnimatedSprite2D>()) {
+        auto& sprite = entity.GetComponent<AnimatedSprite2D>();
+        position = sprite.position;
+        rotation = sprite.rotation.z;
+      } else {
+        position = glm::vec3(0.0f);
+        rotation = 0.0f;
+      }
       if (camera_info.primary) {
         has_primary_camera = true;
-        camera_info.SetPosition(sprite.position);
-        camera_info.SetRotation(sprite.rotation.z);
+        camera_info.SetPosition(position);
+        camera_info.SetRotation(rotation);
         camera_info.SetProjection(-1.0f, 1.0f, -1.0f, 1.0f);
         camera_info.SetAspectRatio((float)viewport_width_ / viewport_height_);
         for (auto& entity : active_scene_->GetAllEntitiesWith<Sprite2D>()) {
           auto& sprite = entity.GetComponent<Sprite2D>();
+          renderer_->RenderSprite(sprite, camera_info.GetProjectionView());
+        }
+        for (auto& entity : active_scene_->GetAllEntitiesWith<AnimatedSprite2D>()) {
+          auto& sprite = entity.GetComponent<AnimatedSprite2D>();
           renderer_->RenderSprite(sprite, camera_info.GetProjectionView());
         }
       }
@@ -169,8 +200,8 @@ void Editor::OnUpdate(float dt) {
   if (ImGui::DragFloat("Rotation", &editor_camera_info_->GetRotation(), 0.1f)) {
     editor_camera_info_->RecalculateViewMatrix();
   }
-  if (ImGui::DragFloat("Zoom Level", &editor_camera_info_->GetZoomLevel(),
-                       0.1f)) {
+  if (ImGui::DragFloat("Zoom Level", &editor_camera_info_->GetZoomLevel(), 0.1f,
+                       0.1f, 100.0f)) {
     editor_camera_info_->SetProjection(-editor_camera_info_->GetAspectRatio() *
                                            editor_camera_info_->GetZoomLevel(),
                                        editor_camera_info_->GetAspectRatio() *

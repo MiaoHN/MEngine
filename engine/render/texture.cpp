@@ -55,9 +55,10 @@ Texture::Texture(const std::string& name, const std::string& path) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-  unsigned char* data =
-      stbi_load(path.c_str(), &width_, &height_, &channels_, 0);
-  if (data) {
+  stbi_set_flip_vertically_on_load(true);
+
+  data_ = stbi_load(path.c_str(), &width_, &height_, &channels_, 0);
+  if (data_) {
     GLenum format;
     if (channels_ == 1) {
       format = GL_RED;
@@ -68,18 +69,19 @@ Texture::Texture(const std::string& name, const std::string& path) {
     }
 
     glTexImage2D(GL_TEXTURE_2D, 0, format, width_, height_, 0, format,
-                 GL_UNSIGNED_BYTE, data);
+                 GL_UNSIGNED_BYTE, data_);
     glGenerateMipmap(GL_TEXTURE_2D);
   } else {
     logger_->error("Failed to load texture: {0}", path);
   }
 
-  stbi_image_free(data);
-
   name_ = name;
 }
 
-Texture::~Texture() { glDeleteTextures(1, &id_); }
+Texture::~Texture() {
+  glDeleteTextures(1, &id_);
+  stbi_image_free(data_);
+}
 
 void Texture::Bind(unsigned int slot) const {
   glActiveTexture(GL_TEXTURE0 + slot);
@@ -87,6 +89,18 @@ void Texture::Bind(unsigned int slot) const {
 }
 
 void Texture::Unbind() const { glBindTexture(GL_TEXTURE_2D, 0); }
+
+void Texture::SetSubTexture(int frame) {
+  static int w = width_ / h_frames_;
+  static int h = height_ / v_frames_;
+  float      x = (frame % h_frames_) / (float)h_frames_;
+  float      y = (frame / h_frames_) / (float)v_frames_;
+
+  glBindTexture(GL_TEXTURE_2D, id_);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, x * w, y * h, w, h, GL_RGBA,
+                  GL_UNSIGNED_BYTE, data_);
+  glBindTexture(GL_TEXTURE_2D, 0);
+}
 
 TextureLibrary::TextureLibrary() { logger_ = Logger::Get("TextureLibrary"); }
 

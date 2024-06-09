@@ -32,6 +32,11 @@ class Texture {
 
   int GetHeight() const { return height_; }
 
+  void SetVFrames(int v_frames) { v_frames_ = v_frames; }
+  void SetHFrames(int h_frames) { h_frames_ = h_frames; }
+
+  void SetSubTexture(int frame = 0);
+
   const std::string& GetName() const { return name_; }
 
   std::string GetPath() const { return path_; }
@@ -44,9 +49,14 @@ class Texture {
   int          height_;
   int          channels_;
 
+  int v_frames_ = 1;
+  int h_frames_ = 1;
+
   std::shared_ptr<spdlog::logger> logger_;
 
   std::string path_;
+
+  unsigned char* data_;
 
   std::string name_;
 };

@@ -14,7 +14,6 @@
 #include "core/application.hpp"
 #include "core/entry_point.hpp"
 #include "core/script_engine.hpp"
-#include "core/task_handler.hpp"
 #include "render/frame_buffer.hpp"
 #include "scene/camera.hpp"
 #include "scene/entity.hpp"
@@ -53,7 +52,7 @@ class Editor : public Application {
 
   std::shared_ptr<ScriptEngine> script_engine_;
 
-  std::shared_ptr<CameraInfo> editor_camera_info_;
+  std::shared_ptr<Camera2D> editor_camera_info_;
 
   ShaderLibrary  shader_library_;
   TextureLibrary texture_library_;

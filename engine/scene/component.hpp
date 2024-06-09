@@ -29,7 +29,7 @@ struct Tag {
   Tag() = default;
 };
 
-struct CameraInfo {
+struct Camera2D {
   glm::vec3 position;
   float     rotation;
 
@@ -41,23 +41,23 @@ struct CameraInfo {
   glm::mat4 view;
   glm::mat4 projection;
 
-  CameraInfo(float left, float right, float bottom, float top, float zoom_level,
-             bool primary)
+  Camera2D(float left, float right, float bottom, float top, float zoom_level,
+           bool primary)
       : position(glm::vec3((left + right) / 2, (bottom + top) / 2, 0.0f)),
         rotation(0.0f),
         aspect_ratio((right - left) / (top - bottom)),
         zoom_level(zoom_level),
         primary(primary) {}
 
-  CameraInfo(glm::vec3 position, float rotation, float aspect_ratio,
-             float zoom_level, bool primary)
+  Camera2D(glm::vec3 position, float rotation, float aspect_ratio,
+           float zoom_level, bool primary)
       : position(position),
         rotation(rotation),
         aspect_ratio(aspect_ratio),
         zoom_level(zoom_level),
         primary(primary) {}
 
-  CameraInfo() = default;
+  Camera2D() = default;
 
   void SetProjection(float left, float right, float bottom, float top) {
     projection = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
@@ -139,6 +139,51 @@ struct Sprite2D {
         texture(texture) {}
 
   Sprite2D() = default;
+
+  glm::mat4 GetModelMatrix() {
+    glm::mat4 model = glm::mat4(1.0f);
+    model           = glm::translate(model, position);
+    model           = glm::rotate(model, glm::radians(rotation.x),
+                                  glm::vec3(1.0f, 0.0f, 0.0f));
+    model           = glm::rotate(model, glm::radians(rotation.y),
+                                  glm::vec3(0.0f, 1.0f, 0.0f));
+    model           = glm::rotate(model, glm::radians(rotation.z),
+                                  glm::vec3(0.0f, 0.0f, 1.0f));
+    model           = glm::scale(model, scale);
+    return model;
+  }
+};
+
+struct AnimatedSprite2D {
+  glm::vec3 position;
+  glm::vec3 scale;
+  glm::vec3 rotation;
+  glm::vec4 color;
+
+  std::shared_ptr<Texture> texture;
+
+  int h_frames;
+  int v_frames;
+
+  float frame_time;
+  float current_time;
+  int   current_frame;
+
+  AnimatedSprite2D(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation,
+                   glm::vec4 color, std::shared_ptr<Texture> texture,
+                   int h_frames, int v_frames, float frame_time)
+      : position(position),
+        scale(scale),
+        rotation(rotation),
+        color(color),
+        texture(texture),
+        h_frames(h_frames),
+        v_frames(v_frames),
+        frame_time(frame_time),
+        current_time(0.0f),
+        current_frame(0) {}
+
+  AnimatedSprite2D() = default;
 
   glm::mat4 GetModelMatrix() {
     glm::mat4 model = glm::mat4(1.0f);

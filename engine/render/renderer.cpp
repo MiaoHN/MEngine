@@ -68,4 +68,19 @@ void Renderer::RenderSprite(Sprite2D& sprite, const glm::mat4& proj_view) {
   pipeline_->Execute();
 }
 
+void Renderer::RenderSprite(AnimatedSprite2D& sprite, const glm::mat4& proj_view) {
+  auto shader  = pipeline_->GetShader();
+  auto texture = sprite.texture;
+
+  shader->Bind();
+  texture->SetSubTexture(sprite.current_frame);
+  texture->Bind();
+
+  shader->SetUniform("model", sprite.GetModelMatrix());
+  shader->SetUniform("proj_view", proj_view);
+  shader->SetUniform("texture1", 0);
+
+  pipeline_->Execute();
+}
+
 }  // namespace MEngine

@@ -21,8 +21,6 @@ struct GLFWwindow;
 namespace MEngine {
 
 class FrameBuffer;
-class TaskDispatcher;
-class TaskHandler;
 class ScriptEngine;
 class Scene;
 class Renderer;
@@ -66,12 +64,6 @@ class Application {
   static Application* GetInstance();
 
  protected:
-  /**
-   * @brief task_dispatcher_ is a unique pointer to the TaskDispatcher class.
-   *
-   */
-  std::unique_ptr<TaskDispatcher> task_dispatcher_;
-
   /**
    * @brief scene_ is a unique pointer to the Scene class.
    *
