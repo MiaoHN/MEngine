@@ -60,12 +60,18 @@ class Scene {
   void LoadScene(const std::string& path);
   void SaveScene(const std::string& path);
 
+  std::shared_ptr<CameraInfo> GetDefaultCameraInfo() {
+    return default_camera_info_;
+  }
+
  private:
   entt::registry registry_;
 
   std::vector<Entity> entities_;
 
   std::shared_ptr<spdlog::logger> logger_;
+
+  std::shared_ptr<CameraInfo> default_camera_info_;
 };
 
 }  // namespace MEngine

@@ -7,7 +7,11 @@
 
 namespace MEngine {
 
-Scene::Scene() { logger_ = Logger::Get("Scene"); }
+Scene::Scene() {
+  logger_ = Logger::Get("Scene");
+  default_camera_info_ =
+      std::make_shared<CameraInfo>(-1.6f, 1.6f, -0.9f, 0.9f, 1.0f, true);
+}
 
 Scene::~Scene() {}
 

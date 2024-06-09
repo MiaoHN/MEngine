@@ -18,20 +18,20 @@
 #include "core/command.hpp"
 #include "core/logger.hpp"
 #include "core/task_handler.hpp"
+#include "scene/component.hpp"
 
 namespace MEngine {
 
 class OrthographicCamera : public TaskHandler {
  public:
-  OrthographicCamera(float left, float right, float bottom, float top) {
+  OrthographicCamera(CameraInfo& camera_info) : camera_info_(camera_info) {
     logger_ = Logger::Get("OrthographicCamera");
 
-    projection_ = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
-    view_       = glm::mat4(1.0f);
-
-    position_ = glm::vec3(0.0f);
-
-    rotation_ = 0.0f;
+    projection_ = glm::ortho(
+        -camera_info_.aspect_ratio * camera_info_.zoom_level,
+        camera_info_.aspect_ratio * camera_info_.zoom_level,
+        -camera_info_.zoom_level, camera_info_.zoom_level, -1.0f, 1.0f);
+    view_ = glm::mat4(1.0f);
 
     RecalculateViewMatrix();
   }
@@ -42,13 +42,14 @@ class OrthographicCamera : public TaskHandler {
     switch (cmd->GetType()) {
       case Command::Type::Move: {
         auto move_cmd = static_cast<MoveCommand*>(cmd);
-        position_ += move_cmd->GetDirection() * move_cmd->GetVelocity();
+        camera_info_.position +=
+            move_cmd->GetDirection() * move_cmd->GetVelocity();
         RecalculateViewMatrix();
         break;
       }
       case Command::Type::Rotate: {
         auto rotate_cmd = static_cast<RotateCommand*>(cmd);
-        rotation_ += rotate_cmd->GetAngle();
+        camera_info_.rotation += rotate_cmd->GetAngle();
         RecalculateViewMatrix();
         break;
       }
@@ -58,25 +59,29 @@ class OrthographicCamera : public TaskHandler {
   }
 
   void OnWindowResize(float width, float height) {
-    aspect_ratio_ = width / height;
-    SetProjection(-aspect_ratio_ * zoom_level_, aspect_ratio_ * zoom_level_,
-                  -zoom_level_, zoom_level_);
+    camera_info_.aspect_ratio = width / height;
+    SetProjection(-camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  -camera_info_.zoom_level, camera_info_.zoom_level);
   }
 
   void OnMouseScroll(float y_offset) {
-    zoom_level_ += y_offset;
-    if (zoom_level_ < 0.25f) zoom_level_ = 0.25f;
-    SetProjection(-aspect_ratio_ * zoom_level_, aspect_ratio_ * zoom_level_,
-                  -zoom_level_, zoom_level_);
+    camera_info_.zoom_level += y_offset;
+    if (camera_info_.zoom_level < 0.25f) camera_info_.zoom_level = 0.25f;
+    SetProjection(-camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  -camera_info_.zoom_level, camera_info_.zoom_level);
   }
 
   void SetProjection(float left, float right, float bottom, float top) {
     projection_ = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
   }
 
-  void SetPosition(const glm::vec3& position) { position_ = position; }
+  void SetPosition(const glm::vec3& position) {
+    camera_info_.position = position;
+  }
 
-  void SetRotation(float rotation) { rotation_ = rotation; }
+  void SetRotation(float rotation) { camera_info_.rotation = rotation; }
 
   const glm::mat4& GetViewMatrix() const { return view_; }
 
@@ -87,46 +92,48 @@ class OrthographicCamera : public TaskHandler {
     return projection_ * view_;
   }
 
-  const glm::vec3& GetPosition() const { return position_; }
+  const glm::vec3& GetPosition() const { return camera_info_.position; }
 
-  glm::vec3& GetPosition() { return position_; }
+  glm::vec3& GetPosition() { return camera_info_.position; }
 
-  const float& GetRotation() const { return rotation_; }
+  const float& GetRotation() const { return camera_info_.rotation; }
 
-  float& GetRotation() { return rotation_; }
+  float& GetRotation() { return camera_info_.rotation; }
 
   void RecalculateViewMatrix() {
-    glm::mat4 transform = glm::translate(glm::mat4(1.0f), position_) *
-                          glm::rotate(glm::mat4(1.0f), glm::radians(rotation_),
-                                      glm::vec3(0, 0, 1));
+    glm::mat4 transform =
+        glm::translate(glm::mat4(1.0f), camera_info_.position) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(camera_info_.rotation),
+                    glm::vec3(0, 0, 1));
 
     view_ = glm::inverse(transform);
   }
 
-  const float& GetZoomLevel() const { return zoom_level_; }
-  float&       GetZoomLevel() { return zoom_level_; }
-  const float& GetAspectRatio() const { return aspect_ratio_; }
-  float&       GetAspectRatio() { return aspect_ratio_; }
+  const float& GetZoomLevel() const { return camera_info_.zoom_level; }
+  float&       GetZoomLevel() { return camera_info_.zoom_level; }
+  const float& GetAspectRatio() const { return camera_info_.aspect_ratio; }
+  float&       GetAspectRatio() { return camera_info_.aspect_ratio; }
 
   void SetZoomLevel(float zoom_level) {
-    zoom_level_ = zoom_level;
-    SetProjection(-aspect_ratio_ * zoom_level_, aspect_ratio_ * zoom_level_,
-                  -zoom_level_, zoom_level_);
+    camera_info_.zoom_level = zoom_level;
+    SetProjection(-camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  -camera_info_.zoom_level, camera_info_.zoom_level);
   }
   void SetAspectRatio(float aspect_ratio) {
-    aspect_ratio_ = aspect_ratio;
-    SetProjection(-aspect_ratio_ * zoom_level_, aspect_ratio_ * zoom_level_,
-                  -zoom_level_, zoom_level_);
+    camera_info_.aspect_ratio = aspect_ratio;
+    SetProjection(-camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  -camera_info_.zoom_level, camera_info_.zoom_level);
   }
+
+  void SetPrimary(bool primary = true) { camera_info_.primary = primary; }
 
  private:
   glm::mat4 view_;
   glm::mat4 projection_;
-  glm::vec3 position_;
-  float     rotation_;
 
-  float aspect_ratio_ = 0.0f;
-  float zoom_level_   = 1.0f;
+  CameraInfo& camera_info_;
 
   std::shared_ptr<spdlog::logger> logger_;
 };

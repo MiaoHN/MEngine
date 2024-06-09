@@ -39,9 +39,13 @@ class Editor : public Application {
   void ShowImGuiProperties();
 
  private:
+  enum class GameMode { Play, Edit };
+
   int  viewport_width_   = 1280;
   int  viewport_height_  = 720;
   bool viewport_resized_ = false;
+
+  GameMode game_mode_ = GameMode::Edit;
 
   std::shared_ptr<Scene> active_scene_;
 
@@ -49,7 +53,7 @@ class Editor : public Application {
 
   std::shared_ptr<ScriptEngine> script_engine_;
 
-  std::shared_ptr<OrthographicCamera> editor_camera_ = nullptr;
+  std::shared_ptr<CameraInfo> editor_camera_info_;
 
   ShaderLibrary  shader_library_;
   TextureLibrary texture_library_;

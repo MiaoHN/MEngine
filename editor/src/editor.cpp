@@ -5,9 +5,11 @@
 
 #include <backends/imgui_impl_glfw.cpp>
 #include <backends/imgui_impl_opengl3.cpp>
+#include <fstream>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <sstream>
 
 // clang-format off
 // #include <ImGuizmo.h>
@@ -38,6 +40,8 @@ void Editor::Initialize() {
   sprite1.color    = glm::vec4(1.0f);
   sprite1.texture  = texture1;
 
+  auto& camera_info = entity1.AddComponent<CameraInfo>(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, true);
+
   Entity entity2 = active_scene_->CreateEntity("Wall");
   auto&  sprite2 = entity2.AddComponent<Sprite2D>();
 
@@ -47,8 +51,8 @@ void Editor::Initialize() {
   sprite2.color    = glm::vec4(1.0f);
   sprite2.texture  = texture2;
 
-  editor_camera_ =
-      std::make_shared<OrthographicCamera>(-1.0f, 1.0f, -1.0f, 1.0f);
+  editor_camera_info_ =
+      std::make_shared<CameraInfo>(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, true);
 
   renderer_ = std::make_shared<Renderer>();
 
@@ -77,7 +81,7 @@ void Editor::OnUpdate(float dt) {
   }
 
   if (viewport_resized_) {
-    editor_camera_->OnWindowResize(viewport_width_, viewport_height_);
+    editor_camera_info_->OnWindowResize(viewport_width_, viewport_height_);
   }
 
   frame_buffer_->Bind();
@@ -89,9 +93,35 @@ void Editor::OnUpdate(float dt) {
     frame_buffer_->AttachRenderBuffer();
   }
 
-  for (auto& entity : active_scene_->GetAllEntitiesWith<Sprite2D>()) {
-    auto& sprite = entity.GetComponent<Sprite2D>();
-    renderer_->RenderSprite(sprite, editor_camera_->GetProjectionView());
+  if (game_mode_ == GameMode::Edit) {
+    for (auto& entity : active_scene_->GetAllEntitiesWith<Sprite2D>()) {
+      auto& sprite = entity.GetComponent<Sprite2D>();
+      renderer_->RenderSprite(sprite, editor_camera_info_->GetProjectionView());
+    }
+  } else {
+    bool has_primary_camera = false;
+    for (auto& entity : active_scene_->GetAllEntitiesWith<CameraInfo>()) {
+      auto& camera_info = entity.GetComponent<CameraInfo>();
+      auto& sprite      = entity.GetComponent<Sprite2D>();
+      if (camera_info.primary) {
+        has_primary_camera = true;
+        camera_info.SetPosition(sprite.position);
+        camera_info.SetRotation(sprite.rotation.z);
+        camera_info.SetProjection(-1.0f, 1.0f, -1.0f, 1.0f);
+        camera_info.SetAspectRatio((float)viewport_width_ / viewport_height_);
+        for (auto& entity : active_scene_->GetAllEntitiesWith<Sprite2D>()) {
+          auto& sprite = entity.GetComponent<Sprite2D>();
+          renderer_->RenderSprite(sprite, camera_info.GetProjectionView());
+        }
+      }
+    }
+    if (!has_primary_camera) {
+      for (auto& entity : active_scene_->GetAllEntitiesWith<Sprite2D>()) {
+        auto& sprite = entity.GetComponent<Sprite2D>();
+        renderer_->RenderSprite(
+            sprite, scene_->GetDefaultCameraInfo()->GetProjectionView());
+      }
+    }
   }
 
   frame_buffer_->Unbind();
@@ -116,7 +146,14 @@ void Editor::OnUpdate(float dt) {
   ShowImGuiProperties();
 
   ImGui::Begin("Log");
-  ImGui::Text("Hello, world!");
+  std::ifstream     file("MEngine.log");
+  std::stringstream ss;
+  if (file.is_open()) {
+    ss << file.rdbuf();
+  }
+  std::string log = ss.str();
+  ImGui::Text("%s", log.c_str());
+
   ImGui::End();
 
   // print fps
@@ -125,31 +162,38 @@ void Editor::OnUpdate(float dt) {
   // control editor camera
   ImGui::Text("Camera Control");
   if (ImGui::DragFloat2("Position",
-                        glm::value_ptr(editor_camera_->GetPosition()), 0.1f)) {
-    editor_camera_->RecalculateViewMatrix();
+                        glm::value_ptr(editor_camera_info_->GetPosition()),
+                        0.1f)) {
+    editor_camera_info_->RecalculateViewMatrix();
   }
-  if (ImGui::DragFloat("Rotation", &editor_camera_->GetRotation(), 0.1f)) {
-    editor_camera_->RecalculateViewMatrix();
+  if (ImGui::DragFloat("Rotation", &editor_camera_info_->GetRotation(), 0.1f)) {
+    editor_camera_info_->RecalculateViewMatrix();
   }
-  if (ImGui::DragFloat("Zoom Level", &editor_camera_->GetZoomLevel(), 0.1f)) {
-    editor_camera_->SetProjection(
-        -editor_camera_->GetAspectRatio() * editor_camera_->GetZoomLevel(),
-        editor_camera_->GetAspectRatio() * editor_camera_->GetZoomLevel(),
-        -editor_camera_->GetZoomLevel(), editor_camera_->GetZoomLevel());
-  }
-  if (ImGui::DragFloat("Aspect Ratio", &editor_camera_->GetAspectRatio(),
+  if (ImGui::DragFloat("Zoom Level", &editor_camera_info_->GetZoomLevel(),
                        0.1f)) {
-    editor_camera_->SetProjection(
-        -editor_camera_->GetAspectRatio() * editor_camera_->GetZoomLevel(),
-        editor_camera_->GetAspectRatio() * editor_camera_->GetZoomLevel(),
-        -editor_camera_->GetZoomLevel(), editor_camera_->GetZoomLevel());
+    editor_camera_info_->SetProjection(-editor_camera_info_->GetAspectRatio() *
+                                           editor_camera_info_->GetZoomLevel(),
+                                       editor_camera_info_->GetAspectRatio() *
+                                           editor_camera_info_->GetZoomLevel(),
+                                       -editor_camera_info_->GetZoomLevel(),
+                                       editor_camera_info_->GetZoomLevel());
+  }
+  if (ImGui::DragFloat("Aspect Ratio", &editor_camera_info_->GetAspectRatio(),
+                       0.1f)) {
+    editor_camera_info_->SetProjection(-editor_camera_info_->GetAspectRatio() *
+                                           editor_camera_info_->GetZoomLevel(),
+                                       editor_camera_info_->GetAspectRatio() *
+                                           editor_camera_info_->GetZoomLevel(),
+                                       -editor_camera_info_->GetZoomLevel(),
+                                       editor_camera_info_->GetZoomLevel());
   }
 
   if (ImGui::Button("Reset Camera")) {
-    editor_camera_->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
-    editor_camera_->SetRotation(0.0f);
-    editor_camera_->SetZoomLevel(1.0f);
-    editor_camera_->SetAspectRatio((float)viewport_width_ / viewport_height_);
+    editor_camera_info_->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
+    editor_camera_info_->SetRotation(0.0f);
+    editor_camera_info_->SetZoomLevel(1.0f);
+    editor_camera_info_->SetAspectRatio((float)viewport_width_ /
+                                        viewport_height_);
   }
 
   ImGui::End();
@@ -261,7 +305,9 @@ void Editor::ShowImGuiScene() {
 
 void Editor::ShowImGuiViewport() {
   ImGui::Begin("Viewport");
-  ImVec2 size = ImGui::GetContentRegionAvail();
+  ImVec2 size        = ImGui::GetContentRegionAvail();
+  ImVec2 button_size = ImVec2(50, 25);
+  size.y -= button_size.y + 5;
   if (viewport_width_ != size.x || viewport_height_ != size.y) {
     viewport_width_   = size.x;
     viewport_height_  = size.y;
@@ -269,6 +315,20 @@ void Editor::ShowImGuiViewport() {
     frame_buffer_->Resize(viewport_width_, viewport_height_);
   } else {
     viewport_resized_ = false;
+  }
+
+  ImVec2 button_pos((size.x - button_size.x) / 2, button_size.y);
+
+  ImGui::SetCursorPos(button_pos);
+
+  if (game_mode_ == GameMode::Edit) {
+    if (ImGui::Button("Play", button_size)) {
+      game_mode_ = GameMode::Play;
+    }
+  } else {
+    if (ImGui::Button("Stop", button_size)) {
+      game_mode_ = GameMode::Edit;
+    }
   }
 
   ImGui::Image((void*)(intptr_t)frame_buffer_->GetTextureId(), size,

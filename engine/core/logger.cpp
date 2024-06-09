@@ -13,6 +13,7 @@ std::shared_ptr<spdlog::logger> Logger::Get(const std::string& name) {
   static auto file_sink =
       std::make_shared<spdlog::sinks::basic_file_sink_st>("MEngine.log", true);
   std::shared_ptr<spdlog::logger> logger = spdlog::get(name);
+  spdlog::flush_on(spdlog::level::info);
   if (logger != nullptr) {
     return logger;
   }
