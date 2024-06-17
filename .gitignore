@@ -9,3 +9,7 @@ bin/
 # Visual Studio
 .vs/
 out/
+
+# Clion
+cmake-build-*/
+.idea/

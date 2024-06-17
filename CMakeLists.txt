@@ -72,6 +72,8 @@ target_include_directories(engine
   engine
 )
 
+target_compile_definitions(engine PUBLIC _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+
 target_link_libraries(engine
   glfw
   lua
