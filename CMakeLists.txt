@@ -47,6 +47,7 @@ set(SOURCE_RENDER
   engine/render/texture.cpp
   engine/render/renderer.cpp
   engine/render/render_pipeline.cpp
+  engine/render/render_pass.cpp
   engine/render/frame_buffer.cpp
 )
 
@@ -114,3 +115,37 @@ add_custom_command(TARGET editor POST_BUILD
   ${CMAKE_SOURCE_DIR}/editor/res/imgui.ini
   $<TARGET_FILE_DIR:editor>/imgui.ini
 )
+
+add_executable(sandbox
+  sandbox/src/sandbox.cpp
+)
+
+target_include_directories(sandbox
+  PRIVATE
+  deps/spdlog/include
+  deps/entt/single_include
+  deps/glm
+  deps/glad/include
+  deps/stb
+  deps/imgui
+  deps/imgui/backends
+  deps/ImGuizmo
+  engine
+  sandbox/src
+)
+
+target_link_libraries(sandbox
+  engine
+)
+
+add_custom_command(TARGET sandbox POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${CMAKE_SOURCE_DIR}/sandbox/res
+  $<TARGET_FILE_DIR:sandbox>/res
+)
+
+# add_custom_command(TARGET sandbox POST_BUILD
+#   COMMAND ${CMAKE_COMMAND} -E copy
+#   ${CMAKE_SOURCE_DIR}/sandbox/res/imgui.ini
+#   $<TARGET_FILE_DIR:sandbox>/imgui.ini
+# )

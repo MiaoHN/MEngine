@@ -28,10 +28,10 @@ class ScriptEngine {
   ScriptEngine();
   ~ScriptEngine();
 
-  void LoadScript(const std::string& path);
+  void LoadScript(const std::string &path);
 
  private:
-  lua_State* L_;
+  lua_State *L_;
 
   std::shared_ptr<spdlog::logger> logger_;
 };

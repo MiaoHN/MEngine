@@ -21,12 +21,14 @@
 
 namespace MEngine {
 
+class Renderer;
+
 class Scene {
  public:
   Scene();
   ~Scene();
 
-  Entity CreateEntity(const std::string& name = "Unnamed Entity") {
+  Entity CreateEntity(const std::string &name = "Unnamed Entity") {
     Entity entity = Entity(registry_.create(), &registry_);
     entity.AddComponent<Tag>(name);
     entities_.push_back(entity);
@@ -55,14 +57,20 @@ class Scene {
     return entities;
   }
 
-  std::vector<Entity>& GetAllEntities() { return entities_; }
+  std::vector<Entity> &GetAllEntities() { return entities_; }
 
-  void LoadScene(const std::string& path);
-  void SaveScene(const std::string& path);
+  void LoadScene(const std::string &path);
+  void SaveScene(const std::string &path);
 
-  std::shared_ptr<Camera2D> GetDefaultCameraInfo() {
-    return default_camera_info_;
-  }
+  std::shared_ptr<Camera2D> GetDefaultCameraInfo() { return default_camera_info_; }
+
+  void OnUpdateEditor(Camera2D &camera);
+
+  void OnUpdateSimulation(float dt, Camera2D &camera);
+
+  void OnUpdateRuntime(float dt, int vw, int vh);
+
+  void Render(Camera2D &camera);
 
  private:
   entt::registry registry_;
@@ -72,6 +80,8 @@ class Scene {
   std::shared_ptr<spdlog::logger> logger_;
 
   std::shared_ptr<Camera2D> default_camera_info_;
+
+  std::shared_ptr<Renderer> renderer_;
 };
 
 }  // namespace MEngine

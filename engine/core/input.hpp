@@ -20,7 +20,7 @@ namespace MEngine {
 class Input {
  public:
   static bool IsKeyPressed(int keycode) {
-    GLFWwindow* window = Application::GetInstance()->GetWindow();
+    GLFWwindow *window = Application::GetInstance()->GetWindow();
     int         state  = glfwGetKey(window, keycode);
 
     return state == GLFW_PRESS || state == GLFW_REPEAT;

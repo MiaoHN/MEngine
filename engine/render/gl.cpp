@@ -14,21 +14,19 @@ void VertexBuffer::Bind() const { glBindBuffer(GL_ARRAY_BUFFER, id_); }
 
 void VertexBuffer::Unbind() const { glBindBuffer(GL_ARRAY_BUFFER, 0); }
 
-void VertexBuffer::SetData(const void* data, size_t size) {
+void VertexBuffer::SetData(const void *data, size_t size) {
   Bind();
   glBufferData(GL_ARRAY_BUFFER, size, data, GL_STATIC_DRAW);
 }
 
-void VertexBuffer::AddLayout(const std::vector<ElementLayout>& layouts) {
-  layouts_ = layouts;
-}
+void VertexBuffer::AddLayout(const std::vector<ElementLayout> &layouts) { layouts_ = layouts; }
 
 void VertexBuffer::SetLayout() {
   Bind();
   unsigned int index  = 0;
   size_t       offset = 0;
   unsigned int stride = 0;
-  for (const auto& layout : layouts_) {
+  for (const auto &layout : layouts_) {
     switch (layout.type) {
       case ShaderDataType::Float:
         stride += 1 * sizeof(float);
@@ -46,27 +44,23 @@ void VertexBuffer::SetLayout() {
         break;
     }
   }
-  for (const auto& layout : layouts_) {
+  for (const auto &layout : layouts_) {
     glEnableVertexAttribArray(index);
     switch (layout.type) {
       case ShaderDataType::Float:
-        glVertexAttribPointer(index, 1, GL_FLOAT, GL_FALSE, stride,
-                              (const void*)offset);
+        glVertexAttribPointer(index, 1, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
         offset += sizeof(float);
         break;
       case ShaderDataType::Float2:
-        glVertexAttribPointer(index, 2, GL_FLOAT, GL_FALSE, stride,
-                              (const void*)offset);
+        glVertexAttribPointer(index, 2, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
         offset += 2 * sizeof(float);
         break;
       case ShaderDataType::Float3:
-        glVertexAttribPointer(index, 3, GL_FLOAT, GL_FALSE, stride,
-                              (const void*)offset);
+        glVertexAttribPointer(index, 3, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
         offset += 3 * sizeof(float);
         break;
       case ShaderDataType::Float4:
-        glVertexAttribPointer(index, 4, GL_FLOAT, GL_FALSE, stride,
-                              (const void*)offset);
+        glVertexAttribPointer(index, 4, GL_FLOAT, GL_FALSE, stride, (const void *)offset);
         offset += 4 * sizeof(float);
         break;
       default:
@@ -84,11 +78,10 @@ void IndexBuffer::Bind() const { glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, id_); }
 
 void IndexBuffer::Unbind() const { glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); }
 
-void IndexBuffer::SetData(const unsigned int* data, int count) {
+void IndexBuffer::SetData(const unsigned int *data, int count) {
   Bind();
   count_ = count;
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, count * sizeof(unsigned int), data,
-               GL_STATIC_DRAW);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, count * sizeof(unsigned int), data, GL_STATIC_DRAW);
 }
 
 VertexArray::VertexArray() { glGenVertexArrays(1, &id_); }

@@ -20,9 +20,14 @@ namespace MEngine {
 
 class Texture {
  public:
-  Texture(const std::string& path);
+  Texture(const std::string &path);
 
-  Texture(const std::string& name, const std::string& path);
+  Texture(const std::string &name, const std::string &path);
+
+  void SetData(unsigned char *data, int width, int height);
+
+  Texture();
+
   ~Texture();
 
   void Bind(unsigned int slot = 0) const;
@@ -37,11 +42,13 @@ class Texture {
 
   void SetSubTexture(int frame = 0);
 
-  const std::string& GetName() const { return name_; }
+  const std::string &GetName() const { return name_; }
 
   std::string GetPath() const { return path_; }
 
   const unsigned int GetID() const { return id_; }
+
+  static std::shared_ptr<Texture> Create(const std::string &path);
 
  private:
   unsigned int id_;
@@ -56,7 +63,7 @@ class Texture {
 
   std::string path_;
 
-  unsigned char* data_;
+  unsigned char *data_;
 
   std::string name_;
 };
@@ -66,16 +73,15 @@ class TextureLibrary {
   TextureLibrary();
   ~TextureLibrary();
 
-  void Add(const std::string& name, const std::shared_ptr<Texture>& texture);
+  void Add(const std::string &name, const std::shared_ptr<Texture> &texture);
 
-  void Add(const std::shared_ptr<Texture>& texture);
+  void Add(const std::shared_ptr<Texture> &texture);
 
-  std::shared_ptr<Texture> Load(const std::string& name,
-                                const std::string& path);
+  std::shared_ptr<Texture> Load(const std::string &name, const std::string &path);
 
-  std::shared_ptr<Texture> Get(const std::string& name);
+  std::shared_ptr<Texture> Get(const std::string &name);
 
-  bool Exists(const std::string& name) const;
+  bool Exists(const std::string &name) const;
 
  private:
   std::unordered_map<std::string, std::shared_ptr<Texture>> textures_;

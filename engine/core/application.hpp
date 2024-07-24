@@ -53,7 +53,7 @@ class Application {
    */
   void Run();
 
-  GLFWwindow* GetWindow() { return window_; }
+  GLFWwindow *GetWindow() { return window_; }
 
   float GetDeltaTime();
 
@@ -61,7 +61,7 @@ class Application {
 
   std::shared_ptr<Scene> GetScene() { return scene_; }
 
-  static Application* GetInstance();
+  static Application *GetInstance();
 
  protected:
   /**
@@ -78,15 +78,13 @@ class Application {
 
   Entity selected_entity_;
 
-  GLFWwindow* window_;
+  GLFWwindow *window_;
 
   float prev_time_;
 
   int   frame_count_;
   int   fps_;
   float frame_time_;
-
-  std::shared_ptr<Renderer> renderer_;
 
   std::shared_ptr<ScriptEngine> script_engine_;
 
@@ -95,4 +93,4 @@ class Application {
 
 }  // namespace MEngine
 
-MEngine::Application* CreateApplication();
+MEngine::Application *CreateApplication();

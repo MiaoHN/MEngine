@@ -1,9 +1,9 @@
 /**
- * @file render_pass.hpp
+ * @file render_context.hpp
  * @author your name (you@domain.com)
  * @brief
  * @version 0.1
- * @date 2024-05-23
+ * @date 2024-06-17
  *
  * @copyright Copyright (c) 2024
  *
@@ -14,16 +14,15 @@
 #include <glad/glad.h>
 
 #include <memory>
-#include <vector>
 
 namespace MEngine {
 
 class RenderPipeline;
 
-class RenderPass {
+class RenderContext {
  public:
-  RenderPass();
-  ~RenderPass();
+  RenderContext();
+  ~RenderContext();
 
   void AddPipeline(std::shared_ptr<RenderPipeline> pipeline);
 
@@ -37,14 +36,6 @@ class RenderPass {
 
  private:
   GLuint fb_;
-  GLuint getFramebuffer() const;
-  GLuint getTexture() const;
-
- private:
-  GLuint fbo;
-  GLuint texture;
-  GLenum clearBits;
-  GLenum attachment;
 
   std::vector<std::shared_ptr<RenderPipeline>> pipelines_;
 };

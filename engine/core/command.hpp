@@ -60,25 +60,19 @@ class RenderCommand : public Command {
 
   ~RenderCommand() {}
 
-  void SetRenderInfo(const Sprite2D& render_info) {
-    render_info_ = render_info;
-  }
+  void SetRenderInfo(const Sprite2D &render_info) { render_info_ = render_info; }
 
-  Sprite2D& GetRenderInfo() { return render_info_; }
+  Sprite2D &GetRenderInfo() { return render_info_; }
 
-  void SetModelMatrix(const glm::mat4& model_matrix) {
-    model_matrix_ = model_matrix;
-  }
+  void SetModelMatrix(const glm::mat4 &model_matrix) { model_matrix_ = model_matrix; }
 
-  void SetViewProjectionMatrix(const glm::mat4& view_projection_matrix) {
+  void SetViewProjectionMatrix(const glm::mat4 &view_projection_matrix) {
     view_projection_matrix_ = view_projection_matrix;
   }
 
-  const glm::mat4& GetModelMatrix() const { return model_matrix_; }
+  const glm::mat4 &GetModelMatrix() const { return model_matrix_; }
 
-  const glm::mat4& GetProjectionView() const {
-    return view_projection_matrix_;
-  }
+  const glm::mat4 &GetProjectionView() const { return view_projection_matrix_; }
 
  private:
   Sprite2D render_info_;
@@ -89,13 +83,13 @@ class RenderCommand : public Command {
 
 class MoveCommand : public Command {
  public:
-  MoveCommand(const glm::vec3& direction, const float velocity)
+  MoveCommand(const glm::vec3 &direction, const float velocity)
       : Command(Type::Move), direction_(direction), velocity_(velocity) {}
 
   ~MoveCommand() {}
 
-  const glm::vec3& GetDirection() const { return direction_; }
-  const glm::vec3& GetVelocity() const { return velocity_; }
+  const glm::vec3 &GetDirection() const { return direction_; }
+  const glm::vec3 &GetVelocity() const { return velocity_; }
 
  private:
   glm::vec3 direction_;

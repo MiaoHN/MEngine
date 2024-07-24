@@ -14,6 +14,7 @@
 #include <glad/glad.h>
 
 #include <glm/glm.hpp>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -24,9 +25,8 @@ namespace MEngine {
 
 class Shader {
  public:
-  Shader(const std::string& vert_path, const std::string& frag_path);
-  Shader(const std::string& name, const std::string& vert_path,
-         const std::string& frag_path);
+  Shader(const std::string &vert_path, const std::string &frag_path);
+  Shader(const std::string &name, const std::string &vert_path, const std::string &frag_path);
   ~Shader();
 
   void Bind();
@@ -36,50 +36,50 @@ class Shader {
 
   std::string GetFragPath() const { return frag_path_; }
 
-  const std::string& GetName() const { return name_; }
+  const std::string &GetName() const { return name_; }
 
   template <typename T>
-  void SetUniform(const std::string& name, T value) {
+  void SetUniform(const std::string &name, T value) {
     logger_->error("SetUniform not implemented for this type");
   }
 
   template <>
-  void SetUniform<int>(const std::string& name, int value) {
+  void SetUniform<int>(const std::string &name, int value) {
     Bind();
     int location = glGetUniformLocation(id_, name.c_str());
     glUniform1i(location, value);
   }
 
   template <>
-  void SetUniform<float>(const std::string& name, float value) {
+  void SetUniform<float>(const std::string &name, float value) {
     Bind();
     int location = glGetUniformLocation(id_, name.c_str());
     glUniform1f(location, value);
   }
 
   template <>
-  void SetUniform<glm::vec2>(const std::string& name, glm::vec2 value) {
+  void SetUniform<glm::vec2>(const std::string &name, glm::vec2 value) {
     Bind();
     int location = glGetUniformLocation(id_, name.c_str());
     glUniform2f(location, value.x, value.y);
   }
 
   template <>
-  void SetUniform<glm::vec3>(const std::string& name, glm::vec3 value) {
+  void SetUniform<glm::vec3>(const std::string &name, glm::vec3 value) {
     Bind();
     int location = glGetUniformLocation(id_, name.c_str());
     glUniform3f(location, value.x, value.y, value.z);
   }
 
   template <>
-  void SetUniform<glm::vec4>(const std::string& name, glm::vec4 value) {
+  void SetUniform<glm::vec4>(const std::string &name, glm::vec4 value) {
     Bind();
     int location = glGetUniformLocation(id_, name.c_str());
     glUniform4f(location, value.x, value.y, value.z, value.w);
   }
 
   template <>
-  void SetUniform<glm::mat4>(const std::string& name, glm::mat4 value) {
+  void SetUniform<glm::mat4>(const std::string &name, glm::mat4 value) {
     Bind();
     int location = glGetUniformLocation(id_, name.c_str());
     glUniformMatrix4fv(location, 1, GL_FALSE, &value[0][0]);
@@ -88,7 +88,7 @@ class Shader {
  private:
   unsigned int id_;
 
-  static std::vector<char> read_file(const std::string& path);
+  static std::vector<char> read_file(const std::string &path);
 
   std::string name_;
 
@@ -103,17 +103,15 @@ class ShaderLibrary {
   ShaderLibrary();
   ~ShaderLibrary();
 
-  void Add(const std::string& name, const std::shared_ptr<Shader>& shader);
+  void Add(const std::string &name, const std::shared_ptr<Shader> &shader);
 
-  void Add(const std::shared_ptr<Shader>& shader);
+  void Add(const std::shared_ptr<Shader> &shader);
 
-  std::shared_ptr<Shader> Load(const std::string& name,
-                               const std::string& vert_path,
-                               const std::string& frag_path);
+  std::shared_ptr<Shader> Load(const std::string &name, const std::string &vert_path, const std::string &frag_path);
 
-  std::shared_ptr<Shader> Get(const std::string& name);
+  std::shared_ptr<Shader> Get(const std::string &name);
 
-  bool Exists(const std::string& name) const;
+  bool Exists(const std::string &name) const;
 
  private:
   std::unordered_map<std::string, std::shared_ptr<Shader>> shaders_;

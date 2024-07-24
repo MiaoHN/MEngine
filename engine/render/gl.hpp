@@ -19,26 +19,13 @@ namespace MEngine {
 
 namespace GL {
 
-enum class ShaderDataType {
-  Float,
-  Float2,
-  Float3,
-  Float4,
-  Mat3,
-  Mat4,
-  Int,
-  Int2,
-  Int3,
-  Int4,
-  Bool
-};
+enum class ShaderDataType { Float, Float2, Float3, Float4, Mat3, Mat4, Int, Int2, Int3, Int4, Bool };
 
 struct ElementLayout {
   ShaderDataType type;
   std::string    name;
 
-  ElementLayout(ShaderDataType type, const std::string& name)
-      : type(type), name(name) {}
+  ElementLayout(ShaderDataType type, const std::string &name) : type(type), name(name) {}
 };
 
 class VertexBuffer {
@@ -47,9 +34,9 @@ class VertexBuffer {
   ~VertexBuffer();
   void Bind() const;
   void Unbind() const;
-  void SetData(const void* data, size_t size);
+  void SetData(const void *data, size_t size);
 
-  void AddLayout(const std::vector<ElementLayout>& layouts);
+  void AddLayout(const std::vector<ElementLayout> &layouts);
 
   void SetLayout();
 
@@ -64,12 +51,12 @@ class IndexBuffer {
   ~IndexBuffer();
   void Bind() const;
   void Unbind() const;
-  void SetData(const unsigned int* data, int count);
-  int GetCount() const { return count_; }
+  void SetData(const unsigned int *data, int count);
+  int  GetCount() const { return count_; }
 
  private:
   unsigned int id_;
-  int         count_;
+  int          count_;
 };
 
 class VertexArray {

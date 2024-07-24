@@ -4,12 +4,12 @@
 
 using namespace MEngine;
 
-int main(int argc, char const* argv[]) {
+int main(int argc, char const *argv[]) {
   auto logger = Logger::Get("main");
 
   logger->info("Starting application");
 
-  Application* app = CreateApplication();
+  Application *app = CreateApplication();
 
   app->Initialize();
 

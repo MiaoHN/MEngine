@@ -6,7 +6,7 @@
 
 namespace MEngine {
 
-Shader::Shader(const std::string& vert_path, const std::string& frag_path)
+Shader::Shader(const std::string &vert_path, const std::string &frag_path)
     : vert_path_(vert_path), frag_path_(frag_path) {
   logger_                    = Logger::Get("Shader");
   std::vector<char> vert_src = read_file(vert_path);
@@ -14,8 +14,8 @@ Shader::Shader(const std::string& vert_path, const std::string& frag_path)
 
   if (vert_src.empty() || frag_src.empty()) return;
 
-  const char* vertCode = vert_src.data();
-  const char* fragCode = frag_src.data();
+  const char *vertCode = vert_src.data();
+  const char *fragCode = frag_src.data();
 
   // 创建顶点着色器
   unsigned int vert_shader = glCreateShader(GL_VERTEX_SHADER);
@@ -27,8 +27,7 @@ Shader::Shader(const std::string& vert_path, const std::string& frag_path)
   glGetShaderiv(vert_shader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(vert_shader, 512, nullptr, infoLog);
-    logger_->critical("Failed compilation for vertex shader! detail:\n{}",
-                      infoLog);
+    logger_->critical("Failed compilation for vertex shader! detail:\n{}", infoLog);
     glDeleteShader(vert_shader);
     return;
   }
@@ -40,8 +39,7 @@ Shader::Shader(const std::string& vert_path, const std::string& frag_path)
   glGetShaderiv(frag_shader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(frag_shader, 512, nullptr, infoLog);
-    logger_->critical("Failed compilation for fragment shader! detail:\n{}",
-                      infoLog);
+    logger_->critical("Failed compilation for fragment shader! detail:\n{}", infoLog);
     glDeleteShader(vert_shader);
     glDeleteShader(frag_shader);
     return;
@@ -79,8 +77,7 @@ Shader::Shader(const std::string& vert_path, const std::string& frag_path)
   }
 }
 
-Shader::Shader(const std::string& name, const std::string& vert_path,
-               const std::string& frag_path)
+Shader::Shader(const std::string &name, const std::string &vert_path, const std::string &frag_path)
     : name_(name), vert_path_(vert_path), frag_path_(frag_path) {
   logger_                    = Logger::Get("Shader");
   std::vector<char> vert_src = read_file(vert_path);
@@ -88,8 +85,8 @@ Shader::Shader(const std::string& name, const std::string& vert_path,
 
   if (vert_src.empty() || frag_src.empty()) return;
 
-  const char* vertCode = vert_src.data();
-  const char* fragCode = frag_src.data();
+  const char *vertCode = vert_src.data();
+  const char *fragCode = frag_src.data();
 
   // 创建顶点着色器
   unsigned int vert_shader = glCreateShader(GL_VERTEX_SHADER);
@@ -101,8 +98,7 @@ Shader::Shader(const std::string& name, const std::string& vert_path,
   glGetShaderiv(vert_shader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(vert_shader, 512, nullptr, infoLog);
-    logger_->critical("Failed compilation for vertex shader! detail:\n{}",
-                      infoLog);
+    logger_->critical("Failed compilation for vertex shader! detail:\n{}", infoLog);
     glDeleteShader(vert_shader);
     return;
   }
@@ -114,8 +110,7 @@ Shader::Shader(const std::string& name, const std::string& vert_path,
   glGetShaderiv(frag_shader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(frag_shader, 512, nullptr, infoLog);
-    logger_->critical("Failed compilation for fragment shader! detail:\n{}",
-                      infoLog);
+    logger_->critical("Failed compilation for fragment shader! detail:\n{}", infoLog);
     glDeleteShader(vert_shader);
     glDeleteShader(frag_shader);
     return;
@@ -147,11 +142,10 @@ void Shader::Bind() { glUseProgram(id_); }
 
 void Shader::Unbind() { glUseProgram(0); }
 
-std::vector<char> Shader::read_file(const std::string& path) {
+std::vector<char> Shader::read_file(const std::string &path) {
   std::ifstream file(path, std::ios::ate | std::ios::binary);
   if (!file.is_open()) {
-    Logger::Get("Shader")->critical("read_file Can't open file '{}'",
-                                    path.c_str());
+    Logger::Get("Shader")->critical("read_file Can't open file '{}'", path.c_str());
     file.close();
     return {};
   }
@@ -171,33 +165,27 @@ ShaderLibrary::ShaderLibrary() { logger_ = Logger::Get("ShaderLibrary"); }
 
 ShaderLibrary::~ShaderLibrary() {}
 
-void ShaderLibrary::Add(const std::string&             name,
-                        const std::shared_ptr<Shader>& shader) {
+void ShaderLibrary::Add(const std::string &name, const std::shared_ptr<Shader> &shader) {
   if (Exists(name)) {
     logger_->warn("Shader already exists!");
   }
   shaders_[name] = shader;
 }
 
-void ShaderLibrary::Add(const std::shared_ptr<Shader>& shader) {
-  auto& name = shader->GetName();
+void ShaderLibrary::Add(const std::shared_ptr<Shader> &shader) {
+  auto &name = shader->GetName();
   Add(name, shader);
 }
 
-std::shared_ptr<Shader> ShaderLibrary::Load(const std::string& name,
-                                            const std::string& vert_path,
-                                            const std::string& frag_path) {
+std::shared_ptr<Shader> ShaderLibrary::Load(const std::string &name, const std::string &vert_path,
+                                            const std::string &frag_path) {
   auto shader = std::make_shared<Shader>(name, vert_path, frag_path);
   Add(shader);
   return shader;
 }
 
-std::shared_ptr<Shader> ShaderLibrary::Get(const std::string& name) {
-  return shaders_[name];
-}
+std::shared_ptr<Shader> ShaderLibrary::Get(const std::string &name) { return shaders_[name]; }
 
-bool ShaderLibrary::Exists(const std::string& name) const {
-  return shaders_.find(name) != shaders_.end();
-}
+bool ShaderLibrary::Exists(const std::string &name) const { return shaders_.find(name) != shaders_.end(); }
 
 }  // namespace MEngine

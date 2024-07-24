@@ -19,7 +19,7 @@ class UUID {
  public:
   UUID();
   UUID(uint64_t uuid);
-  UUID(const UUID&) = default;
+  UUID(const UUID &) = default;
 
   operator uint64_t() const { return uuid_; }
 
@@ -35,7 +35,7 @@ struct hash;
 
 template <>
 struct hash<MEngine::UUID> {
-  size_t operator()(const MEngine::UUID& uuid) const { return (uint64_t)uuid; }
+  size_t operator()(const MEngine::UUID &uuid) const { return (uint64_t)uuid; }
 };
 
 }  // namespace std

@@ -26,7 +26,7 @@ class Logger {
    * @param name The name of the logger.
    * @return std::shared_ptr<spdlog::logger> The logger object.
    */
-  static std::shared_ptr<spdlog::logger> Get(const std::string& name);
+  static std::shared_ptr<spdlog::logger> Get(const std::string &name);
 };
 
 }  // namespace MEngine

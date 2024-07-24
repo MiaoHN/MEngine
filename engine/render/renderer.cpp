@@ -4,6 +4,7 @@
 
 #include "core/command.hpp"
 #include "render/gl.hpp"
+#include "render/render_pass.hpp"
 #include "render/render_pipeline.hpp"
 #include "render/shader.hpp"
 #include "scene/component.hpp"
@@ -40,8 +41,7 @@ Renderer::Renderer() {
   vertex_array->SetIndexBuffer(index_buffer);
 
   // TODO: 默认 shader 怎么存放
-  auto shader = std::make_shared<Shader>("res/shaders/default_vert.glsl",
-                                         "res/shaders/default_frag.glsl");
+  auto shader = std::make_shared<Shader>("res/shaders/default_vert.glsl", "res/shaders/default_frag.glsl");
   shader->Bind();
   shader->SetUniform("texture1", 0);
   shader->Unbind();
@@ -50,37 +50,69 @@ Renderer::Renderer() {
 
   pipeline_->SetVertexArray(vertex_array);
   pipeline_->SetShader(shader);
+
+  pass_ = std::make_shared<RenderPass>();
+  pass_->AddPipeline(pipeline_);
 }
 
 Renderer::~Renderer() {}
 
-void Renderer::RenderSprite(Sprite2D& sprite, const glm::mat4& proj_view) {
-  auto shader  = pipeline_->GetShader();
-  auto texture = sprite.texture;
+void Renderer::RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) {
+  static std::shared_ptr<Texture> plain_texture = std::make_shared<Texture>();
+  if (!sprite.texture) {
+    // 根据 sprite 颜色绘制纯色texture
 
-  shader->Bind();
-  texture->Bind();
+    // 生成纯色纹理
+    unsigned char color[4] = {static_cast<unsigned char>(sprite.color[0]), static_cast<unsigned char>(sprite.color[1]),
+                              static_cast<unsigned char>(sprite.color[2]), static_cast<unsigned char>(sprite.color[3])};
+    plain_texture->SetData(color, 1, 1);
 
-  shader->SetUniform("model", sprite.GetModelMatrix());
-  shader->SetUniform("proj_view", proj_view);
-  shader->SetUniform("texture1", 0);
+    auto shader = pipeline_->GetShader();
 
-  pipeline_->Execute();
+    shader->Bind();
+    plain_texture->Bind();
+
+    shader->SetUniform("model", sprite.GetModelMatrix());
+    shader->SetUniform("proj_view", proj_view);
+    shader->SetUniform("texture1", 0);
+
+    pipeline_->Execute();
+  } else {
+    auto shader  = pipeline_->GetShader();
+    auto texture = sprite.texture;
+
+    shader->Bind();
+    texture->Bind();
+
+    shader->SetUniform("model", sprite.GetModelMatrix());
+    shader->SetUniform("proj_view", proj_view);
+    shader->SetUniform("texture1", 0);
+
+    pipeline_->Execute();
+  }
 }
 
-void Renderer::RenderSprite(AnimatedSprite2D& sprite, const glm::mat4& proj_view) {
+void Renderer::RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view) {
   auto shader  = pipeline_->GetShader();
   auto texture = sprite.texture;
 
   shader->Bind();
   texture->SetSubTexture(sprite.current_frame);
-  texture->Bind();
 
   shader->SetUniform("model", sprite.GetModelMatrix());
   shader->SetUniform("proj_view", proj_view);
   shader->SetUniform("texture1", 0);
 
   pipeline_->Execute();
+  // pass_->Begin();
+
+  // pass_->Execute();
+
+  // pass_->End();
+
+  // texture->Unbind();
 }
+
+GLuint Renderer::GetFramebuffer() { return pass_->GetFramebuffer(); }
 
 }  // namespace MEngine

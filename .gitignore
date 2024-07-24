@@ -13,3 +13,5 @@ out/
 # Clion
 cmake-build-*/
 .idea/
+
+.cache/

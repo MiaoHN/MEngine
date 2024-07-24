@@ -7,7 +7,7 @@ namespace MEngine {
 FrameBuffer::FrameBuffer() {
   logger_ = Logger::Get("FrameBuffer");
   // TODO: Make the width and height configurable
-  width_ = 1600;
+  width_  = 1600;
   height_ = 900;
   glGenFramebuffers(1, &id_);
 }
@@ -22,12 +22,10 @@ void FrameBuffer::AttachTexture() {
   Bind();
   glGenTextures(1, &texture_id_);
   glBindTexture(GL_TEXTURE_2D, texture_id_);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width_, height_, 0, GL_RGB,
-               GL_UNSIGNED_BYTE, nullptr);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width_, height_, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                         texture_id_, 0);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture_id_, 0);
 }
 
 void FrameBuffer::AttachRenderBuffer() {
@@ -35,8 +33,7 @@ void FrameBuffer::AttachRenderBuffer() {
   glGenRenderbuffers(1, &render_buffer_id_);
   glBindRenderbuffer(GL_RENDERBUFFER, render_buffer_id_);
   glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width_, height_);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-                            GL_RENDERBUFFER, render_buffer_id_);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, render_buffer_id_);
 }
 
 void FrameBuffer::CheckStatus() {
@@ -46,9 +43,7 @@ void FrameBuffer::CheckStatus() {
   }
 }
 
-void FrameBuffer::Clear() {
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-}
+void FrameBuffer::Clear() { glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); }
 
 void FrameBuffer::Resize(int width, int height) {
   width_  = width;

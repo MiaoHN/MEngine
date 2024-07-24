@@ -20,9 +20,9 @@
 
 namespace MEngine {
 
-static Application* s_app;
+static Application *s_app;
 
-Application* Application::GetInstance() { return s_app; }
+Application *Application::GetInstance() { return s_app; }
 
 Application::Application() {
   if (s_app) {
