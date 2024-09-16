@@ -11,10 +11,7 @@
 
 #pragma once
 
-#include <glad/glad.h>
-
-#include <memory>
-#include <vector>
+#include "core/common.hpp"
 
 namespace MEngine {
 
@@ -25,7 +22,7 @@ class RenderPass {
   RenderPass();
   ~RenderPass();
 
-  void AddPipeline(std::shared_ptr<RenderPipeline> pipeline);
+  void AddPipeline(Ref<RenderPipeline> pipeline);
 
   void Begin();
 
@@ -46,7 +43,7 @@ class RenderPass {
   GLenum clearBits;
   GLenum attachment;
 
-  std::vector<std::shared_ptr<RenderPipeline>> pipelines_;
+  std::vector<Ref<RenderPipeline>> pipelines_;
 };
 
 }  // namespace MEngine

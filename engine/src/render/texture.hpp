@@ -11,8 +11,7 @@
 
 #pragma once
 
-#include <memory>
-#include <string>
+#include "core/common.hpp"
 
 #include "core/logger.hpp"
 
@@ -48,7 +47,7 @@ class Texture {
 
   const unsigned int GetID() const { return id_; }
 
-  static std::shared_ptr<Texture> Create(const std::string &path);
+  static Ref<Texture> Create(const std::string &path);
 
  private:
   unsigned int id_;
@@ -58,8 +57,6 @@ class Texture {
 
   int v_frames_ = 1;
   int h_frames_ = 1;
-
-  std::shared_ptr<spdlog::logger> logger_;
 
   std::string path_;
 
@@ -73,20 +70,18 @@ class TextureLibrary {
   TextureLibrary();
   ~TextureLibrary();
 
-  void Add(const std::string &name, const std::shared_ptr<Texture> &texture);
+  void Add(const std::string &name, const Ref<Texture> &texture);
 
-  void Add(const std::shared_ptr<Texture> &texture);
+  void Add(const Ref<Texture> &texture);
 
-  std::shared_ptr<Texture> Load(const std::string &name, const std::string &path);
+  Ref<Texture> Load(const std::string &name, const std::string &path);
 
-  std::shared_ptr<Texture> Get(const std::string &name);
+  Ref<Texture> Get(const std::string &name);
 
   bool Exists(const std::string &name) const;
 
  private:
-  std::unordered_map<std::string, std::shared_ptr<Texture>> textures_;
-
-  std::shared_ptr<spdlog::logger> logger_;
+  std::unordered_map<std::string, Ref<Texture>> textures_;
 };
 
 }  // namespace MEngine

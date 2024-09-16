@@ -92,14 +92,14 @@ void VertexArray::Bind() { glBindVertexArray(id_); }
 
 void VertexArray::Unbind() { glBindVertexArray(0); }
 
-void VertexArray::SetVertexBuffer(std::shared_ptr<VertexBuffer> vb) {
+void VertexArray::SetVertexBuffer(Ref<VertexBuffer> vb) {
   vertex_buffer_ = vb;
   Bind();
   vertex_buffer_->Bind();
   vertex_buffer_->SetLayout();
 }
 
-void VertexArray::SetIndexBuffer(std::shared_ptr<IndexBuffer> ib) {
+void VertexArray::SetIndexBuffer(Ref<IndexBuffer> ib) {
   index_buffer_ = ib;
   Bind();
   index_buffer_->Bind();

@@ -4,7 +4,6 @@ add_executable(sandbox
 
 target_include_directories(sandbox
   PRIVATE
-  ${PROJECT_SOURCE_DIR}/deps/spdlog/include
   ${PROJECT_SOURCE_DIR}/deps/entt/single_include
   ${PROJECT_SOURCE_DIR}/deps/glm
   ${PROJECT_SOURCE_DIR}/deps/glad/include

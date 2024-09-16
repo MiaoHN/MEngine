@@ -11,9 +11,7 @@
 
 #pragma once
 
-#include <memory>
-#include <string>
-#include <vector>
+#include "core/common.hpp"
 
 namespace MEngine {
 
@@ -65,16 +63,16 @@ class VertexArray {
   ~VertexArray();
   void Bind();
   void Unbind();
-  void SetVertexBuffer(std::shared_ptr<VertexBuffer> vb);
-  void SetIndexBuffer(std::shared_ptr<IndexBuffer> ib);
+  void SetVertexBuffer(Ref<VertexBuffer> vb);
+  void SetIndexBuffer(Ref<IndexBuffer> ib);
 
   int GetCount() const { return index_buffer_->GetCount(); }
 
  private:
   unsigned int id_;
 
-  std::shared_ptr<VertexBuffer> vertex_buffer_;
-  std::shared_ptr<IndexBuffer>  index_buffer_;
+  Ref<VertexBuffer> vertex_buffer_;
+  Ref<IndexBuffer>  index_buffer_;
 };
 
 }  // namespace GL

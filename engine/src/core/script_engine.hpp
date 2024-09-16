@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include <memory>
+#include "core/common.hpp"
 
 #include "core/logger.hpp"
 
@@ -32,8 +32,6 @@ class ScriptEngine {
 
  private:
   lua_State *L_;
-
-  std::shared_ptr<spdlog::logger> logger_;
 };
 
 }  // namespace MEngine

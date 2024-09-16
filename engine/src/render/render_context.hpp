@@ -11,9 +11,7 @@
 
 #pragma once
 
-#include <glad/glad.h>
-
-#include <memory>
+#include "core/common.hpp"
 
 namespace MEngine {
 
@@ -24,7 +22,7 @@ class RenderContext {
   RenderContext();
   ~RenderContext();
 
-  void AddPipeline(std::shared_ptr<RenderPipeline> pipeline);
+  void AddPipeline(Ref<RenderPipeline> pipeline);
 
   void Begin();
 
@@ -37,7 +35,7 @@ class RenderContext {
  private:
   GLuint fb_;
 
-  std::vector<std::shared_ptr<RenderPipeline>> pipelines_;
+  std::vector<Ref<RenderPipeline>> pipelines_;
 };
 
 }  // namespace MEngine

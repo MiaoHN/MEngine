@@ -11,15 +11,7 @@
 
 #pragma once
 
-#include "core/application.hpp"
-#include "core/entry_point.hpp"
-#include "core/script_engine.hpp"
-#include "render/frame_buffer.hpp"
-#include "scene/camera.hpp"
-#include "scene/entity.hpp"
-#include "scene/scene.hpp"
-
-#include <filesystem>
+#include "mengine.hpp"
 
 using namespace MEngine;
 

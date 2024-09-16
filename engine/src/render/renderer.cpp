@@ -12,8 +12,6 @@
 namespace MEngine {
 
 Renderer::Renderer() {
-  logger_ = Logger::Get("Renderer");
-
   float vertices[] = {
       // positions        // texture coords
       0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  // top right
@@ -26,39 +24,39 @@ Renderer::Renderer() {
       1, 2, 3   // second triangle
   };
 
-  auto vertex_buffer = std::make_shared<GL::VertexBuffer>();
+  auto vertex_buffer = CreateRef<GL::VertexBuffer>();
   vertex_buffer->SetData(vertices, sizeof(vertices));
   vertex_buffer->AddLayout({
       {GL::ShaderDataType::Float3, "aPos"},
       {GL::ShaderDataType::Float2, "aTexCoord"},
   });
 
-  auto index_buffer = std::make_shared<GL::IndexBuffer>();
+  auto index_buffer = CreateRef<GL::IndexBuffer>();
   index_buffer->SetData(indices, 6);
 
-  auto vertex_array = std::make_shared<GL::VertexArray>();
+  auto vertex_array = CreateRef<GL::VertexArray>();
   vertex_array->SetVertexBuffer(vertex_buffer);
   vertex_array->SetIndexBuffer(index_buffer);
 
   // TODO: 默认 shader 怎么存放
-  auto shader = std::make_shared<Shader>("res/shaders/default_vert.glsl", "res/shaders/default_frag.glsl");
+  auto shader = CreateRef<Shader>("res/shaders/default_vert.glsl", "res/shaders/default_frag.glsl");
   shader->Bind();
   shader->SetUniform("texture1", 0);
   shader->Unbind();
 
-  pipeline_ = std::make_shared<RenderPipeline>();
+  pipeline_ = CreateRef<RenderPipeline>();
 
   pipeline_->SetVertexArray(vertex_array);
   pipeline_->SetShader(shader);
 
-  pass_ = std::make_shared<RenderPass>();
+  pass_ = CreateRef<RenderPass>();
   pass_->AddPipeline(pipeline_);
 }
 
 Renderer::~Renderer() {}
 
 void Renderer::RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) {
-  static std::shared_ptr<Texture> plain_texture = std::make_shared<Texture>();
+  static Ref<Texture> plain_texture = CreateRef<Texture>();
   if (!sprite.texture) {
     // 根据 sprite 颜色绘制纯色texture
 

@@ -1,26 +1,62 @@
 #include "core/logger.hpp"
 
-#include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-
-#include <array>
-#include <string>
+#include <chrono>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
 
 namespace MEngine {
 
-std::shared_ptr<spdlog::logger> Logger::Get(const std::string &name) {
-  // All loggers must share the same file sink.
-  static auto                     file_sink = std::make_shared<spdlog::sinks::basic_file_sink_st>("MEngine.log", true);
-  std::shared_ptr<spdlog::logger> logger    = spdlog::get(name);
-  spdlog::flush_on(spdlog::level::info);
-  if (logger != nullptr) {
-    return logger;
+static std::string LogLevelToString(Logger::Level level) {
+  switch (level) {
+    case Logger::Level::TRACE:
+      return "TRACE";
+    case Logger::Level::DEBUG:
+      return "DEBUG";
+    case Logger::Level::INFO:
+      return "INFO";
+    case Logger::Level::WARN:
+      return "WARN";
+    case Logger::Level::ERROR:
+      return "ERROR";
+    case Logger::Level::FATAL:
+      return "FATAL";
   }
-  auto                            console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_st>();
-  std::array<spdlog::sink_ptr, 2> sinks{console_sink, file_sink};
-  logger = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
-  spdlog::initialize_logger(logger);
-  return logger;
 }
+
+static std::string CurrentTimeStr() {
+  auto      now   = std::chrono::system_clock::now();
+  auto      now_c = std::chrono::system_clock::to_time_t(now);
+  struct tm buffer;
+
+  localtime_s(&buffer, &now_c);
+
+  std::ostringstream oss;
+  oss << std::put_time(&buffer, "%Y-%m-%d %H:%M:%S");
+
+  return oss.str();
+}
+
+Logger::Logger(const std::string &name, Level level) : name_(name), level_(level) {}
+
+Logger::~Logger() {
+  // output format: [time] [level] [name] message
+  std::ofstream file(kLogFileName.data(), std::ios::app);
+  auto          now   = std::chrono::system_clock::now();
+  auto          now_c = std::chrono::system_clock::to_time_t(now);
+  file << "[" << CurrentTimeStr() << "] ";
+  file << "[" << LogLevelToString(level_) << "] ";
+  file << "[" << name_ << "] ";
+  file << ss_.str() << std::endl;
+
+  std::cout << "[" << CurrentTimeStr() << "] ";
+  std::cout << "[" << LogLevelToString(level_) << "] ";
+  std::cout << "[" << name_ << "] ";
+  std::cout << ss_.str() << std::endl;
+
+  file.close();
+}
+
+std::stringstream &Logger::GetStream() { return ss_; }
 
 }  // namespace MEngine

@@ -1,11 +1,8 @@
 #include "render/frame_buffer.hpp"
 
-#include <glad/glad.h>
-
 namespace MEngine {
 
 FrameBuffer::FrameBuffer() {
-  logger_ = Logger::Get("FrameBuffer");
   // TODO: Make the width and height configurable
   width_  = 1600;
   height_ = 900;
@@ -39,7 +36,7 @@ void FrameBuffer::AttachRenderBuffer() {
 void FrameBuffer::CheckStatus() {
   Bind();
   if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    logger_->error("Framebuffer is not complete!");
+    LOG_ERROR("FrameBuffer") << "Framebuffer is not complete!";
   }
 }
 

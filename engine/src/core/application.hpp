@@ -11,9 +11,8 @@
 
 #pragma once
 
-#include <memory>
+#include "core/common.hpp"
 
-#include "core/logger.hpp"
 #include "scene/entity.hpp"
 
 struct GLFWwindow;
@@ -59,7 +58,7 @@ class Application {
 
   int GetFPS() { return fps_; }
 
-  std::shared_ptr<Scene> GetScene() { return scene_; }
+  Ref<Scene> GetScene() { return scene_; }
 
   static Application *GetInstance();
 
@@ -68,9 +67,9 @@ class Application {
    * @brief scene_ is a unique pointer to the Scene class.
    *
    */
-  std::shared_ptr<Scene> scene_;
+  Ref<Scene> scene_;
 
-  std::shared_ptr<FrameBuffer> frame_buffer_;
+  Ref<FrameBuffer> frame_buffer_;
 
   int  viewport_width_;
   int  viewport_height_;
@@ -86,9 +85,7 @@ class Application {
   int   fps_;
   float frame_time_;
 
-  std::shared_ptr<ScriptEngine> script_engine_;
-
-  std::shared_ptr<spdlog::logger> logger_;
+  Ref<ScriptEngine> script_engine_;
 };
 
 }  // namespace MEngine

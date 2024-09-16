@@ -11,8 +11,6 @@
 namespace MEngine {
 
 Texture::Texture(const std::string &path) : path_(path) {
-  logger_ = Logger::Get("Texture");
-
   glGenTextures(1, &id_);
   glBindTexture(GL_TEXTURE_2D, id_);
 
@@ -35,7 +33,7 @@ Texture::Texture(const std::string &path) : path_(path) {
     glTexImage2D(GL_TEXTURE_2D, 0, format, width_, height_, 0, format, GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D);
   } else {
-    logger_->error("Failed to load texture: {0}", path);
+    LOG_ERROR("Texture") << "Failed to load texture: " << path;
   }
 
   stbi_image_free(data);
@@ -46,8 +44,6 @@ Texture::Texture(const std::string &path) : path_(path) {
 }
 
 Texture::Texture(const std::string &name, const std::string &path) {
-  logger_ = Logger::Get("Texture");
-
   glGenTextures(1, &id_);
   glBindTexture(GL_TEXTURE_2D, id_);
 
@@ -72,7 +68,7 @@ Texture::Texture(const std::string &name, const std::string &path) {
     glTexImage2D(GL_TEXTURE_2D, 0, format, width_, height_, 0, format, GL_UNSIGNED_BYTE, data_);
     glGenerateMipmap(GL_TEXTURE_2D);
   } else {
-    logger_->error("Failed to load texture: {0}", path);
+    LOG_ERROR("Texture") << "Failed to load texture: " << path;
   }
 
   name_ = name;
@@ -135,31 +131,31 @@ void Texture::SetSubTexture(int frame) {
   //                     data_);
 }
 
-std::shared_ptr<Texture> Texture::Create(const std::string &path) { return std::make_shared<Texture>(path); }
+Ref<Texture> Texture::Create(const std::string &path) { return CreateRef<Texture>(path); }
 
-TextureLibrary::TextureLibrary() { logger_ = Logger::Get("TextureLibrary"); }
+TextureLibrary::TextureLibrary() {}
 
 TextureLibrary::~TextureLibrary() {}
 
-void TextureLibrary::Add(const std::string &name, const std::shared_ptr<Texture> &texture) {
+void TextureLibrary::Add(const std::string &name, const Ref<Texture> &texture) {
   if (Exists(name)) {
-    logger_->warn("Texture already exists!");
+    LOG_WARN("TextureLibrary") << "Texture already exists!";
   }
   textures_[name] = texture;
 }
 
-void TextureLibrary::Add(const std::shared_ptr<Texture> &texture) {
+void TextureLibrary::Add(const Ref<Texture> &texture) {
   auto &name = texture->GetName();
   Add(name, texture);
 }
 
-std::shared_ptr<Texture> TextureLibrary::Load(const std::string &name, const std::string &path) {
-  auto texture = std::make_shared<Texture>(name, path);
+Ref<Texture> TextureLibrary::Load(const std::string &name, const std::string &path) {
+  auto texture = CreateRef<Texture>(name, path);
   Add(texture);
   return texture;
 }
 
-std::shared_ptr<Texture> TextureLibrary::Get(const std::string &name) { return textures_[name]; }
+Ref<Texture> TextureLibrary::Get(const std::string &name) { return textures_[name]; }
 
 bool TextureLibrary::Exists(const std::string &name) const { return textures_.find(name) != textures_.end(); }
 

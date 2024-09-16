@@ -1,24 +1,5 @@
 #include "editor.hpp"
 
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
-#include <imgui_internal.h>
-
-#include <filesystem>
-#include <fstream>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <sstream>
-
-// clang-format off
-// #include <ImGuizmo.h>
-// clang-format on
-
-#include "core/input.hpp"
-#include "render/renderer.hpp"
-
 Editor::Editor() {}
 
 Editor::~Editor() {}

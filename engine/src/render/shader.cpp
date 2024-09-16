@@ -3,12 +3,12 @@
 #include <glad/glad.h>
 
 #include <fstream>
+#include "core/logger.hpp"
 
 namespace MEngine {
 
 Shader::Shader(const std::string &vert_path, const std::string &frag_path)
     : vert_path_(vert_path), frag_path_(frag_path) {
-  logger_                    = Logger::Get("Shader");
   std::vector<char> vert_src = read_file(vert_path);
   std::vector<char> frag_src = read_file(frag_path);
 
@@ -27,7 +27,7 @@ Shader::Shader(const std::string &vert_path, const std::string &frag_path)
   glGetShaderiv(vert_shader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(vert_shader, 512, nullptr, infoLog);
-    logger_->critical("Failed compilation for vertex shader! detail:\n{}", infoLog);
+    LOG_FATAL("Shader") << "Failed compilation for vertex shader! detail:\n" << infoLog;
     glDeleteShader(vert_shader);
     return;
   }
@@ -39,7 +39,7 @@ Shader::Shader(const std::string &vert_path, const std::string &frag_path)
   glGetShaderiv(frag_shader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(frag_shader, 512, nullptr, infoLog);
-    logger_->critical("Failed compilation for fragment shader! detail:\n{}", infoLog);
+    LOG_FATAL("Shader") << "Failed compilation for fragment shader! detail:\n" << infoLog;
     glDeleteShader(vert_shader);
     glDeleteShader(frag_shader);
     return;
@@ -54,7 +54,7 @@ Shader::Shader(const std::string &vert_path, const std::string &frag_path)
   glGetProgramiv(shader_program, GL_LINK_STATUS, &success);
   if (!success) {
     glGetProgramInfoLog(shader_program, 512, nullptr, infoLog);
-    logger_->critical("Failed link for program! detail:\n{}", infoLog);
+    LOG_FATAL("Shader") << "Failed link for program! detail:\n" << infoLog;
     glDeleteShader(vert_shader);
     glDeleteShader(frag_shader);
     glDeleteProgram(shader_program);
@@ -79,7 +79,6 @@ Shader::Shader(const std::string &vert_path, const std::string &frag_path)
 
 Shader::Shader(const std::string &name, const std::string &vert_path, const std::string &frag_path)
     : name_(name), vert_path_(vert_path), frag_path_(frag_path) {
-  logger_                    = Logger::Get("Shader");
   std::vector<char> vert_src = read_file(vert_path);
   std::vector<char> frag_src = read_file(frag_path);
 
@@ -98,7 +97,7 @@ Shader::Shader(const std::string &name, const std::string &vert_path, const std:
   glGetShaderiv(vert_shader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(vert_shader, 512, nullptr, infoLog);
-    logger_->critical("Failed compilation for vertex shader! detail:\n{}", infoLog);
+    LOG_FATAL("Shader") << "Failed compilation for vertex shader! detail:\n" << infoLog;
     glDeleteShader(vert_shader);
     return;
   }
@@ -110,7 +109,7 @@ Shader::Shader(const std::string &name, const std::string &vert_path, const std:
   glGetShaderiv(frag_shader, GL_COMPILE_STATUS, &success);
   if (!success) {
     glGetShaderInfoLog(frag_shader, 512, nullptr, infoLog);
-    logger_->critical("Failed compilation for fragment shader! detail:\n{}", infoLog);
+    LOG_FATAL("Shader") << "Failed compilation for fragment shader! detail:\n" << infoLog;
     glDeleteShader(vert_shader);
     glDeleteShader(frag_shader);
     return;
@@ -125,7 +124,7 @@ Shader::Shader(const std::string &name, const std::string &vert_path, const std:
   glGetProgramiv(shader_program, GL_LINK_STATUS, &success);
   if (!success) {
     glGetProgramInfoLog(shader_program, 512, nullptr, infoLog);
-    logger_->critical("Failed link for program! detail:\n{}", infoLog);
+    LOG_FATAL("Shader") << "Failed link for program! detail:\n" << infoLog;
     glDeleteShader(vert_shader);
     glDeleteShader(frag_shader);
     glDeleteProgram(shader_program);
@@ -145,7 +144,7 @@ void Shader::Unbind() { glUseProgram(0); }
 std::vector<char> Shader::read_file(const std::string &path) {
   std::ifstream file(path, std::ios::ate | std::ios::binary);
   if (!file.is_open()) {
-    Logger::Get("Shader")->critical("read_file Can't open file '{}'", path.c_str());
+    LOG_FATAL("Shader") << "Can't open file " << path;
     file.close();
     return {};
   }
@@ -161,30 +160,29 @@ std::vector<char> Shader::read_file(const std::string &path) {
   return buffer;
 }
 
-ShaderLibrary::ShaderLibrary() { logger_ = Logger::Get("ShaderLibrary"); }
+ShaderLibrary::ShaderLibrary() {}
 
 ShaderLibrary::~ShaderLibrary() {}
 
-void ShaderLibrary::Add(const std::string &name, const std::shared_ptr<Shader> &shader) {
+void ShaderLibrary::Add(const std::string &name, const Ref<Shader> &shader) {
   if (Exists(name)) {
-    logger_->warn("Shader already exists!");
+    LOG_WARN("ShaderLibrary") << "Shader already exists!";
   }
   shaders_[name] = shader;
 }
 
-void ShaderLibrary::Add(const std::shared_ptr<Shader> &shader) {
+void ShaderLibrary::Add(const Ref<Shader> &shader) {
   auto &name = shader->GetName();
   Add(name, shader);
 }
 
-std::shared_ptr<Shader> ShaderLibrary::Load(const std::string &name, const std::string &vert_path,
-                                            const std::string &frag_path) {
-  auto shader = std::make_shared<Shader>(name, vert_path, frag_path);
+Ref<Shader> ShaderLibrary::Load(const std::string &name, const std::string &vert_path, const std::string &frag_path) {
+  auto shader = CreateRef<Shader>(name, vert_path, frag_path);
   Add(shader);
   return shader;
 }
 
-std::shared_ptr<Shader> ShaderLibrary::Get(const std::string &name) { return shaders_[name]; }
+Ref<Shader> ShaderLibrary::Get(const std::string &name) { return shaders_[name]; }
 
 bool ShaderLibrary::Exists(const std::string &name) const { return shaders_.find(name) != shaders_.end(); }
 

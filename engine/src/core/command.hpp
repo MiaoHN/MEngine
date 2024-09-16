@@ -11,9 +11,7 @@
 
 #pragma once
 
-#include <glm/glm.hpp>
-#include <memory>
-#include <string>
+#include "core/common.hpp"
 
 #include "scene/component.hpp"
 

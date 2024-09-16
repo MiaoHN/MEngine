@@ -137,9 +137,9 @@ struct Sprite2D {
 
   float tiling_factor = 1.0f;
 
-  std::shared_ptr<Texture> texture;
+  Ref<Texture> texture;
 
-  Sprite2D(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation, glm::vec4 color, std::shared_ptr<Texture> texture)
+  Sprite2D(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation, glm::vec4 color, Ref<Texture> texture)
       : position(position), scale(scale), rotation(rotation), color(color), texture(texture) {}
 
   Sprite2D() = default;
@@ -161,7 +161,7 @@ struct AnimatedSprite2D {
   glm::vec3 rotation;
   glm::vec4 color;
 
-  std::shared_ptr<Texture> texture;
+  Ref<Texture> texture;
 
   int h_frames;
   int v_frames;
@@ -171,7 +171,7 @@ struct AnimatedSprite2D {
   int   current_frame;
 
   AnimatedSprite2D(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation, glm::vec4 color,
-                   std::shared_ptr<Texture> texture, int h_frames, int v_frames, float frame_time)
+                   Ref<Texture> texture, int h_frames, int v_frames, float frame_time)
       : position(position),
         scale(scale),
         rotation(rotation),

@@ -11,10 +11,7 @@
 
 #pragma once
 
-#include <glad/glad.h>
-
-#include <glm/glm.hpp>
-#include <memory>
+#include "core/common.hpp"
 
 #include "core/logger.hpp"
 #include "render/gl.hpp"
@@ -37,10 +34,8 @@ class Renderer {
   GLuint GetFramebuffer();
 
  private:
-  std::shared_ptr<RenderPass>     pass_;
-  std::shared_ptr<RenderPipeline> pipeline_;
-
-  std::shared_ptr<spdlog::logger> logger_;
+  Ref<RenderPass>     pass_;
+  Ref<RenderPipeline> pipeline_;
 };
 
 }  // namespace MEngine

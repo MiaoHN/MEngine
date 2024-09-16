@@ -1,13 +1,12 @@
 #include "core/entry_point.hpp"
 
+#include "core/application.hpp"
 #include "core/logger.hpp"
 
 using namespace MEngine;
 
 int main(int argc, char const *argv[]) {
-  auto logger = Logger::Get("main");
-
-  logger->info("Starting application");
+  LOG_INFO("MAIN") << "Application started";
 
   Application *app = CreateApplication();
 
@@ -17,7 +16,7 @@ int main(int argc, char const *argv[]) {
 
   delete app;
 
-  logger->info("Application terminated successfully");
+  LOG_INFO("MAIN") << "Application terminated";
 
   return 0;
 }

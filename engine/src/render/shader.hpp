@@ -11,13 +11,7 @@
 
 #pragma once
 
-#include <glad/glad.h>
-
-#include <glm/glm.hpp>
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <vector>
+#include "core/common.hpp"
 
 #include "core/logger.hpp"
 
@@ -40,7 +34,7 @@ class Shader {
 
   template <typename T>
   void SetUniform(const std::string &name, T value) {
-    logger_->error("SetUniform not implemented for this type");
+    LOG_ERROR("Shader") << "SetUniform not implemented for this type";
   }
 
   template <>
@@ -92,8 +86,6 @@ class Shader {
 
   std::string name_;
 
-  std::shared_ptr<spdlog::logger> logger_;
-
   std::string vert_path_;
   std::string frag_path_;
 };
@@ -103,20 +95,18 @@ class ShaderLibrary {
   ShaderLibrary();
   ~ShaderLibrary();
 
-  void Add(const std::string &name, const std::shared_ptr<Shader> &shader);
+  void Add(const std::string &name, const Ref<Shader> &shader);
 
-  void Add(const std::shared_ptr<Shader> &shader);
+  void Add(const Ref<Shader> &shader);
 
-  std::shared_ptr<Shader> Load(const std::string &name, const std::string &vert_path, const std::string &frag_path);
+  Ref<Shader> Load(const std::string &name, const std::string &vert_path, const std::string &frag_path);
 
-  std::shared_ptr<Shader> Get(const std::string &name);
+  Ref<Shader> Get(const std::string &name);
 
   bool Exists(const std::string &name) const;
 
  private:
-  std::unordered_map<std::string, std::shared_ptr<Shader>> shaders_;
-
-  std::shared_ptr<spdlog::logger> logger_;
+  std::unordered_map<std::string, Ref<Shader>> shaders_;
 };
 
 }  // namespace MEngine

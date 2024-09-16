@@ -22,8 +22,6 @@ namespace MEngine {
 class OrthographicCamera {
  public:
   OrthographicCamera(Camera2D &camera_info) : camera_info_(camera_info) {
-    logger_ = Logger::Get("OrthographicCamera");
-
     projection_ = glm::ortho(-camera_info_.aspect_ratio * camera_info_.zoom_level,
                              camera_info_.aspect_ratio * camera_info_.zoom_level, -camera_info_.zoom_level,
                              camera_info_.zoom_level, -1.0f, 1.0f);
@@ -106,8 +104,6 @@ class OrthographicCamera {
   glm::mat4 projection_;
 
   Camera2D &camera_info_;
-
-  std::shared_ptr<spdlog::logger> logger_;
 };
 
 }  // namespace MEngine

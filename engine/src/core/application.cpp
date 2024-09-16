@@ -1,23 +1,5 @@
 #include "core/application.hpp"
-
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
-#include <glad/glad.h>
-
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
-#include "core/command.hpp"
-#include "core/input.hpp"
-#include "core/script_engine.hpp"
-#include "render/frame_buffer.hpp"
-#include "render/gl.hpp"
-#include "render/renderer.hpp"
-#include "render/shader.hpp"
-#include "scene/camera.hpp"
-#include "scene/component.hpp"
-#include "scene/scene.hpp"
-
+#include "core/logger.hpp"
 namespace MEngine {
 
 static Application *s_app;
@@ -26,12 +8,13 @@ Application *Application::GetInstance() { return s_app; }
 
 Application::Application() {
   if (s_app) {
-    logger_->error("Application already exists");
+    LOG_ERROR("Application") << "Application already exists";
     exit(-1);
   }
-  s_app   = this;
-  logger_ = Logger::Get("Application");
-  logger_->info("Application started");
+  s_app = this;
+
+  LOG_INFO("Application") << "Application started";
+
   prev_time_   = glfwGetTime();
   frame_time_  = glfwGetTime();
   frame_count_ = 0;
@@ -45,18 +28,22 @@ Application::Application() {
   window_ = glfwCreateWindow(1600, 900, "MEngine", nullptr, nullptr);
 
   if (!window_) {
-    logger_->error("Failed to create GLFW window");
+    LOG_ERROR("Application") << "Failed to create GLFW window";
     glfwTerminate();
     exit(-1);
   }
 
   glfwMakeContextCurrent(window_);
   if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    logger_->critical("Failed to initialize GLAD!");
+    LOG_FATAL("Application") << "Failed to initialize GLAD";
     exit(-1);
   }
 
-  logger_->info("Application initialized");
+  LOG_INFO("Application") << "OpenGL Version: " << glGetString(GL_VERSION);
+  LOG_INFO("Application") << "GLSL Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION);
+  LOG_INFO("Application") << "Vendor: " << glGetString(GL_VENDOR);
+  LOG_INFO("Application") << "Renderer: " << glGetString(GL_RENDERER);
+  LOG_INFO("Application") << "Application initialized";
 }
 
 Application::~Application() {
@@ -64,7 +51,7 @@ Application::~Application() {
     glfwDestroyWindow(window_);
   }
   glfwTerminate();
-  logger_->info("Application terminated");
+  LOG_INFO("Application") << "Application terminated";
 }
 
 void Application::Initialize() {

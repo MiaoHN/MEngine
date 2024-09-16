@@ -8,7 +8,7 @@ RenderPass::RenderPass() { glGenFramebuffers(1, &fb_); }
 
 RenderPass::~RenderPass() { glDeleteFramebuffers(1, &fb_); }
 
-void RenderPass::AddPipeline(std::shared_ptr<RenderPipeline> pipeline) { pipelines_.push_back(pipeline); }
+void RenderPass::AddPipeline(Ref<RenderPipeline> pipeline) { pipelines_.push_back(pipeline); }
 
 void RenderPass::Begin() {
   glBindFramebuffer(GL_FRAMEBUFFER, fb_);

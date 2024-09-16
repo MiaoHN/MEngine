@@ -9,10 +9,9 @@
 namespace MEngine {
 
 Scene::Scene() {
-  logger_              = Logger::Get("Scene");
-  default_camera_info_ = std::make_shared<Camera2D>(-1.6f, 1.6f, -0.9f, 0.9f, 1.0f, true);
+  default_camera_info_ = CreateRef<Camera2D>(-1.6f, 1.6f, -0.9f, 0.9f, 1.0f, true);
 
-  renderer_ = std::make_shared<Renderer>();
+  renderer_ = CreateRef<Renderer>();
 }
 
 Scene::~Scene() {}

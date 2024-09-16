@@ -11,9 +11,7 @@
 
 #pragma once
 
-#include <memory>
-
-#include "core/logger.hpp"
+#include "core/common.hpp"
 
 namespace MEngine {
 
@@ -38,8 +36,6 @@ class FrameBuffer {
 
   int width_;
   int height_;
-
-  std::shared_ptr<spdlog::logger> logger_;
 };
 
 }  // namespace MEngine

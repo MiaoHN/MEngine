@@ -13,9 +13,9 @@ RenderPipeline::RenderPipeline() {}
 
 RenderPipeline::~RenderPipeline() {}
 
-void RenderPipeline::SetVertexArray(std::shared_ptr<GL::VertexArray> vao) { vao_ = vao; }
+void RenderPipeline::SetVertexArray(Ref<GL::VertexArray> vao) { vao_ = vao; }
 
-void RenderPipeline::SetShader(std::shared_ptr<Shader> shader) { shader_ = shader; }
+void RenderPipeline::SetShader(Ref<Shader> shader) { shader_ = shader; }
 
 void RenderPipeline::Execute() {
   shader_->Bind();

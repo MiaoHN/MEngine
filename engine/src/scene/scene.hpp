@@ -62,7 +62,7 @@ class Scene {
   void LoadScene(const std::string &path);
   void SaveScene(const std::string &path);
 
-  std::shared_ptr<Camera2D> GetDefaultCameraInfo() { return default_camera_info_; }
+  Ref<Camera2D> GetDefaultCameraInfo() { return default_camera_info_; }
 
   void OnUpdateEditor(Camera2D &camera);
 
@@ -77,11 +77,9 @@ class Scene {
 
   std::vector<Entity> entities_;
 
-  std::shared_ptr<spdlog::logger> logger_;
+  Ref<Camera2D> default_camera_info_;
 
-  std::shared_ptr<Camera2D> default_camera_info_;
-
-  std::shared_ptr<Renderer> renderer_;
+  Ref<Renderer> renderer_;
 };
 
 }  // namespace MEngine

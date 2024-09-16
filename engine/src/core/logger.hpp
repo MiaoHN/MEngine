@@ -11,22 +11,38 @@
 
 #pragma once
 
-#include <spdlog/spdlog.h>
-
-#include <memory>
-#include <string>
+#include <sstream>
 
 namespace MEngine {
 
+constexpr std::string_view kLogFileName = "mengine.log";
+
 class Logger {
  public:
-  /**
-   * @brief Get the logger object.
-   *
-   * @param name The name of the logger.
-   * @return std::shared_ptr<spdlog::logger> The logger object.
-   */
-  static std::shared_ptr<spdlog::logger> Get(const std::string &name);
+  enum class Level { TRACE, DEBUG, INFO, WARN, ERROR, FATAL };
+
+  Logger(const std::string &name, Level level);
+  ~Logger();
+
+  std::stringstream &GetStream();
+
+ private:
+  std::string name_;
+  Level       level_;
+
+  std::stringstream ss_;
 };
 
 }  // namespace MEngine
+
+#define LOG_TRACE(name) MEngine::Logger(name, MEngine::Logger::Level::TRACE).GetStream()
+#define LOG_INFO(name)  MEngine::Logger(name, MEngine::Logger::Level::INFO).GetStream()
+#define LOG_WARN(name)  MEngine::Logger(name, MEngine::Logger::Level::WARN).GetStream()
+#define LOG_ERROR(name) MEngine::Logger(name, MEngine::Logger::Level::ERROR).GetStream()
+#define LOG_FATAL(name) MEngine::Logger(name, MEngine::Logger::Level::FATAL).GetStream()
+
+#ifdef NDEBUG
+#define LOG_DEBUG(name)
+#else
+#define LOG_DEBUG(name) MEngine::Logger(name, MEngine::Logger::Level::DEBUG).GetStream()
+#endif

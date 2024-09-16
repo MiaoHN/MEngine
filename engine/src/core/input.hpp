@@ -11,9 +11,8 @@
 
 #pragma once
 
-#include <GLFW/glfw3.h>
-
 #include "core/application.hpp"
+#include "core/common.hpp"
 
 namespace MEngine {
 

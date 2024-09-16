@@ -11,9 +11,7 @@
 
 #pragma once
 
-#include <glad/glad.h>
-
-#include <memory>
+#include "core/common.hpp"
 
 namespace MEngine {
 
@@ -28,17 +26,17 @@ class RenderPipeline {
   RenderPipeline();
   ~RenderPipeline();
 
-  void SetVertexArray(std::shared_ptr<GL::VertexArray> vao);
-  void SetShader(std::shared_ptr<Shader> shader);
+  void SetVertexArray(Ref<GL::VertexArray> vao);
+  void SetShader(Ref<Shader> shader);
 
-  std::shared_ptr<Shader>          GetShader() { return shader_; }
-  std::shared_ptr<GL::VertexArray> GetVertexArray() { return vao_; }
+  Ref<Shader>          GetShader() { return shader_; }
+  Ref<GL::VertexArray> GetVertexArray() { return vao_; }
 
   void Execute();
 
  private:
-  std::shared_ptr<GL::VertexArray> vao_;
-  std::shared_ptr<Shader>          shader_;
+  Ref<GL::VertexArray> vao_;
+  Ref<Shader>          shader_;
 };
 
 }  // namespace MEngine
