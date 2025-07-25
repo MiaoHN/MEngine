@@ -28,10 +28,10 @@ class Renderer {
   Renderer();
   ~Renderer();
 
-  void RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view);
-  void RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view);
+  void RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) const;
+  void RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view) const;
 
-  GLuint GetFramebuffer();
+  GLuint GetFramebuffer() const;
 
  private:
   Ref<RenderPass>     pass_;

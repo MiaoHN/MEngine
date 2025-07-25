@@ -1,10 +1,14 @@
 #include "editor.hpp"
 
-Editor::Editor() {}
+#include "utils/profiler.h"
 
-Editor::~Editor() {}
+Editor::Editor() = default;
+
+Editor::~Editor() = default;
 
 void Editor::Initialize() {
+  PROFILER_FUNCTION();
+
   active_scene_ = std::make_shared<Scene>();
 
   editor_camera_info_ = std::make_shared<Camera2D>(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, true);
@@ -30,13 +34,15 @@ void Editor::Initialize() {
   frame_buffer_ = std::make_shared<FrameBuffer>();
 
   // TODO
-  m_BaseDirectory    = std::filesystem::current_path();
-  m_CurrentDirectory = m_BaseDirectory;
-  m_DirectoryIcon    = Texture::Create("res/icon/DirectoryIcon.png");
-  m_FileIcon         = Texture::Create("res/icon/FileIcon.png");
+  base_directory_    = std::filesystem::current_path();
+  current_directory_ = base_directory_;
+  directory_icon_    = Texture::Create("res/icon/DirectoryIcon.png");
+  file_icon_         = Texture::Create("res/icon/FileIcon.png");
 }
 
 void Editor::OnUpdate(float dt) {
+  PROFILER_FUNCTION();
+
   if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
     glfwSetWindowShouldClose(window_, true);
   }
@@ -72,7 +78,7 @@ void Editor::OnUpdate(float dt) {
   bool open = false;
   if (ImGui::BeginMenuBar()) {
     if (ImGui::BeginMenu("File")) {
-      ImGui::MenuItem("Open", NULL, &open);
+      ImGui::MenuItem("Open", nullptr, &open);
 
       ImGui::EndMenu();
     }
@@ -83,9 +89,9 @@ void Editor::OnUpdate(float dt) {
   // Content Browser
   ImGui::Begin("Content Browser");
 
-  if (m_CurrentDirectory != std::filesystem::path(m_BaseDirectory)) {
+  if (current_directory_ != std::filesystem::path(base_directory_)) {
     if (ImGui::Button("<-")) {
-      m_CurrentDirectory = m_CurrentDirectory.parent_path();
+      current_directory_ = current_directory_.parent_path();
     }
   }
 
@@ -94,19 +100,19 @@ void Editor::OnUpdate(float dt) {
   float        cellSize      = thumbnailSize + padding;
 
   float panelWidth  = ImGui::GetContentRegionAvail().x;
-  int   columnCount = (int)(panelWidth / cellSize);
+  int   columnCount = static_cast<int>(panelWidth / cellSize);
   if (columnCount < 1) columnCount = 1;
 
-  ImGui::Columns(columnCount, 0, false);
+  ImGui::Columns(columnCount, nullptr, false);
 
-  for (auto &directoryEntry : std::filesystem::directory_iterator(m_CurrentDirectory)) {
+  for (auto &directoryEntry : std::filesystem::directory_iterator(current_directory_)) {
     const auto &path           = directoryEntry.path();
     std::string filenameString = path.filename().string();
 
     ImGui::PushID(filenameString.c_str());
-    std::shared_ptr<Texture> icon = directoryEntry.is_directory() ? m_DirectoryIcon : m_FileIcon;
+    std::shared_ptr<Texture> icon = directoryEntry.is_directory() ? directory_icon_ : file_icon_;
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    ImGui::ImageButton((ImTextureID)icon->GetID(), {thumbnailSize, thumbnailSize}, {0, 1}, {1, 0});
+    ImGui::ImageButton(reinterpret_cast<ImTextureID>(icon->GetID()), {thumbnailSize, thumbnailSize}, {0, 1}, {1, 0});
 
     if (ImGui::BeginDragDropSource()) {
       std::filesystem::path relativePath(path);
@@ -117,7 +123,7 @@ void Editor::OnUpdate(float dt) {
 
     ImGui::PopStyleColor();
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-      if (directoryEntry.is_directory()) m_CurrentDirectory /= path.filename();
+      if (directoryEntry.is_directory()) current_directory_ /= path.filename();
     }
     ImGui::TextWrapped("%s", filenameString.c_str());
 
@@ -177,7 +183,7 @@ void Editor::OnUpdate(float dt) {
     editor_camera_info_->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
     editor_camera_info_->SetRotation(0.0f);
     editor_camera_info_->SetZoomLevel(1.0f);
-    editor_camera_info_->SetAspectRatio((float)viewport_width_ / viewport_height_);
+    editor_camera_info_->SetAspectRatio(static_cast<float>(viewport_width_) / viewport_height_);
   }
 
   ImGui::End();
@@ -188,6 +194,7 @@ void Editor::OnUpdate(float dt) {
 }
 
 void Editor::BeginImGui() {
+  PROFILER_FUNCTION();
   // ImGui test
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
@@ -196,7 +203,7 @@ void Editor::BeginImGui() {
   // Note: Switch this to true to enable dockspace
   static bool               dockspaceOpen             = true;
   static bool               opt_fullscreen_persistant = true;
-  bool                      opt_fullscreen            = opt_fullscreen_persistant;
+  const bool                opt_fullscreen            = opt_fullscreen_persistant;
   static ImGuiDockNodeFlags dockspace_flags           = ImGuiDockNodeFlags_None;
 
   // We are using the ImGuiWindowFlags_NoDocking flag to make the parent
@@ -204,7 +211,7 @@ void Editor::BeginImGui() {
   // docking targets within each others.
   ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
   if (opt_fullscreen) {
-    ImGuiViewport *viewport = ImGui::GetMainViewport();
+    const ImGuiViewport *viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->Pos);
     ImGui::SetNextWindowSize(viewport->Size);
     ImGui::SetNextWindowViewport(viewport->ID);
@@ -234,10 +241,9 @@ void Editor::BeginImGui() {
   if (opt_fullscreen) ImGui::PopStyleVar(2);
 
   // DockSpace
-  ImGuiIO    &io          = ImGui::GetIO();
-  ImGuiStyle &style       = ImGui::GetStyle();
-  float       minWinSizeX = style.WindowMinSize.x;
-  style.WindowMinSize.x   = 370.0f;
+  ImGuiIO    &io        = ImGui::GetIO();
+  ImGuiStyle &style     = ImGui::GetStyle();
+  style.WindowMinSize.x = 370.0f;
   if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
     ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
@@ -245,23 +251,26 @@ void Editor::BeginImGui() {
 }
 
 void Editor::EndImGui() {
+  PROFILER_FUNCTION();
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 template <typename T, typename UIFunction>
 static void DrawComponent(const std::string &name, Entity entity, UIFunction uiFunction) {
-  const ImGuiTreeNodeFlags treeNodeFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed |
-                                           ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap |
-                                           ImGuiTreeNodeFlags_FramePadding;
+  PROFILER_FUNCTION();
+  constexpr ImGuiTreeNodeFlags treeNodeFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed |
+                                               ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap |
+                                               ImGuiTreeNodeFlags_FramePadding;
   if (entity.HasComponent<T>()) {
-    auto  &component              = entity.GetComponent<T>();
-    ImVec2 contentRegionAvailable = ImGui::GetContentRegionAvail();
+    auto        &component              = entity.GetComponent<T>();
+    const ImVec2 contentRegionAvailable = ImGui::GetContentRegionAvail();
 
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{4, 4});
-    float lineHeight = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+    const float lineHeight = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
     ImGui::Separator();
-    bool open = ImGui::TreeNodeEx((void *)typeid(T).hash_code(), treeNodeFlags, "%s", name.c_str());
+    const bool open =
+        ImGui::TreeNodeEx(reinterpret_cast<void *>(typeid(T).hash_code()), treeNodeFlags, "%s", name.c_str());
     ImGui::PopStyleVar();
     ImGui::SameLine(contentRegionAvailable.x - lineHeight * 0.5f);
     if (ImGui::Button("+", ImVec2{lineHeight, lineHeight})) {
@@ -286,8 +295,9 @@ static void DrawComponent(const std::string &name, Entity entity, UIFunction uiF
 
 static void DrawVec3Control(const std::string &label, glm::vec3 &values, float resetValue = 0.0f,
                             float columnWidth = 100.0f) {
-  ImGuiIO &io       = ImGui::GetIO();
-  auto     boldFont = io.Fonts->Fonts[0];
+  PROFILER_FUNCTION();
+  const ImGuiIO &io       = ImGui::GetIO();
+  const auto     boldFont = io.Fonts->Fonts[0];
 
   ImGui::PushID(label.c_str());
 
@@ -299,8 +309,8 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
   ImGui::PushMultiItemsWidths(3, ImGui::CalcItemWidth());
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0, 0});
 
-  float  lineHeight = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
-  ImVec2 buttonSize = {lineHeight + 3.0f, lineHeight};
+  const float  lineHeight = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+  const ImVec2 buttonSize = {lineHeight + 3.0f, lineHeight};
 
   ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.9f, 0.2f, 0.2f, 1.0f});
@@ -349,6 +359,7 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
 
 template <typename T>
 void Editor::DisplayAddComponentEntry(const std::string &entryName) {
+  PROFILER_FUNCTION();
   if (!selected_entity_.HasComponent<T>()) {
     if (ImGui::MenuItem(entryName.c_str())) {
       selected_entity_.AddComponent<T>();
@@ -358,6 +369,7 @@ void Editor::DisplayAddComponentEntry(const std::string &entryName) {
 }
 
 void Editor::ShowImGuiScene() {
+  PROFILER_FUNCTION();
   ImGui::Begin("Scene");
 
   if (ImGui::Button("Create")) {
@@ -374,14 +386,9 @@ void Editor::ShowImGuiScene() {
     }
   }
 
-  std::vector<Entity> &entities = active_scene_->GetAllEntities();
+  const std::vector<Entity> &entities = active_scene_->GetAllEntities();
 
-  for (Entity &entity : entities) {
-    auto              &tag = entity.GetComponent<Tag>().tag;
-    ImGuiTreeNodeFlags flags =
-        ((entity == selected_entity_) ? ImGuiTreeNodeFlags_Selected : 0) | ImGuiTreeNodeFlags_OpenOnArrow;
-    bool opened = ImGui::TreeNodeEx((void *)(intptr_t)entity.GetHandle(), flags, "%s", tag.c_str());
-
+  for (const Entity &entity : entities) {
     if (ImGui::IsItemClicked()) {
       selected_entity_ = entity;
     }
@@ -391,9 +398,10 @@ void Editor::ShowImGuiScene() {
 }
 
 void Editor::ShowImGuiViewport() {
+  PROFILER_FUNCTION();
   ImGui::Begin("Viewport");
-  ImVec2 size        = ImGui::GetContentRegionAvail();
-  ImVec2 button_size = ImVec2(50, 25);
+  ImVec2         size        = ImGui::GetContentRegionAvail();
+  constexpr auto button_size = ImVec2(50, 25);
   size.y -= button_size.y + 5;
   if (viewport_width_ != size.x || viewport_height_ != size.y) {
     viewport_width_   = size.x;
@@ -404,7 +412,7 @@ void Editor::ShowImGuiViewport() {
     viewport_resized_ = false;
   }
 
-  ImVec2 button_pos((size.x - button_size.x) / 2, button_size.y);
+  const ImVec2 button_pos((size.x - button_size.x) / 2, button_size.y);
 
   ImGui::SetCursorPos(button_pos);
 
@@ -418,18 +426,19 @@ void Editor::ShowImGuiViewport() {
     }
   }
 
-  ImGui::Image((void *)(intptr_t)frame_buffer_->GetTextureId(), size, ImVec2(0, 1), ImVec2(1, 0));
+  ImGui::Image(reinterpret_cast<void *>(static_cast<intptr_t>(frame_buffer_->GetTextureId())), size, ImVec2(0, 1),
+               ImVec2(1, 0));
 
   ImGui::End();
 }
 
 void Editor::ShowImGuiProperties() {
+  PROFILER_FUNCTION();
   ImGui::Begin("Properties");
 
   if (selected_entity_.GetHandle() != entt::null) {
-    auto &tag = selected_entity_.GetComponent<Tag>().tag;
-    char  buffer[256];
-    memset(buffer, 0, sizeof(buffer));
+    auto &tag         = selected_entity_.GetComponent<Tag>().tag;
+    char  buffer[256] = {};
     strcpy_s(buffer, sizeof(buffer), tag.c_str());
     if (ImGui::InputText("##Tag", buffer, sizeof(buffer))) {
       tag = std::string(buffer);
@@ -478,10 +487,10 @@ void Editor::ShowImGuiProperties() {
       ImGui::Button("Texture", ImVec2(100.0f, 0.0f));
       if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-          const wchar_t           *path = (const wchar_t *)payload->Data;
-          std::filesystem::path    texturePath(path);
-          std::shared_ptr<Texture> texture = Texture::Create(texturePath.string());
-          component.texture                = texture;
+          const auto                 *path = static_cast<const wchar_t *>(payload->Data);
+          const std::filesystem::path texturePath(path);
+          std::shared_ptr<Texture>    texture = Texture::Create(texturePath.string());
+          component.texture                   = texture;
         }
         ImGui::EndDragDropTarget();
       }

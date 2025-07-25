@@ -18,14 +18,14 @@ using namespace MEngine;
 class Editor : public Application {
  public:
   Editor();
-  ~Editor();
+  ~Editor() override;
 
   void Initialize() override;
 
   void OnUpdate(float dt) override;
 
-  void BeginImGui();
-  void EndImGui();
+  static void BeginImGui();
+  static void EndImGui();
 
   void ShowImGuiScene();
   void ShowImGuiViewport();
@@ -51,11 +51,11 @@ class Editor : public Application {
 
   std::shared_ptr<Camera2D> editor_camera_info_;
 
-  std::filesystem::path m_BaseDirectory;
-  std::filesystem::path m_CurrentDirectory;
+  std::filesystem::path base_directory_;
+  std::filesystem::path current_directory_;
 
-  std::shared_ptr<Texture> m_DirectoryIcon;
-  std::shared_ptr<Texture> m_FileIcon;
+  std::shared_ptr<Texture> directory_icon_;
+  std::shared_ptr<Texture> file_icon_;
 
   ShaderLibrary  shader_library_;
   TextureLibrary texture_library_;

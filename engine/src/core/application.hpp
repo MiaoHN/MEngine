@@ -40,7 +40,7 @@ class Application {
    * @brief Destroy the Application object.
    *
    */
-  ~Application();
+  virtual ~Application();
 
   virtual void Initialize();
 
@@ -52,11 +52,11 @@ class Application {
    */
   void Run();
 
-  GLFWwindow *GetWindow() { return window_; }
+  [[nodiscard]] GLFWwindow *GetWindow() const { return window_; }
 
   float GetDeltaTime();
 
-  int GetFPS() { return fps_; }
+  [[nodiscard]] int GetFPS() const { return fps_; }
 
   Ref<Scene> GetScene() { return scene_; }
 
@@ -71,9 +71,9 @@ class Application {
 
   Ref<FrameBuffer> frame_buffer_;
 
-  int  viewport_width_;
-  int  viewport_height_;
-  bool viewport_resized_;
+  int  viewport_width_{};
+  int  viewport_height_{};
+  bool viewport_resized_{};
 
   Entity selected_entity_;
 

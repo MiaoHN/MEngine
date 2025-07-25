@@ -1,5 +1,7 @@
 #include "core/application.hpp"
 #include "core/logger.hpp"
+#include "utils/profiler.h"
+
 namespace MEngine {
 
 static Application *s_app;
@@ -15,8 +17,8 @@ Application::Application() {
 
   LOG_INFO("Application") << "Application started";
 
-  prev_time_   = glfwGetTime();
-  frame_time_  = glfwGetTime();
+  prev_time_   = static_cast<float>(glfwGetTime());
+  frame_time_  = static_cast<float>(glfwGetTime());
   frame_count_ = 0;
   fps_         = 0;
 
@@ -34,7 +36,7 @@ Application::Application() {
   }
 
   glfwMakeContextCurrent(window_);
-  if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+  if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
     LOG_FATAL("Application") << "Failed to initialize GLAD";
     exit(-1);
   }
@@ -63,8 +65,11 @@ void Application::OnUpdate(float dt) {
 }
 
 void Application::Run() {
+  PROFILER_FUNCTION();
   while (!glfwWindowShouldClose(window_)) {
-    float dt = GetDeltaTime();
+    PROFILER_SCOPE("One Frame");
+
+    const float dt = GetDeltaTime();
 
     glEnable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
@@ -82,9 +87,9 @@ void Application::Run() {
 }
 
 float Application::GetDeltaTime() {
-  float current_time = static_cast<float>(glfwGetTime());
-  float delta_time   = current_time - prev_time_;
-  prev_time_         = current_time;
+  const auto  current_time = static_cast<float>(glfwGetTime());
+  const float delta_time   = current_time - prev_time_;
+  prev_time_               = current_time;
 
   frame_count_++;
 

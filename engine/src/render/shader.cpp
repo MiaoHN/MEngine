@@ -3,14 +3,15 @@
 #include <glad/glad.h>
 
 #include <fstream>
+#include <utility>
 #include "core/logger.hpp"
 
 namespace MEngine {
 
 Shader::Shader(const std::string &vert_path, const std::string &frag_path)
     : vert_path_(vert_path), frag_path_(frag_path) {
-  std::vector<char> vert_src = read_file(vert_path);
-  std::vector<char> frag_src = read_file(frag_path);
+  const std::vector<char> vert_src = read_file(vert_path);
+  const std::vector<char> frag_src = read_file(frag_path);
 
   if (vert_src.empty() || frag_src.empty()) return;
 
@@ -18,7 +19,7 @@ Shader::Shader(const std::string &vert_path, const std::string &frag_path)
   const char *fragCode = frag_src.data();
 
   // 创建顶点着色器
-  unsigned int vert_shader = glCreateShader(GL_VERTEX_SHADER);
+  const unsigned int vert_shader = glCreateShader(GL_VERTEX_SHADER);
   // 将着色器源码附加到着色器对象
   glShaderSource(vert_shader, 1, &vertCode, nullptr);
   glCompileShader(vert_shader);
@@ -33,7 +34,7 @@ Shader::Shader(const std::string &vert_path, const std::string &frag_path)
   }
 
   // 创建片段着色器
-  unsigned int frag_shader = glCreateShader(GL_FRAGMENT_SHADER);
+  const unsigned int frag_shader = glCreateShader(GL_FRAGMENT_SHADER);
   glShaderSource(frag_shader, 1, &fragCode, nullptr);
   glCompileShader(frag_shader);
   glGetShaderiv(frag_shader, GL_COMPILE_STATUS, &success);
@@ -77,10 +78,10 @@ Shader::Shader(const std::string &vert_path, const std::string &frag_path)
   }
 }
 
-Shader::Shader(const std::string &name, const std::string &vert_path, const std::string &frag_path)
-    : name_(name), vert_path_(vert_path), frag_path_(frag_path) {
-  std::vector<char> vert_src = read_file(vert_path);
-  std::vector<char> frag_src = read_file(frag_path);
+Shader::Shader(std::string name, const std::string &vert_path, const std::string &frag_path)
+    : name_(std::move(name)), vert_path_(vert_path), frag_path_(frag_path) {
+  const std::vector<char> vert_src = read_file(vert_path);
+  const std::vector<char> frag_src = read_file(frag_path);
 
   if (vert_src.empty() || frag_src.empty()) return;
 
@@ -137,7 +138,7 @@ Shader::Shader(const std::string &name, const std::string &vert_path, const std:
 
 Shader::~Shader() { glDeleteProgram(id_); }
 
-void Shader::Bind() { glUseProgram(id_); }
+void Shader::Bind() const { glUseProgram(id_); }
 
 void Shader::Unbind() { glUseProgram(0); }
 
@@ -154,15 +155,15 @@ std::vector<char> Shader::read_file(const std::string &path) {
   std::vector<char> buffer(size + 1);
 
   file.seekg(0);
-  file.read(buffer.data(), size);
+  file.read(buffer.data(), static_cast<std::streamsize>(size));
   buffer[size] = '\0';
 
   return buffer;
 }
 
-ShaderLibrary::ShaderLibrary() {}
+ShaderLibrary::ShaderLibrary() = default;
 
-ShaderLibrary::~ShaderLibrary() {}
+ShaderLibrary::~ShaderLibrary() = default;
 
 void ShaderLibrary::Add(const std::string &name, const Ref<Shader> &shader) {
   if (Exists(name)) {
