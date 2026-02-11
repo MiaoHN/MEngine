@@ -32,6 +32,11 @@ class Entity {
   }
 
   template <typename T>
+  const T &GetComponent() const {
+    return registry_->get<T>(handle_);
+  }
+
+  template <typename T>
   bool HasComponent() {
     if (registry_ == nullptr) return false;
     return registry_->all_of<T>(handle_);

@@ -389,7 +389,7 @@ void Editor::ShowImGuiScene() {
   const std::vector<Entity> &entities = active_scene_->GetAllEntities();
 
   for (const Entity &entity : entities) {
-    auto &tag = const_cast<Entity&>(entity).GetComponent<Tag>().tag;
+    const auto &tag = entity.GetComponent<Tag>().tag;
     
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
     if (selected_entity_ == entity) {

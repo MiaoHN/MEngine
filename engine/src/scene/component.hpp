@@ -123,9 +123,9 @@ struct Transform {
   Transform(const glm::vec3 &translation) : translation(translation) {}
 
   glm::mat4 GetTransform() const {
-    glm::mat4 rotationMat = glm::toMat4(glm::quat(rotation));
+    glm::mat4 rotation_mat = glm::toMat4(glm::quat(rotation));
 
-    return glm::translate(glm::mat4(1.0f), translation) * rotationMat * glm::scale(glm::mat4(1.0f), scale);
+    return glm::translate(glm::mat4(1.0f), translation) * rotation_mat * glm::scale(glm::mat4(1.0f), scale);
   }
 };
 

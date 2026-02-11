@@ -5,6 +5,10 @@
 #include "scene/component.hpp"
 #include "utils/profiler.h"
 
+namespace {
+constexpr float kMinZoomLevel = 0.5f;
+}
+
 Sandbox::Sandbox() = default;
 
 Sandbox::~Sandbox() = default;
@@ -108,7 +112,7 @@ void Sandbox::OnUpdate(float dt) {
   }
   if (Input::IsKeyPressed(GLFW_KEY_E)) {
     zoom -= camera_zoom_speed_ * dt;
-    if (zoom < 0.5f) zoom = 0.5f;
+    if (zoom < kMinZoomLevel) zoom = kMinZoomLevel;
   }
   camera_->SetZoomLevel(zoom);
 
@@ -156,7 +160,7 @@ void Sandbox::RenderImGui() {
     }
     
     float zoom = camera_->GetZoomLevel();
-    if (ImGui::DragFloat("Zoom Level", &zoom, 0.1f, 0.5f, 20.0f)) {
+    if (ImGui::DragFloat("Zoom Level", &zoom, 0.1f, kMinZoomLevel, 20.0f)) {
       camera_->SetZoomLevel(zoom);
     }
     
