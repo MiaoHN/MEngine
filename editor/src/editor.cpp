@@ -389,8 +389,22 @@ void Editor::ShowImGuiScene() {
   const std::vector<Entity> &entities = active_scene_->GetAllEntities();
 
   for (const Entity &entity : entities) {
+    auto &tag = const_cast<Entity&>(entity).GetComponent<Tag>().tag;
+    
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (selected_entity_ == entity) {
+      flags |= ImGuiTreeNodeFlags_Selected;
+    }
+    
+    bool opened = ImGui::TreeNodeEx(reinterpret_cast<void *>(static_cast<uint64_t>(static_cast<uint32_t>(entity.GetHandle()))), 
+                                    flags, "%s", tag.c_str());
+    
     if (ImGui::IsItemClicked()) {
       selected_entity_ = entity;
+    }
+    
+    if (opened) {
+      ImGui::TreePop();
     }
   }
 

@@ -72,7 +72,7 @@ struct Camera2D {
 
   void SetPosition(const glm::vec3 &pos) { position = pos; }
 
-  void SetRotation(float rotation) { rotation = rotation; }
+  void SetRotation(float rot) { rotation = rot; }
 
   const glm::mat4 &GetViewMatrix() const { return view; }
 
@@ -103,12 +103,12 @@ struct Camera2D {
   const float &GetAspectRatio() const { return aspect_ratio; }
   float       &GetAspectRatio() { return aspect_ratio; }
 
-  void SetZoomLevel(float zoom_level) {
-    zoom_level = zoom_level;
+  void SetZoomLevel(float zl) {
+    zoom_level = zl;
     SetProjection(-aspect_ratio * zoom_level, aspect_ratio * zoom_level, -zoom_level, zoom_level);
   }
-  void SetAspectRatio(float aspect_ratio) {
-    aspect_ratio = aspect_ratio;
+  void SetAspectRatio(float ar) {
+    aspect_ratio = ar;
     SetProjection(-aspect_ratio * zoom_level, aspect_ratio * zoom_level, -zoom_level, zoom_level);
   }
 };
@@ -123,9 +123,9 @@ struct Transform {
   Transform(const glm::vec3 &translation) : translation(translation) {}
 
   glm::mat4 GetTransform() const {
-    glm::mat4 rotation = glm::toMat4(glm::quat(rotation));
+    glm::mat4 rotationMat = glm::toMat4(glm::quat(rotation));
 
-    return glm::translate(glm::mat4(1.0f), translation) * rotation * glm::scale(glm::mat4(1.0f), scale);
+    return glm::translate(glm::mat4(1.0f), translation) * rotationMat * glm::scale(glm::mat4(1.0f), scale);
   }
 };
 

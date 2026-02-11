@@ -1,7 +1,7 @@
 /**
  * @file sandbox.hpp
  * @author MiaoHN (582418227@qq.com)
- * @brief
+ * @brief Sandbox application for testing MEngine features
  * @version 0.1
  * @date 2024-07-24
  *
@@ -9,45 +9,43 @@
  *
  */
 
-#include "core/application.hpp"
-#include "core/entry_point.hpp"
-#include "core/script_engine.hpp"
-#include "render/frame_buffer.hpp"
-#include "scene/camera.hpp"
-#include "scene/entity.hpp"
-#include "scene/scene.hpp"
+#pragma once
+
+#include "mengine.hpp"
 
 using namespace MEngine;
 
 class Sandbox : public Application {
  public:
   Sandbox();
-  ~Sandbox();
+  ~Sandbox() override;
 
   void Initialize() override;
-
   void OnUpdate(float dt) override;
 
-  void BeginImGui();
-  void EndImGui();
-
-  void ShowImGuiScene();
-  void ShowImGuiViewport();
-  void ShowImGuiProperties();
-
-  template <typename T>
-  void DisplayAddComponentEntry(const std::string &entryName);
-
  private:
-  enum class GameMode { Play, Edit };
+  void SetupImGui();
+  void RenderImGui();
+  void CreateTestEntities();
 
-  int  viewport_width_   = 1280;
-  int  viewport_height_  = 720;
+  Ref<Scene> scene_;
+  Ref<Camera2D> camera_;
+  Ref<FrameBuffer> frame_buffer_;
+
+  // Test entities
+  std::vector<Entity> test_entities_;
+  
+  // Camera control
+  float camera_speed_ = 5.0f;
+  float camera_zoom_speed_ = 1.0f;
+  
+  // Demo settings
+  bool show_demo_window_ = false;
+  bool animate_entities_ = true;
+  float animation_time_ = 0.0f;
+  
+  // Viewport
+  int viewport_width_ = 1280;
+  int viewport_height_ = 720;
   bool viewport_resized_ = false;
-
-  GameMode game_mode_ = GameMode::Edit;
-
-  std::shared_ptr<Scene> active_scene_;
-
-  std::shared_ptr<FrameBuffer> frame_buffer_;
 };
