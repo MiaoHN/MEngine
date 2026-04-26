@@ -39,15 +39,12 @@ class Sandbox : public Application {
   void DisplayAddComponentEntry(const std::string &entryName);
 
  private:
-  enum class GameMode { Play, Edit };
-
   int  viewport_width_   = 1280;
   int  viewport_height_  = 720;
   bool viewport_resized_ = false;
 
-  GameMode game_mode_ = GameMode::Edit;
-
   std::shared_ptr<Scene> active_scene_;
 
-  std::shared_ptr<FrameBuffer> frame_buffer_;
+  Entity rotating_square_;
+  float  rotation_speed_ = 90.0f;
 };

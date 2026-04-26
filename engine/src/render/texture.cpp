@@ -88,7 +88,10 @@ Texture::Texture() {
 
 Texture::~Texture() {
   glDeleteTextures(1, &id_);
-  stbi_image_free(data_);
+  // TODO：正确处理纹理数据的释放
+  if (data_ && !path_.empty()) {
+    stbi_image_free(data_);
+  }
 }
 
 void Texture::SetData(unsigned char *data, int width, int height) {
