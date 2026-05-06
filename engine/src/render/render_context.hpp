@@ -30,10 +30,10 @@ class RenderContext {
 
   void Execute();
 
-  GLuint GetFramebuffer() { return fb_; }
+  unsigned int GetFramebuffer() { return fb_; }
 
  private:
-  GLuint fb_;
+  unsigned int fb_;
 
   std::vector<Ref<RenderPipeline>> pipelines_;
 };

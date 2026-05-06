@@ -11,9 +11,11 @@
 
 #pragma once
 
-#include "core/common.hpp"
+#include <memory>
 
 namespace MEngine {
+
+class IFrameBufferBackend;
 
 class FrameBuffer {
  public:
@@ -27,12 +29,10 @@ class FrameBuffer {
   void Clear();
   void Resize(int width, int height);
 
-  unsigned int GetTextureId() const { return texture_id_; }
+  unsigned int GetTextureId() const;
 
  private:
-  unsigned int id_;
-  unsigned int texture_id_;
-  unsigned int render_buffer_id_;
+  std::unique_ptr<IFrameBufferBackend> backend_;
 
   int width_;
   int height_;

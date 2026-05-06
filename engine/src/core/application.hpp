@@ -13,6 +13,8 @@
 
 #include "core/common.hpp"
 
+#include "render/rhi/rhi.hpp"
+
 #include "scene/entity.hpp"
 
 struct GLFWwindow;
@@ -23,6 +25,7 @@ class FrameBuffer;
 class ScriptEngine;
 class Scene;
 class Renderer;
+class IRHI;
 
 /**
  * @brief Application class is the main class that runs the game loop.
@@ -34,13 +37,15 @@ class Application {
    * @brief Construct a new Application object.
    *
    */
-  Application();
+  explicit Application(GraphicsAPI api = GraphicsAPI::OpenGL);
 
   /**
    * @brief Destroy the Application object.
    *
    */
   virtual ~Application();
+
+  [[nodiscard]] GraphicsAPI GetGraphicsAPI() const { return graphics_api_; }
 
   virtual void Initialize();
 
@@ -86,6 +91,10 @@ class Application {
   float frame_time_;
 
   Ref<ScriptEngine> script_engine_;
+
+  Ref<IRHI> rhi_;
+
+  GraphicsAPI graphics_api_;
 };
 
 }  // namespace MEngine

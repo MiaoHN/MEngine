@@ -28,16 +28,6 @@ class Sandbox : public Application {
 
   void OnUpdate(float dt) override;
 
-  void BeginImGui();
-  void EndImGui();
-
-  void ShowImGuiScene();
-  void ShowImGuiViewport();
-  void ShowImGuiProperties();
-
-  template <typename T>
-  void DisplayAddComponentEntry(const std::string &entryName);
-
  private:
   int  viewport_width_   = 1280;
   int  viewport_height_  = 720;

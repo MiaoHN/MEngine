@@ -17,6 +17,8 @@
 
 namespace MEngine {
 
+class IShaderBackend;
+
 class Shader {
  public:
   Shader(const std::string &vert_path, const std::string &frag_path);
@@ -32,14 +34,16 @@ class Shader {
 
   [[nodiscard]] const std::string &GetName() const { return name_; }
 
-  template <typename T>
-  void SetUniform(const std::string &name, T value) {
-    LOG_ERROR("Shader") << "SetUniform not implemented for this type";
-  }
+  void SetUniform(const std::string &name, int value);
+  void SetUniform(const std::string &name, float value);
+  void SetUniform(const std::string &name, const glm::vec2 &value);
+  void SetUniform(const std::string &name, const glm::vec3 &value);
+  void SetUniform(const std::string &name, const glm::vec4 &value);
+  void SetUniform(const std::string &name, const glm::mat4 &value);
 
 
  private:
-  unsigned int id_;
+  std::unique_ptr<IShaderBackend> backend_;
 
   static std::vector<char> read_file(const std::string &path);
 
@@ -67,47 +71,5 @@ class ShaderLibrary {
  private:
   std::unordered_map<std::string, Ref<Shader>> shaders_;
 };
-
-template <>
-inline void Shader::SetUniform<int>(const std::string &name, int value) {
-  Bind();
-  int location = glGetUniformLocation(id_, name.c_str());
-  glUniform1i(location, value);
-}
-
-template <>
-inline void Shader::SetUniform<float>(const std::string &name, float value) {
-  Bind();
-  const int location = glGetUniformLocation(id_, name.c_str());
-  glUniform1f(location, value);
-}
-
-template <>
-inline void Shader::SetUniform<glm::vec2>(const std::string &name, glm::vec2 value) {
-  Bind();
-  const int location = glGetUniformLocation(id_, name.c_str());
-  glUniform2f(location, value.x, value.y);
-}
-
-template <>
-inline void Shader::SetUniform<glm::vec3>(const std::string &name, glm::vec3 value) {
-  Bind();
-  const int location = glGetUniformLocation(id_, name.c_str());
-  glUniform3f(location, value.x, value.y, value.z);
-}
-
-template <>
-inline void Shader::SetUniform<glm::vec4>(const std::string &name, glm::vec4 value) {
-  Bind();
-  const int location = glGetUniformLocation(id_, name.c_str());
-  glUniform4f(location, value.x, value.y, value.z, value.w);
-}
-
-template <>
-inline void Shader::SetUniform<glm::mat4>(const std::string &name, glm::mat4 value) {
-  Bind();
-  const int location = glGetUniformLocation(id_, name.c_str());
-  glUniformMatrix4fv(location, 1, GL_FALSE, &value[0][0]);
-}
 
 }  // namespace MEngine

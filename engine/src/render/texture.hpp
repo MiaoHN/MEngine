@@ -11,11 +11,15 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+
 #include "core/common.hpp"
 
-#include "core/logger.hpp"
-
 namespace MEngine {
+
+class ITextureBackend;
 
 class Texture {
  public:
@@ -45,22 +49,24 @@ class Texture {
 
   std::string GetPath() const { return path_; }
 
-  const unsigned int GetID() const { return id_; }
+  const unsigned int GetID() const;
 
   static Ref<Texture> Create(const std::string &path);
 
  private:
-  unsigned int id_;
-  int          width_;
-  int          height_;
-  int          channels_;
+  std::unique_ptr<ITextureBackend> backend_;
+
+  int width_    = 0;
+  int height_   = 0;
+  int channels_ = 0;
 
   int v_frames_ = 1;
   int h_frames_ = 1;
 
   std::string path_;
 
-  unsigned char *data_;
+  unsigned char *data_ = nullptr;
+  bool           owns_data_ = false;
 
   std::string name_;
 };

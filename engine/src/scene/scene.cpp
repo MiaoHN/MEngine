@@ -1,9 +1,6 @@
 #include "scene/scene.hpp"
 
-#include "render/gl.hpp"
 #include "render/renderer.hpp"
-#include "render/shader.hpp"
-#include "render/texture.hpp"
 #include "scene/component.hpp"
 
 namespace MEngine {

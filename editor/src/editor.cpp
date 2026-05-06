@@ -4,7 +4,14 @@
 
 Editor::Editor() = default;
 
-Editor::~Editor() = default;
+Editor::~Editor() {
+  if (rhi_) {
+    rhi_->ShutdownImGuiBackend();
+  }
+  if (ImGui::GetCurrentContext()) {
+    ImGui::DestroyContext();
+  }
+}
 
 void Editor::Initialize() {
   PROFILER_FUNCTION();
@@ -28,8 +35,10 @@ void Editor::Initialize() {
 
   ImGui::StyleColorsDark();
 
-  ImGui_ImplGlfw_InitForOpenGL(window_, true);
-  ImGui_ImplOpenGL3_Init("#version 330");
+  if (rhi_ && !rhi_->InitializeImGuiBackend(window_)) {
+    LOG_FATAL("Editor") << "Failed to initialize ImGui backend for selected RHI";
+    exit(-1);
+  }
 
   frame_buffer_ = std::make_shared<FrameBuffer>();
 
@@ -196,8 +205,9 @@ void Editor::OnUpdate(float dt) {
 void Editor::BeginImGui() {
   PROFILER_FUNCTION();
   // ImGui test
-  ImGui_ImplOpenGL3_NewFrame();
-  ImGui_ImplGlfw_NewFrame();
+  if (rhi_) {
+    rhi_->BeginImGuiFrame();
+  }
   ImGui::NewFrame();
 
   // Note: Switch this to true to enable dockspace
@@ -253,7 +263,9 @@ void Editor::BeginImGui() {
 void Editor::EndImGui() {
   PROFILER_FUNCTION();
   ImGui::Render();
-  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+  if (rhi_) {
+    rhi_->RenderImGuiDrawData(ImGui::GetDrawData());
+  }
 }
 
 template <typename T, typename UIFunction>

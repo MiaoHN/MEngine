@@ -19,11 +19,11 @@ target_link_libraries(sandbox
   engine
 )
 
-# add_custom_command(TARGET sandbox POST_BUILD
-#   COMMAND ${CMAKE_COMMAND} -E copy_directory
-#   ${CMAKE_CURRENT_SOURCE_DIR}/res
-#   $<TARGET_FILE_DIR:sandbox>/res
-# )
+add_custom_command(TARGET sandbox POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${CMAKE_CURRENT_SOURCE_DIR}/res
+  $<TARGET_FILE_DIR:sandbox>/res
+)
 
 # add_custom_command(TARGET sandbox POST_BUILD
 #   COMMAND ${CMAKE_COMMAND} -E copy

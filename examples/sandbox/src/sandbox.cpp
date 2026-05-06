@@ -1,7 +1,7 @@
 #include "sandbox.hpp"
 #include "utils/profiler.h"
 
-Sandbox::Sandbox() {
+Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   active_scene_ = std::make_shared<Scene>();
 
   Entity camera_entity = active_scene_->CreateEntity("Camera Entity");
@@ -15,6 +15,7 @@ Sandbox::Sandbox() {
   sprite.scale     = glm::vec3(0.5f, 0.5f, 1.0f);
   sprite.rotation  = glm::vec3(0.0f, 0.0f, 0.0f);
   sprite.color     = glm::vec4(128.0f, 120.0f, 70.0f, 255.0f);
+  sprite.texture   = Texture::Create("res/textures/checkerboard.png");
 }
 
 Sandbox::~Sandbox() {}

@@ -24,8 +24,8 @@ class Editor : public Application {
 
   void OnUpdate(float dt) override;
 
-  static void BeginImGui();
-  static void EndImGui();
+  void BeginImGui();
+  void EndImGui();
 
   void ShowImGuiScene();
   void ShowImGuiViewport();

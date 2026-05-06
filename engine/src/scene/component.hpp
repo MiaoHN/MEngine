@@ -15,11 +15,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
-#include <memory>
 #include <string>
 
-#include "render/gl.hpp"
-#include "render/shader.hpp"
 #include "render/texture.hpp"
 
 namespace MEngine {
@@ -72,7 +69,7 @@ struct Camera2D {
 
   void SetPosition(const glm::vec3 &pos) { position = pos; }
 
-  void SetRotation(float rotation) { rotation = rotation; }
+  void SetRotation(float new_rotation) { rotation = new_rotation; }
 
   const glm::mat4 &GetViewMatrix() const { return view; }
 
@@ -104,12 +101,12 @@ struct Camera2D {
   float       &GetAspectRatio() { return aspect_ratio; }
 
   void SetZoomLevel(float zoom_level) {
-    zoom_level = zoom_level;
-    SetProjection(-aspect_ratio * zoom_level, aspect_ratio * zoom_level, -zoom_level, zoom_level);
+    this->zoom_level = zoom_level;
+    SetProjection(-aspect_ratio * this->zoom_level, aspect_ratio * this->zoom_level, -this->zoom_level, this->zoom_level);
   }
   void SetAspectRatio(float aspect_ratio) {
-    aspect_ratio = aspect_ratio;
-    SetProjection(-aspect_ratio * zoom_level, aspect_ratio * zoom_level, -zoom_level, zoom_level);
+    this->aspect_ratio = aspect_ratio;
+    SetProjection(-this->aspect_ratio * zoom_level, this->aspect_ratio * zoom_level, -zoom_level, zoom_level);
   }
 };
 

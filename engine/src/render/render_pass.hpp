@@ -30,18 +30,10 @@ class RenderPass {
 
   void Execute();
 
-  GLuint GetFramebuffer() { return fb_; }
+  unsigned int GetFramebuffer() { return fb_; }
 
  private:
-  GLuint fb_;
-  GLuint getFramebuffer() const;
-  GLuint getTexture() const;
-
- private:
-  GLuint fbo;
-  GLuint texture;
-  GLenum clearBits;
-  GLenum attachment;
+  unsigned int fb_ = 0;
 
   std::vector<Ref<RenderPipeline>> pipelines_;
 };

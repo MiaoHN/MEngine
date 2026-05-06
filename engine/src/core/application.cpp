@@ -8,7 +8,7 @@ static Application *s_app;
 
 Application *Application::GetInstance() { return s_app; }
 
-Application::Application() {
+Application::Application(GraphicsAPI api) : graphics_api_(api) {
   if (s_app) {
     LOG_ERROR("Application") << "Application already exists";
     exit(-1);
@@ -17,15 +17,27 @@ Application::Application() {
 
   LOG_INFO("Application") << "Application started";
 
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGui::SetCurrentContext(ImGui::GetCurrentContext());
+  ImGui::StyleColorsDark();
+
   prev_time_   = static_cast<float>(glfwGetTime());
   frame_time_  = static_cast<float>(glfwGetTime());
   frame_count_ = 0;
   fps_         = 0;
 
   glfwInit();
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+  rhi_ = CreateRHI(graphics_api_);
+  if (!rhi_) {
+    LOG_FATAL("Application") << "Failed to create RHI";
+    exit(-1);
+  }
+
+  SetActiveRHI(rhi_);
+
+  rhi_->SetupWindowHints();
 
   window_ = glfwCreateWindow(1600, 900, "MEngine", nullptr, nullptr);
 
@@ -35,20 +47,17 @@ Application::Application() {
     exit(-1);
   }
 
-  glfwMakeContextCurrent(window_);
-  if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
-    LOG_FATAL("Application") << "Failed to initialize GLAD";
+  if (!rhi_->Initialize(window_)) {
+    LOG_FATAL("Application") << "Failed to initialize render backend";
     exit(-1);
   }
 
-  LOG_INFO("Application") << "OpenGL Version: " << glGetString(GL_VERSION);
-  LOG_INFO("Application") << "GLSL Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION);
-  LOG_INFO("Application") << "Vendor: " << glGetString(GL_VENDOR);
-  LOG_INFO("Application") << "Renderer: " << glGetString(GL_RENDERER);
   LOG_INFO("Application") << "Application initialized";
 }
 
 Application::~Application() {
+  rhi_.reset();
+
   if (window_) {
     glfwDestroyWindow(window_);
   }
@@ -71,16 +80,11 @@ void Application::Run() {
 
     const float dt = GetDeltaTime();
 
-    glEnable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glClearColor(0.6f, 0.6f, 0.6f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    rhi_->BeginFrame(glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
     OnUpdate(dt);
 
-    glfwSwapBuffers(window_);
+    rhi_->EndFrame(window_);
 
     glfwPollEvents();
   }

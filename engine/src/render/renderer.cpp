@@ -1,9 +1,7 @@
 #include "render/renderer.hpp"
 
-#include <glad/glad.h>
-
 #include "core/command.hpp"
-#include "render/gl.hpp"
+#include "render/rhi/resource_backend.hpp"
 #include "render/render_pass.hpp"
 #include "render/render_pipeline.hpp"
 #include "render/shader.hpp"
@@ -25,19 +23,13 @@ Renderer::Renderer() {
       1, 2, 3   // second triangle
   };
 
-  const auto vertex_buffer = CreateRef<GL::VertexBuffer>();
-  vertex_buffer->SetData(vertices, sizeof(vertices));
-  vertex_buffer->AddLayout({
-      {GL::ShaderDataType::Float3, "aPos"},
-      {GL::ShaderDataType::Float2, "aTexCoord"},
-  });
-
-  const auto index_buffer = CreateRef<GL::IndexBuffer>();
-  index_buffer->SetData(indices, 6);
-
-  const auto vertex_array = CreateRef<GL::VertexArray>();
-  vertex_array->SetVertexBuffer(vertex_buffer);
-  vertex_array->SetIndexBuffer(index_buffer);
+  auto vertex_array = CreateVertexArrayBackend();
+    vertex_array->SetVertexBuffer(vertices, sizeof(vertices),
+                  {
+                    {VertexAttributeType::Float3, "aPos"},
+                    {VertexAttributeType::Float2, "aTexCoord"},
+                  });
+  vertex_array->SetIndexBuffer(indices, 6);
 
   // TODO: 默认 shader 怎么存放
   const auto shader = CreateRef<Shader>("res/shaders/default_vert.glsl", "res/shaders/default_frag.glsl");
@@ -47,7 +39,7 @@ Renderer::Renderer() {
 
   pipeline_ = CreateRef<RenderPipeline>();
 
-  pipeline_->SetVertexArray(vertex_array);
+  pipeline_->SetVertexArray(std::move(vertex_array));
   pipeline_->SetShader(shader);
 
   pass_ = CreateRef<RenderPass>();
@@ -116,6 +108,6 @@ void Renderer::RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view
   // texture->Unbind();
 }
 
-GLuint Renderer::GetFramebuffer() const { return pass_->GetFramebuffer(); }
+unsigned int Renderer::GetFramebuffer() const { return pass_->GetFramebuffer(); }
 
 }  // namespace MEngine

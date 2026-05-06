@@ -13,9 +13,6 @@
 
 #include "core/common.hpp"
 
-#include "core/logger.hpp"
-#include "render/gl.hpp"
-
 namespace MEngine {
 
 struct Sprite2D;
@@ -31,7 +28,7 @@ class Renderer {
   void RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) const;
   void RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view) const;
 
-  GLuint GetFramebuffer() const;
+  unsigned int GetFramebuffer() const;
 
  private:
   Ref<RenderPass>     pass_;
