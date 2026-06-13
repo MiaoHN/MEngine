@@ -52,6 +52,6 @@ target_include_directories(ImGuizmo PUBLIC
 
 add_subdirectory(engine)
 
-add_subdirectory(editor)
+add_subdirectory(sandbox)
 
-add_subdirectory(examples)
+add_subdirectory(editor)
