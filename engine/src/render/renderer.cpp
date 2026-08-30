@@ -8,6 +8,7 @@
 #include "render/render_pass.hpp"
 #include "render/render_pipeline.hpp"
 #include "render/shader.hpp"
+#include "render/shadow_map.hpp"
 #include "render/texture.hpp"
 #include "scene/component.hpp"
 #include "utils/profiler.h"
@@ -53,6 +54,10 @@ Renderer::Renderer() {
   unsigned char white[4] = {255, 255, 255, 255};
   default_texture_       = CreateRef<Texture>();
   default_texture_->SetData(white, 1, 1);
+
+  // Directional shadow map + depth-only shader.
+  shadow_map_    = CreateRef<ShadowMap>(2048, 2048);
+  depth_shader_  = CreateRef<Shader>("res/shaders/shadow_depth_vert.glsl", "res/shaders/shadow_depth_frag.glsl");
 }
 
 Renderer::~Renderer() = default;
@@ -117,8 +122,32 @@ void Renderer::RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view
   // texture->Unbind();
 }
 
-void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material,
-                        const glm::mat4 &model, const glm::mat4 &proj_view, const glm::vec3 &view_pos) const {
+void Renderer::BeginShadowPass(const glm::mat4 &light_view_proj) const {
+  shadow_map_->Bind();
+  depth_shader_->Bind();
+  depth_shader_->SetUniform("light_view_proj", light_view_proj);
+}
+
+void Renderer::DrawMeshShadow(const Ref<Mesh> &mesh, const glm::mat4 &model, const glm::mat4 &light_view_proj) const {
+  if (!mesh) {
+    return;
+  }
+  (void)light_view_proj;
+  depth_shader_->SetUniform("model", model);
+  mesh->Bind();
+  if (const auto *rhi = GetActiveRHI(); rhi) {
+    rhi->DrawIndexedTriangles(mesh->GetIndexCount());
+  }
+  mesh->Unbind();
+}
+
+void Renderer::EndShadowPass() const {
+  depth_shader_->Unbind();
+  shadow_map_->Unbind();
+}
+
+void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
+                        const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const {
   PROFILER_FUNCTION();
 
   if (!mesh || !material || !material->GetShader()) {
@@ -147,6 +176,13 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material,
   shader->SetUniform("model", model);
   shader->SetUniform("proj_view", proj_view);
   shader->SetUniform("view_pos", view_pos);
+
+  // Directional light + shadow map.
+  shader->SetUniform("light_dir", light_.direction);
+  shader->SetUniform("light_color", light_.color);
+  shadow_map_->BindTexture(4);
+  shader->SetUniform("shadow_map", 4);
+  shader->SetUniform("light_view_proj", light_view_proj);
 
   mesh->Bind();
   if (const auto *rhi = GetActiveRHI(); rhi) {

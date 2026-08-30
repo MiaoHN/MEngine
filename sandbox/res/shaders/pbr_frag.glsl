@@ -25,6 +25,9 @@ uniform vec3 light_dir   = normalize(vec3(-0.3, -1.0, -0.4));
 uniform vec3 light_color = vec3(2.5);
 uniform float exposure   = 1.2;
 
+uniform sampler2D shadow_map;
+uniform mat4      light_view_proj;
+
 const float PI = 3.14159265359;
 
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
@@ -60,6 +63,19 @@ vec3 EnvironmentColor(vec3 dir) {
   vec3  nadir   = vec3(0.10, 0.10, 0.11);
   float t       = clamp(dir.y, -1.0, 1.0) * 0.5 + 0.5;
   return (t < 0.5) ? mix(nadir, horizon, t * 2.0) : mix(horizon, zenith, (t - 0.5) * 2.0);
+}
+
+float ShadowCalculation(vec3 frag_pos_world, vec3 N, vec3 L) {
+  vec4 clip = light_view_proj * vec4(frag_pos_world, 1.0);
+  vec3 proj = clip.xyz / clip.w;
+  proj      = proj * 0.5 + 0.5;
+  if (proj.z > 1.0) {
+    return 1.0;
+  }
+  float closest = texture(shadow_map, proj.xy).r;
+  float current = proj.z;
+  float bias    = max(0.002 * (1.0 - dot(N, L)), 0.0005);
+  return (current - bias > closest) ? 0.0 : 1.0;
 }
 
 void main() {
@@ -109,6 +125,7 @@ void main() {
 
   float NdotL  = max(dot(N, L), 0.0);
   vec3  direct = (kD * albedo / PI + specular) * light_color * NdotL;
+  direct *= ShadowCalculation(FragPos, N, L);
 
   // Image-based ambient approximation: diffuse irradiance from the normal,
   // specular environment from the (roughness-blurred) reflection direction.

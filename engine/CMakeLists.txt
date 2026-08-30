@@ -13,6 +13,7 @@ set(SOURCE_RENDER
   src/render/model_loader.cpp
   src/render/gltf_loader.cpp
   src/render/renderer.cpp
+  src/render/shadow_map.cpp
   src/render/render_pipeline.cpp
   src/render/render_pass.cpp
   src/render/frame_buffer.cpp

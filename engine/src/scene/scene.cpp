@@ -73,7 +73,29 @@ void Scene::Render(Camera2D &camera) {
 }
 
 void Scene::RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos) {
-  for (auto &entity : GetAllEntitiesWith<MeshComponent>()) {
+  auto entities = GetAllEntitiesWith<MeshComponent>();
+  if (entities.empty()) {
+    return;
+  }
+
+  // Directional shadow mapping: models are normalized to a ~1 unit radius by
+  // the caller, so a fixed 2-unit orthographic shadow volume covers them.
+  const auto      &light          = renderer_->GetLight();
+  const glm::mat4 light_view_proj = light.GetLightSpaceMatrix(glm::vec3(0.0f), 2.0f);
+
+  renderer_->BeginShadowPass(light_view_proj);
+  for (auto &entity : entities) {
+    auto &component = entity.GetComponent<MeshComponent>();
+    if (!component.mesh) {
+      continue;
+    }
+    const glm::mat4 model =
+        entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
+    renderer_->DrawMeshShadow(component.mesh, model, light_view_proj);
+  }
+  renderer_->EndShadowPass();
+
+  for (auto &entity : entities) {
     auto &component = entity.GetComponent<MeshComponent>();
     if (!component.mesh || !component.material) {
       continue;
@@ -82,7 +104,7 @@ void Scene::RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos
     const glm::mat4 model =
         entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
 
-    renderer_->DrawMesh(component.mesh, component.material, model, proj_view, camera_pos);
+    renderer_->DrawMesh(component.mesh, component.material, model, proj_view, camera_pos, light_view_proj);
   }
 }
 
