@@ -28,10 +28,19 @@ class PostProcessing {
   /// Runs god rays + bloom + tone mapping and composites to the default framebuffer.
   void Render(const glm::vec2 &light_screen_pos) const;
 
+  /// @brief Resolves the jittered scene into the TAA history buffer.
+  void ResolveTAA() const;
+  /// @brief Returns the current sub-pixel jitter (NDC) and advances the frame.
+  glm::vec2 GetJitter() const;
+  /// @brief Returns the scene color texture (TAA-resolved when enabled).
+  [[nodiscard]] unsigned int GetSceneColorTexture() const;
+
   void SetExposure(float exposure) { exposure_ = exposure; }
   void SetBloomStrength(float strength) { bloom_strength_ = strength; }
   void SetBloomThreshold(float threshold) { bloom_threshold_ = threshold; }
   void SetGodRaysStrength(float strength) { god_rays_strength_ = strength; }
+  void SetTAAEnabled(bool enabled) { taa_enabled_ = enabled; }
+  [[nodiscard]] bool IsTAAEnabled() const { return taa_enabled_; }
 
  private:
   void DrawFullscreenTriangle() const;
@@ -50,6 +59,14 @@ class PostProcessing {
   unsigned int god_rays_fbo_     = 0;
   unsigned int god_rays_texture_ = 0;
 
+  unsigned int taa_fbo_         = 0;
+  unsigned int taa_textures_[2] = {0, 0};
+  mutable int  taa_current_     = 0;
+  mutable int  taa_frame_       = 0;
+  mutable bool taa_first_frame_ = true;
+  bool         taa_enabled_     = false;
+  float        taa_blend_       = 0.1f;
+
   int width_        = 0;
   int height_       = 0;
   int bloom_width_  = 0;
@@ -67,6 +84,7 @@ class PostProcessing {
   Ref<Shader> blur_shader_;
   Ref<Shader> composite_shader_;
   Ref<Shader> god_rays_shader_;
+  Ref<Shader> taa_shader_;
 };
 
 }  // namespace MEngine

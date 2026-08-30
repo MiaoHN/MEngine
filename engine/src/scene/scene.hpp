@@ -93,6 +93,7 @@ class Scene {
   void SetIblIntensity(float intensity);
   void SetGodRaysStrength(float strength);
   void SetSSAOEnabled(bool enabled);
+  void SetTAAEnabled(bool enabled);
 
  private:
   entt::registry registry_;

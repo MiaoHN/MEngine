@@ -254,6 +254,25 @@
 - 为屏幕空间径向模糊（非真正体积雾/光线步进），无深度遮挡。
 - god rays 纹理尺寸固定为半分辨率、构造时窗口尺寸。
 
+### M4f — TAA（时间抗锯齿）✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add temporal anti-aliasing`
+
+**新增能力：**
+- 每帧用 Halton(2,3) 低差异序列给相机投影加亚像素抖动（`PostProcessing::GetJitter` + `Renderer::GetJitteredProjection`）。
+- `taa_frag.glsl`：把抖动后的当前帧与历史帧混合（`mix(history, current, blend)`），并用邻域 AABB 截钳历史颜色抑制鬼影。
+- `PostProcessing::ResolveTAA` 用双缓冲（ping-pong）维护历史，主 pass 后解析，随后 bloom/god rays/合成都采样解析后的纹理。
+- `Renderer`/`Scene` 新增 `SetTAAEnabled`；sandbox 开启 TAA 演示。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（边缘锯齿减少）。
+
+**已知限制：**
+- 无运动向量（运动模糊/快速运动可能有鬼影）。
+- TAA 历史纹理尺寸固定为构造时窗口尺寸。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
@@ -268,7 +287,7 @@
 - [x] M4c：HDR 环境贴图（`.hdr`）+ 预过滤镜面 IBL
 - [x] M4d：SSAO（屏幕空间环境光遮蔽）
 - [x] M4e：体积光（God Rays）
-- [ ] M4f：TAA/降噪
+- [x] M4f：TAA（时间抗锯齿）
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [ ] 补全 Vulkan 资源后端
 

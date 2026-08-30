@@ -102,6 +102,8 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   active_scene_->SetIblIntensity(0.4f);
   // Screen-space ambient occlusion for contact shadowing.
   active_scene_->SetSSAOEnabled(true);
+  // Temporal anti-aliasing.
+  active_scene_->SetTAAEnabled(true);
   // Volumetric light (god rays) strength.
   active_scene_->SetGodRaysStrength(0.06f);
 

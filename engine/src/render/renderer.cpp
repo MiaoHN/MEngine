@@ -253,6 +253,20 @@ void Renderer::PostProcess(const glm::mat4 &view, const glm::mat4 &proj) const {
 
 void Renderer::RenderSkybox(const glm::mat4 &view, const glm::mat4 &proj) const { skybox_->Render(view, proj); }
 
+void Renderer::ResolveTAA() const { post_processing_->ResolveTAA(); }
+
+glm::mat4 Renderer::GetJitteredProjection(const glm::mat4 &proj) const {
+  glm::mat4       jittered = proj;
+  const glm::vec2 jitter   = post_processing_->GetJitter();
+  jittered[2][0]           = jitter.x;
+  jittered[2][1]           = jitter.y;
+  return jittered;
+}
+
+void Renderer::SetTAAEnabled(bool enabled) { post_processing_->SetTAAEnabled(enabled); }
+
+bool Renderer::IsTAAEnabled() const { return post_processing_->IsTAAEnabled(); }
+
 void Renderer::SetExposure(float exposure) { post_processing_->SetExposure(exposure); }
 
 void Renderer::SetBloomStrength(float strength) { post_processing_->SetBloomStrength(strength); }

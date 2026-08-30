@@ -198,6 +198,14 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - `Renderer`/`Scene` 新增 `SetGodRaysStrength`。
 - 已知限制：屏幕空间径向模糊（无深度遮挡/真正体积雾）；god rays 为半分辨率、构造时尺寸。
 
+## TAA（M4f 新增）
+
+- 每帧用 Halton(2,3) 低差异序列给相机投影加亚像素抖动（`PostProcessing::GetJitter` + `Renderer::GetJitteredProjection`，`proj[2][0]/[2][1]` 偏移）。
+- `taa_frag.glsl`：`mix(history, current, blend)`，并对历史颜色做邻域 AABB 截钳抑制鬼影；`blend` 首帧为 1.0，之后为 0.1。
+- `PostProcessing::ResolveTAA` 用双缓冲（ping-pong）维护历史；主 pass 后解析，bloom/god rays/合成采样解析后的纹理（`GetSceneColorTexture`）。
+- `Renderer`/`Scene` 新增 `SetTAAEnabled`。
+- 已知限制：无运动向量（快速运动可能鬼影）；历史纹理为构造时尺寸。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：

@@ -78,7 +78,12 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     return;
   }
 
-  const glm::mat4 proj_view = proj * view;
+  // TAA jitters the camera projection by a sub-pixel each frame; the main pass
+  // and skybox use the jittered projection, then the TAA resolve blends it with
+  // the history buffer before post-processing.
+  const bool       taa_enabled   = renderer_->IsTAAEnabled();
+  const glm::mat4  render_proj   = taa_enabled ? renderer_->GetJitteredProjection(proj) : proj;
+  const glm::mat4  proj_view     = render_proj * view;
 
   // Directional shadow mapping: models are normalized to a ~1 unit radius by
   // the caller, so a fixed 2-unit orthographic shadow volume covers them.
@@ -156,8 +161,11 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   }
 
   // Skybox background (drawn after the meshes with depth test LEQUAL).
-  renderer_->RenderSkybox(view, proj);
+  renderer_->RenderSkybox(view, render_proj);
   renderer_->EndScene();
+
+  // TAA resolve blends the jittered frame with the history buffer.
+  renderer_->ResolveTAA();
 
   // Bloom + tone mapping to the default framebuffer.
   renderer_->PostProcess(view, proj);
@@ -190,5 +198,7 @@ void Scene::SetIblIntensity(float intensity) { renderer_->SetIblIntensity(intens
 void Scene::SetGodRaysStrength(float strength) { renderer_->SetGodRaysStrength(strength); }
 
 void Scene::SetSSAOEnabled(bool enabled) { renderer_->SetSSAOEnabled(enabled); }
+
+void Scene::SetTAAEnabled(bool enabled) { renderer_->SetTAAEnabled(enabled); }
 
 }  // namespace MEngine

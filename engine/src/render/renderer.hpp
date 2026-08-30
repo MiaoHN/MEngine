@@ -98,6 +98,14 @@ class Renderer {
   /// @brief Runs god rays + bloom + tone mapping to the default framebuffer.
   void PostProcess(const glm::mat4 &view, const glm::mat4 &proj) const;
 
+  /// @brief Resolves the jittered scene into the TAA history buffer.
+  void ResolveTAA() const;
+  /// @brief Returns the projection matrix with the current TAA jitter applied.
+  glm::mat4 GetJitteredProjection(const glm::mat4 &proj) const;
+
+  void SetTAAEnabled(bool enabled);
+  [[nodiscard]] bool IsTAAEnabled() const;
+
   /// @brief Draws the skybox background.
   void RenderSkybox(const glm::mat4 &view, const glm::mat4 &proj) const;
 
