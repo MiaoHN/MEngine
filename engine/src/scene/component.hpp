@@ -119,12 +119,15 @@ struct Transform {
 
   Transform()                  = default;
   Transform(const Transform &) = default;
+  Transform &operator=(const Transform &) = default;
   Transform(const glm::vec3 &translation) : translation(translation) {}
 
   glm::mat4 GetTransform() const {
-    glm::mat4 rotation = glm::toMat4(glm::quat(rotation));
+    // NOTE: rename the local to avoid shadowing the `rotation` member; the
+    // quaternion is built from the member Euler angles (radians).
+    glm::mat4 rotation_matrix = glm::toMat4(glm::quat(rotation));
 
-    return glm::translate(glm::mat4(1.0f), translation) * rotation * glm::scale(glm::mat4(1.0f), scale);
+    return glm::translate(glm::mat4(1.0f), translation) * rotation_matrix * glm::scale(glm::mat4(1.0f), scale);
   }
 };
 
