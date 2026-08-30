@@ -64,12 +64,34 @@
 - 不支持 sparse accessor、Draco 压缩、骨骼/动画。
 - 法线贴图（normal.png 等 PBR 贴图）尚未接入，待 M3/PBR。
 
+### M3a — PBR 材质与光照 ✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add pbr material and metallic-roughness lighting`
+
+**新增能力：**
+- `Material`（metallic-roughness PBR）：albedo/normal/metallic-roughness/AO 贴图 + 因子。
+- PBR shader：Cook-Torrance GGX + 方向光 + 环境光，法线贴图（导数法 TBN）、AO、Reinhard tone mapping + gamma。
+- `MeshComponent` 改为绑定 `Mesh + Material`；`Renderer::DrawMesh` 绑定四贴图 + uniform。
+- glTF 加载器 `LoadGltfMaterial` 提取 PBR 贴图/因子。
+- sandbox 演示 DamagedHelmet（经典 PBR 测试模型）。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（金属头盔）。
+
+**已知限制：**
+- 仅单个方向光（参数在 shader 默认值），无多光源/点光源。
+- 无阴影映射（M3b）。
+- tone mapping 作用于 LDR，无 HDR 帧缓冲（M4）。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
 - [x] M2b：glTF 2.0 导入（tinygltf）
 - [ ] M2c：多网格/多材质 `Model`、MeshLibrary 接入资产系统
-- [ ] M3：多光源 + 阴影映射 + PBR
+- [x] M3a：PBR 材质（metallic-roughness）+ 法线贴图
+- [ ] M3b：多光源 + 阴影映射
 - [ ] M4：HDR/Bloom/ToneMapping、SSAO、体积光、TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [ ] 补全 Vulkan 资源后端

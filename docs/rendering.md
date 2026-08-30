@@ -118,6 +118,14 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - 示例资源：`sandbox/res/models/sphere.obj`（由 `tools/gen_sphere.py` 生成）、`sandbox/res/models/duck.glb`（Khronos glTF 样例）。
 - 后续扩展点：Assimp 多格式、多网格/多材质 `Model`。
 
+## 材质与光照（M3a 新增）
+
+- `Material`（`render/material.hpp`）：glTF metallic-roughness PBR 材质，持有 albedo / normal / metallic-roughness / AO 四张贴图及 baseColor/metallic/roughness 因子，由 `Renderer::DrawMesh` 负责绑定与 uniform 上传。
+- `MeshComponent` 现在绑定 `Mesh + Material`（取代了之前的 `shader + texture`）。
+- PBR shader：`res/shaders/pbr_{vert,frag}.glsl`——Cook-Torrance GGX 微面元 BRDF + 方向光 + 环境光，支持法线贴图（导数法 TBN，无需切线属性）、金属/粗糙度、AO，以及 Reinhard tone mapping + gamma 校正。
+- glTF 加载器新增 `ModelLoader::LoadGltfMaterial`，提取 PBR 贴图与因子。
+- 样例：`sandbox/res/models/damaged_helmet.glb`（Khronos PBR 测试模型）。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：
