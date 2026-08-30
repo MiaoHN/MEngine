@@ -11,7 +11,7 @@ import os
 import sys
 
 
-def generate(path: str, radius: float = 0.8, lats: int = 16, lons: int = 32) -> None:
+def generate(path: str, radius: float = 0.8, lats: int = 32, lons: int = 64) -> None:
     vertices = []
     for i in range(lats + 1):
         theta = math.pi * i / lats
@@ -48,5 +48,8 @@ def generate(path: str, radius: float = 0.8, lats: int = 16, lons: int = 32) -> 
 
 if __name__ == "__main__":
     out = sys.argv[1] if len(sys.argv) > 1 else "sandbox/res/models/sphere.obj"
+    radius = float(sys.argv[2]) if len(sys.argv) > 2 else 0.8
+    lats = int(sys.argv[3]) if len(sys.argv) > 3 else 32
+    lons = int(sys.argv[4]) if len(sys.argv) > 4 else 64
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    generate(out)
+    generate(out, radius, lats, lons)
