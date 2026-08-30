@@ -27,6 +27,7 @@ uniform vec3 light_color = vec3(2.5);
 uniform sampler2D shadow_map;
 uniform mat4      light_view_proj;
 uniform float     shadow_map_size = 2048.0;
+uniform float     shadow_pcf_radius = 2.0;
 
 uniform samplerCube environment_map;
 uniform samplerCube irradiance_map;
@@ -90,18 +91,27 @@ float ShadowCalculation(vec3 frag_pos_world, vec3 N, vec3 L) {
     return 1.0;
   }
   float current = proj.z;
-  float bias    = max(0.002 * (1.0 - dot(N, L)), 0.0005);
+  // The bias must grow with the PCF kernel: on sloped surfaces the depth
+  // varies across the sampled texels, and a fixed small bias causes
+  // self-shadowing (the ground turning grey).
+  float bias = max(0.002 * (1.0 - dot(N, L)), 0.0005) * max(shadow_pcf_radius, 1.0);
 
-  // Percentage-closer filtering: average 3x3 taps to soften the shadow edge.
+  // Percentage-closer filtering: 5x5 taps spread by shadow_pcf_radius texels.
+  // Taps outside the shadow map coverage are treated as lit (no shadow).
   vec2  texel  = 1.0 / vec2(shadow_map_size);
   float shadow = 0.0;
-  for (int x = -1; x <= 1; ++x) {
-    for (int y = -1; y <= 1; ++y) {
-      float closest = texture(shadow_map, proj.xy + vec2(x, y) * texel).r;
+  for (int x = -2; x <= 2; ++x) {
+    for (int y = -2; y <= 2; ++y) {
+      vec2 uv = proj.xy + vec2(x, y) * texel * shadow_pcf_radius;
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        shadow += 1.0;
+        continue;
+      }
+      float closest = texture(shadow_map, uv).r;
       shadow += (current - bias > closest) ? 0.0 : 1.0;
     }
   }
-  return shadow / 9.0;
+  return shadow / 25.0;
 }
 
 float PointShadowCalculation(int light_index, vec3 light_pos, vec3 N, vec3 L) {

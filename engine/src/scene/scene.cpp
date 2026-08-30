@@ -167,4 +167,6 @@ void Scene::SetBloomStrength(float strength) { renderer_->SetBloomStrength(stren
 
 void Scene::SetBloomThreshold(float threshold) { renderer_->SetBloomThreshold(threshold); }
 
+void Scene::SetShadowPcfRadius(float radius) { renderer_->SetShadowPcfRadius(radius); }
+
 }  // namespace MEngine

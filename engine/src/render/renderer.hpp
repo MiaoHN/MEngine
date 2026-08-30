@@ -89,6 +89,7 @@ class Renderer {
   void SetExposure(float exposure);
   void SetBloomStrength(float strength);
   void SetBloomThreshold(float threshold);
+  void SetShadowPcfRadius(float radius);
 
   unsigned int GetFramebuffer() const;
 
@@ -105,6 +106,7 @@ class Renderer {
   DirectionalLight    light_;
   std::vector<PointLight> point_lights_;
   std::vector<SpotLight>  spot_lights_;
+  float shadow_pcf_radius_ = 2.0f;
 };
 
 }  // namespace MEngine

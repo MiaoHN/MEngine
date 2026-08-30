@@ -21,6 +21,10 @@ bool OpenGLRHI::Initialize(GLFWwindow *window) {
     return false;
   }
 
+  // Seamless cubemap sampling avoids visible seams between cube-map faces
+  // (skybox and point-light shadow maps).
+  glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+
   LOG_INFO("RHI") << "OpenGL Version: " << glGetString(GL_VERSION);
   LOG_INFO("RHI") << "GLSL Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION);
   LOG_INFO("RHI") << "Vendor: " << glGetString(GL_VENDOR);

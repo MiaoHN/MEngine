@@ -224,6 +224,8 @@ void Renderer::SetBloomStrength(float strength) { post_processing_->SetBloomStre
 
 void Renderer::SetBloomThreshold(float threshold) { post_processing_->SetBloomThreshold(threshold); }
 
+void Renderer::SetShadowPcfRadius(float radius) { shadow_pcf_radius_ = radius; }
+
 void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
                         const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const {
   PROFILER_FUNCTION();
@@ -262,6 +264,7 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   shader->SetUniform("shadow_map", 4);
   shader->SetUniform("light_view_proj", light_view_proj);
   shader->SetUniform("shadow_map_size", static_cast<float>(shadow_map_->GetWidth()));
+  shader->SetUniform("shadow_pcf_radius", shadow_pcf_radius_);
 
   // IBL environment (skybox cubemap + irradiance).
   skybox_->BindEnvironment(5);

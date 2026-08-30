@@ -89,6 +89,7 @@ class Scene {
   void SetExposure(float exposure);
   void SetBloomStrength(float strength);
   void SetBloomThreshold(float threshold);
+  void SetShadowPcfRadius(float radius);
 
  private:
   entt::registry registry_;

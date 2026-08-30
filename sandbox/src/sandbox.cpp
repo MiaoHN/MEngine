@@ -93,6 +93,8 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   active_scene_->SetExposure(1.1f);
   active_scene_->SetBloomStrength(0.015f);
   active_scene_->SetBloomThreshold(1.0f);
+  // Wider PCF kernel for visibly softer directional shadows.
+  active_scene_->SetShadowPcfRadius(4.0f);
 
   camera_.SetAspect(16.0f / 9.0f);
 }
