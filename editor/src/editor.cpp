@@ -27,6 +27,40 @@ bool IsImageFile(const std::filesystem::path &path) {
   return false;
 }
 
+/// @brief Auto-assigns common OBJ texture names found next to the model file.
+///
+/// The classic "backpack"-style assets ship `diffuse.jpg`, `normal.png`,
+/// `roughness.jpg` and `ao.jpg`; `specular.jpg` belongs to the legacy
+/// specular-glossiness workflow and is intentionally ignored by our
+/// metallic-roughness PBR shader.
+void AutoAssignObjTextures(const Ref<Material> &material, const std::filesystem::path &obj_path) {
+  const auto dir = obj_path.parent_path();
+
+  const auto find_texture = [&](std::initializer_list<const char *> names) -> Ref<Texture> {
+    for (const char *name : names) {
+      const std::filesystem::path candidate = dir / name;
+      if (std::filesystem::exists(candidate)) {
+        return Texture::Create(candidate.string());
+      }
+    }
+    return nullptr;
+  };
+
+  if (auto t = find_texture({"diffuse.jpg", "diffuse.png", "albedo.jpg", "albedo.png"})) {
+    material->SetAlbedoMap(t);
+  }
+  if (auto t = find_texture({"normal.png", "normal.jpg"})) {
+    material->SetNormalMap(t);
+  }
+  if (auto t = find_texture({"roughness.jpg", "roughness.png"})) {
+    material->SetMetallicRoughnessMap(t);
+    material->SetRoughnessFactor(1.0f);  // let the roughness map control it
+  }
+  if (auto t = find_texture({"ao.jpg", "ao.png", "occlusion.jpg", "occlusion.png"})) {
+    material->SetAOMap(t);
+  }
+}
+
 }  // namespace
 
 Editor::Editor() = default;
@@ -362,39 +396,6 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
   ImGui::PopID();
 }
 
-/// @brief A single material texture slot: thumbnail + drag-drop + clear.
-static Ref<Texture> DrawTextureSlot(const char *label, Ref<Texture> current) {
-  ImGui::PushID(label);
-  ImGui::Text("%s", label);
-  ImGui::SameLine();
-
-  const ImVec2 thumb_size(56.0f, 56.0f);
-  if (current) {
-    ImGui::Image(reinterpret_cast<ImTextureID>(current->GetID()), thumb_size, ImVec2(0, 1), ImVec2(1, 0));
-  } else {
-    ImGui::Button("None", thumb_size);
-  }
-
-  if (ImGui::BeginDragDropTarget()) {
-    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-      const auto                 *path = static_cast<const wchar_t *>(payload->Data);
-      const std::filesystem::path tex_path(path);
-      current = Texture::Create(tex_path.string());
-    }
-    ImGui::EndDragDropTarget();
-  }
-
-  if (current) {
-    ImGui::SameLine();
-    if (ImGui::Button("Clear")) {
-      current = nullptr;
-    }
-  }
-
-  ImGui::PopID();
-  return current;
-}
-
 template <typename T>
 void Editor::DisplayAddComponentEntry(const std::string &entryName) {
   PROFILER_FUNCTION();
@@ -572,12 +573,46 @@ void Editor::ShowImGuiProperties() {
       if (component.material) {
         Material *material = component.material.get();
 
-        // Texture map slots: drag images from the Content Browser onto them.
-        material->SetAlbedoMap(DrawTextureSlot("Albedo", material->GetAlbedoMap()));
-        material->SetNormalMap(DrawTextureSlot("Normal", material->GetNormalMap()));
-        material->SetMetallicRoughnessMap(
-            DrawTextureSlot("Metallic-Roughness", material->GetMetallicRoughnessMap()));
-        material->SetAOMap(DrawTextureSlot("Ambient Occlusion", material->GetAOMap()));
+        // Texture maps: thumbnails in a row, label underneath. Drag an image
+        // from the Content Browser to assign; right-click to clear.
+        const float thumb = 64.0f;
+        auto draw_map = [&](const char *label, const Ref<Texture> &get, auto &&set) {
+          ImGui::BeginGroup();
+          if (get) {
+            ImGui::Image(reinterpret_cast<ImTextureID>(get->GetID()), {thumb, thumb}, ImVec2(0, 1), ImVec2(1, 0));
+          } else {
+            ImGui::Button("None", {thumb, thumb});
+          }
+          if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+              const auto                 *path = static_cast<const wchar_t *>(payload->Data);
+              set(Texture::Create(std::filesystem::path(path).string()));
+            }
+            ImGui::EndDragDropTarget();
+          }
+          if (get && ImGui::BeginPopupContextItem()) {
+            if (ImGui::MenuItem("Clear")) {
+              set(nullptr);
+            }
+            ImGui::EndPopup();
+          }
+          const float text_w = ImGui::CalcTextSize(label).x;
+          ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (thumb - text_w) * 0.5f);
+          ImGui::Text("%s", label);
+          ImGui::EndGroup();
+        };
+
+        draw_map("Albedo", material->GetAlbedoMap(), [&](Ref<Texture> t) { material->SetAlbedoMap(t); });
+        ImGui::SameLine();
+        draw_map("Normal", material->GetNormalMap(), [&](Ref<Texture> t) { material->SetNormalMap(t); });
+        ImGui::SameLine();
+        draw_map("Roughness", material->GetMetallicRoughnessMap(),
+                 [&](Ref<Texture> t) { material->SetMetallicRoughnessMap(t); });
+        ImGui::SameLine();
+        draw_map("AO", material->GetAOMap(), [&](Ref<Texture> t) { material->SetAOMap(t); });
+
+        ImGui::Separator();
+        ImGui::Text("Properties");
 
         glm::vec4 base_color = material->GetBaseColorFactor();
         if (ImGui::ColorEdit4("Base Color", glm::value_ptr(base_color))) {
@@ -759,11 +794,20 @@ void Editor::CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh) {
 void Editor::CreateModelEntity(const std::filesystem::path &path) {
   const std::string ext = path.extension().string();
 
-  Ref<Mesh>     mesh;
-  Ref<Material> material = CreateDefaultMaterial();
+  Ref<Mesh> mesh;
+  // Models default to a matte, white, non-metallic material so textured assets
+  // (multiplied by white) and bare meshes alike read correctly.
+  Ref<Material> material = CreateRef<Material>();
+  material->SetShader(AssetManager::Instance().GetShader("pbr"));
+  material->SetBaseColorFactor(glm::vec4(1.0f));
+  material->SetMetallicFactor(0.0f);
+  material->SetRoughnessFactor(1.0f);
 
   if (ext == ".obj") {
     mesh = ModelLoader::LoadObj(path.string());
+    if (mesh) {
+      AutoAssignObjTextures(material, path);
+    }
   } else if (ext == ".gltf" || ext == ".glb") {
     mesh = ModelLoader::LoadGltf(path.string());
     if (auto mat = ModelLoader::LoadGltfMaterial(path.string())) {
