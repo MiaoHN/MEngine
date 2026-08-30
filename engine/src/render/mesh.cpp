@@ -1,5 +1,6 @@
 #include "render/mesh.hpp"
 
+#include "core/logger.hpp"
 #include "render/rhi/resource_backend.hpp"
 
 namespace MEngine {
@@ -63,5 +64,16 @@ Ref<Mesh> Mesh::CreateCube(float size) {
 
   return Create(vertices, indices);
 }
+
+void MeshLibrary::Add(const std::string &name, const Ref<Mesh> &mesh) {
+  if (Exists(name)) {
+    LOG_WARN("MeshLibrary") << "Mesh already exists!";
+  }
+  meshes_[name] = mesh;
+}
+
+Ref<Mesh> MeshLibrary::Get(const std::string &name) { return meshes_[name]; }
+
+bool MeshLibrary::Exists(const std::string &name) const { return meshes_.find(name) != meshes_.end(); }
 
 }  // namespace MEngine

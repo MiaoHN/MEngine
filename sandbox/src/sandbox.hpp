@@ -36,6 +36,10 @@ class Sandbox : public Application {
 
   Entity      rotating_cube_;
   Ref<Mesh>   cube_mesh_;
+
+  Entity      rotating_sphere_;
+  Ref<Mesh>   sphere_mesh_;
+
   Ref<Shader> lit_shader_;
 
   PerspectiveCamera camera_;

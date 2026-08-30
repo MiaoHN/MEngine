@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common.hpp"
@@ -40,6 +42,19 @@ class Mesh {
   std::vector<Vertex>         vertices_;
   std::vector<unsigned int>   indices_;
   int                         index_count_ = 0;
+};
+
+/// @brief Name-based mesh cache (mirrors ShaderLibrary / TextureLibrary).
+class MeshLibrary {
+ public:
+  void Add(const std::string &name, const Ref<Mesh> &mesh);
+
+  Ref<Mesh> Get(const std::string &name);
+
+  [[nodiscard]] bool Exists(const std::string &name) const;
+
+ private:
+  std::unordered_map<std::string, Ref<Mesh>> meshes_;
 };
 
 }  // namespace MEngine
