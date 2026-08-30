@@ -95,10 +95,10 @@ float ShadowCalculation(vec3 frag_pos_world, vec3 N, vec3 L) {
     return 1.0;
   }
   float current = proj.z;
-  // The bias must grow with the PCF kernel: on sloped surfaces the depth
-  // varies across the sampled texels, and a fixed small bias causes
-  // self-shadowing (the ground turning grey).
-  float bias = max(0.002 * (1.0 - dot(N, L)), 0.0005) * max(shadow_pcf_radius, 1.0);
+  // The bias must grow with the PCF kernel and with the surface slope: on
+  // sloped surfaces the depth varies across the sampled texels, and a fixed
+  // small bias causes self-shadowing (the ground turning grey).
+  float bias = max(0.002 * (1.0 - dot(N, L)), 0.0005) * max(shadow_pcf_radius, 1.0) * 2.0f;
 
   // Percentage-closer filtering: 5x5 taps spread by shadow_pcf_radius texels.
   // Taps outside the shadow map coverage are treated as lit (no shadow).
