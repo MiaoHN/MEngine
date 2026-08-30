@@ -59,6 +59,21 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   ground_transform.translation = glm::vec3(0.0f, -1.3f, 0.0f);
   ground_entity.AddComponent<MeshComponent>(ground_mesh, ground_material);
 
+  // A couple of colored point lights to show multi-light PBR.
+  PointLight warm;
+  warm.position  = glm::vec3(2.0f, 1.2f, 1.5f);
+  warm.color     = glm::vec3(1.0f, 0.75f, 0.55f);
+  warm.intensity = 3.0f;
+  warm.radius    = 6.0f;
+  active_scene_->AddPointLight(warm);
+
+  PointLight cool;
+  cool.position  = glm::vec3(-2.0f, 0.8f, -1.5f);
+  cool.color     = glm::vec3(0.45f, 0.65f, 1.0f);
+  cool.intensity = 3.0f;
+  cool.radius    = 6.0f;
+  active_scene_->AddPointLight(cool);
+
   camera_.SetAspect(16.0f / 9.0f);
 }
 

@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "core/logger.hpp"
+#include "render/light.hpp"
 #include "scene/camera.hpp"
 #include "scene/entity.hpp"
 
@@ -74,6 +75,9 @@ class Scene {
 
   /// @brief Draw all entities with a MeshComponent using the given camera.
   void RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos);
+
+  void AddPointLight(const PointLight &light);
+  void ClearPointLights();
 
  private:
   entt::registry registry_;

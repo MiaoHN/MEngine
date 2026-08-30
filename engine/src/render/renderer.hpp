@@ -48,6 +48,9 @@ class Renderer {
   [[nodiscard]] const DirectionalLight &GetLight() const { return light_; }
   void SetLight(const DirectionalLight &light) { light_ = light; }
 
+  void AddPointLight(const PointLight &light) { point_lights_.push_back(light); }
+  void ClearPointLights() { point_lights_.clear(); }
+
   unsigned int GetFramebuffer() const;
 
  private:
@@ -57,6 +60,7 @@ class Renderer {
   Ref<ShadowMap>      shadow_map_;
   Ref<Shader>         depth_shader_;
   DirectionalLight    light_;
+  std::vector<PointLight> point_lights_;
 };
 
 }  // namespace MEngine

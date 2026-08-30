@@ -184,6 +184,21 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   shader->SetUniform("shadow_map", 4);
   shader->SetUniform("light_view_proj", light_view_proj);
 
+  // Point lights (indexed uniform arrays, capped to the shader's MAX).
+  constexpr int kMaxPointLights = 8;
+  const int     point_light_count = static_cast<int>(point_lights_.size()) < kMaxPointLights
+                                         ? static_cast<int>(point_lights_.size())
+                                         : kMaxPointLights;
+  shader->SetUniform("point_light_count", point_light_count);
+  for (int i = 0; i < point_light_count; ++i) {
+    const PointLight  &light = point_lights_[static_cast<size_t>(i)];
+    const std::string  index = std::to_string(i);
+    shader->SetUniform("point_light_positions[" + index + "]", light.position);
+    shader->SetUniform("point_light_colors[" + index + "]", light.color);
+    shader->SetUniform("point_light_intensities[" + index + "]", light.intensity);
+    shader->SetUniform("point_light_radii[" + index + "]", light.radius);
+  }
+
   mesh->Bind();
   if (const auto *rhi = GetActiveRHI(); rhi) {
     rhi->DrawIndexedTriangles(mesh->GetIndexCount());

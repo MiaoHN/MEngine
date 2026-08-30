@@ -26,4 +26,16 @@ struct DirectionalLight {
   }
 };
 
+/**
+ * @brief A point light (positional light with distance attenuation).
+ *
+ * `radius` bounds the light's reach; beyond it the contribution fades to zero.
+ */
+struct PointLight {
+  glm::vec3 position{0.0f, 0.0f, 0.0f};
+  glm::vec3 color{1.0f, 1.0f, 1.0f};
+  float     intensity = 1.0f;
+  float     radius    = 4.0f;
+};
+
 }  // namespace MEngine

@@ -108,4 +108,8 @@ void Scene::RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos
   }
 }
 
+void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(light); }
+
+void Scene::ClearPointLights() { renderer_->ClearPointLights(); }
+
 }  // namespace MEngine
