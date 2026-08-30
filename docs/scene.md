@@ -46,6 +46,7 @@ entt::entity GetHandle() const;
 | `Camera2D` | `position/rotation/aspect_ratio/zoom_level/primary` + `view/projection` | 2D 正交相机（数据），含投影/视图矩阵计算 |
 | `Sprite2D` | `position/scale/rotation/color/texture/tiling_factor` | 2D 精灵，`GetModelMatrix()` 构建模型矩阵 |
 | `AnimatedSprite2D` | 同上 + `h_frames/v_frames/frame_time/current_frame` | 帧动画精灵 |
+| `MeshComponent` | `mesh`(Ref\<Mesh\>)/`shader`(Ref\<Shader\>)/`texture`(可选) | 3D 网格渲染（M1 新增，需配合 `Transform`） |
 | `AABB` | `position/scale` | 轴对齐包围盒 |
 | `Circle` | `position/radius` | 圆形碰撞体 |
 
@@ -63,16 +64,17 @@ entt::entity GetHandle() const;
 - `OnUpdateEditor(camera)` / `OnUpdateSimulation(dt, camera)`：编辑器/模拟更新（后者 TODO）。
 - `OnUpdateRuntime(dt, vw, vh)`：运行时更新——找 primary 相机，设置投影并渲染；无 primary 相机则用默认相机。
 - `Render(camera)`：遍历 `Sprite2D` 与 `AnimatedSprite2D` 实体，调用 `renderer_->RenderSprite(...)`。
+- `RenderMeshes(proj_view, camera_pos)`：遍历带 `MeshComponent` 的实体，结合 `Transform` 计算 model 矩阵后绘制（M1 新增）。
 
 ## 相机
 
-`Camera2D`（component）与 `OrthographicCamera`（`camera.hpp`，包装 `Camera2D` 引用）：
-
-- `SetProjection(left,right,bottom,top)`：`glm::ortho`（近远 -1..1）。
-- `OnWindowResize / OnMouseScroll`：调整 aspect / zoom。
-- `RecalculateViewMatrix()`：由 position + rotation(z 轴) 计算逆变换得到 view。
-- `GetProjectionView()`：`projection * view`。
-- `OrthographicCamera` 与 `Camera2D` 功能高度重叠，3D 化时应引入透视相机（perspective camera）并统一。
+- `Camera2D`（component）与 `OrthographicCamera`（`camera.hpp`，包装 `Camera2D` 引用）：
+  - `SetProjection(left,right,bottom,top)`：`glm::ortho`（近远 -1..1）。
+  - `OnWindowResize / OnMouseScroll`：调整 aspect / zoom。
+  - `RecalculateViewMatrix()`：由 position + rotation(z 轴) 计算逆变换得到 view。
+  - `GetProjectionView()`：`projection * view`。
+- `PerspectiveCamera`（`perspective_camera.hpp`，M1 新增）：透视相机，lookAt 模型（position/target/up + fov/aspect/near/far），提供 `GetViewMatrix/GetProjectionMatrix/GetProjectionView`。目前为独立类，尚未进入 ECS。
+- 注意：`OrthographicCamera` 与 `Camera2D` 功能高度重叠，3D 化时应统一相机体系（透视 + 正交的 `Camera` 基类）。
 
 ## 渲染路径（当前 2D）
 

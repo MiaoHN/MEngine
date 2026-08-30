@@ -97,6 +97,16 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - 离屏渲染目标（默认 1600×900，TODO：可配置）。
 - `AttachTexture / AttachRenderBuffer / CheckStatus / Clear / Resize / GetTextureId`。
 
+## Mesh 与 3D 网格（M1 新增）
+
+- `Vertex`（`render/vertex.hpp`）：交错顶点 = position(vec3) + normal(vec3) + texcoord(vec2)，`GetLayout()` 返回与内存布局一致的属性描述。
+- `Mesh`（`render/mesh.hpp/.cpp`）：
+  - 复用 `IVertexArrayBackend`（`CreateVertexArrayBackend()`）作为几何后端，**未新增后端接口**，Vulkan 复用已有空壳。
+  - 保留 CPU 端顶点/索引副本，供重上传/导出/拾取使用。
+  - `Mesh::CreateCube(size)`：24 顶点 + 36 索引的单位立方体（每面独立法线与 UV）。
+- `Renderer::DrawMesh(mesh, shader, texture, model, proj_view, view_pos)`：绑定 shader/texture → 设置 uniform → `DrawIndexedTriangles`；无纹理时使用 1×1 白色兜底纹理。
+- `Scene::RenderMeshes(proj_view, camera_pos)`：遍历带 `MeshComponent` 的实体，结合 `Transform` 计算 model 矩阵后绘制。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：
@@ -137,11 +147,14 @@ class IRHI {
 
 - `sandbox/res/shaders/default_vert.glsl`（`#version 460`）：输入 `aPos`/`aTexCoord`，uniform `model`/`proj_view`，输出 `TexCoord`。
 - `sandbox/res/shaders/default_frag.glsl`：`texture(texture1, TexCoord)`。
+- `sandbox/res/shaders/lit_vert.glsl`（M1 新增）：输入 `aPos`/`aNormal`/`aTexCoord`，输出世界空间 `FragPos`/`Normal`，计算法线矩阵。
+- `sandbox/res/shaders/lit_frag.glsl`（M1 新增）：Blinn-Phong 方向光 + 可选纹理（`has_texture`）+ 镜面高光。
 
 ## 当前渲染局限
 
-1. **仅 2D**：无 Mesh / 3D 模型 / 深度光照管线。
-2. **Vulkan 未完成**：后端空壳，无真实 GPU 资源。
-3. **RenderContext 重复**：与 RenderPass 冗余。
-4. **资源加载路径写死**：默认 shader 路径硬编码在 Renderer 构造中。
-5. **无渲染图（Render Graph）/ 无自动资源生命周期管理**。
+1. **无背面剔除**：`GL_CULL_FACE` 未开启，所有面都绘制。
+2. **Vulkan 未完成**：后端空壳，无真实 GPU 资源（网格复用 `IVertexArrayBackend`，接口已就位）。
+3. **光照未抽象**：方向光参数写死在 shader 默认值，尚无引擎级 Light/Material。
+4. **RenderContext 重复**：与 RenderPass 冗余。
+5. **资源加载路径写死**：默认 shader 路径硬编码在 Renderer 构造中。
+6. **无渲染图（Render Graph）/ 无自动资源生命周期管理**。
