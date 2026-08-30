@@ -20,7 +20,7 @@ struct AnimatedSprite2D;
 class RenderPipeline;
 class RenderPass;
 class Mesh;
-class Shader;
+class Material;
 class Texture;
 
 class Renderer {
@@ -31,8 +31,8 @@ class Renderer {
   void RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) const;
   void RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view) const;
 
-  /// @brief Draw a 3D mesh with the given shader and optional texture.
-  void DrawMesh(const Ref<Mesh> &mesh, const Ref<Shader> &shader, const Ref<Texture> &texture,
+  /// @brief Draw a 3D mesh with the given PBR material.
+  void DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material,
                 const glm::mat4 &model, const glm::mat4 &proj_view, const glm::vec3 &view_pos) const;
 
   unsigned int GetFramebuffer() const;

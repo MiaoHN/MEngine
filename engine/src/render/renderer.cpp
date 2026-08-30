@@ -1,6 +1,7 @@
 #include "render/renderer.hpp"
 
 #include "core/command.hpp"
+#include "render/material.hpp"
 #include "render/mesh.hpp"
 #include "render/rhi/resource_backend.hpp"
 #include "render/rhi/rhi.hpp"
@@ -116,24 +117,36 @@ void Renderer::RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view
   // texture->Unbind();
 }
 
-void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Shader> &shader, const Ref<Texture> &texture,
+void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material,
                         const glm::mat4 &model, const glm::mat4 &proj_view, const glm::vec3 &view_pos) const {
   PROFILER_FUNCTION();
 
-  if (!mesh || !shader) {
+  if (!mesh || !material || !material->GetShader()) {
     return;
   }
 
-  const Ref<Texture> &tex = texture ? texture : default_texture_;
-
+  const Ref<Shader> &shader = material->GetShader();
   shader->Bind();
-  tex->Bind(0);
+
+  const auto bind_texture = [&](const Ref<Texture> &texture, int slot, const char *map_uniform, const char *has_uniform) {
+    const Ref<Texture> &tex = texture ? texture : default_texture_;
+    tex->Bind(slot);
+    shader->SetUniform(map_uniform, slot);
+    shader->SetUniform(has_uniform, texture ? 1 : 0);
+  };
+
+  bind_texture(material->GetAlbedoMap(), 0, "albedo_map", "has_albedo_map");
+  bind_texture(material->GetNormalMap(), 1, "normal_map", "has_normal_map");
+  bind_texture(material->GetMetallicRoughnessMap(), 2, "metallic_roughness_map", "has_metallic_roughness_map");
+  bind_texture(material->GetAOMap(), 3, "ao_map", "has_ao_map");
+
+  shader->SetUniform("base_color_factor", material->GetBaseColorFactor());
+  shader->SetUniform("metallic_factor", material->GetMetallicFactor());
+  shader->SetUniform("roughness_factor", material->GetRoughnessFactor());
 
   shader->SetUniform("model", model);
   shader->SetUniform("proj_view", proj_view);
   shader->SetUniform("view_pos", view_pos);
-  shader->SetUniform("texture1", 0);
-  shader->SetUniform("has_texture", texture ? 1 : 0);
 
   mesh->Bind();
   if (const auto *rhi = GetActiveRHI(); rhi) {
@@ -141,7 +154,6 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Shader> &shader, const 
   }
   mesh->Unbind();
 
-  tex->Unbind();
   shader->Unbind();
 }
 

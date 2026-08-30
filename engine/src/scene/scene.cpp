@@ -75,14 +75,14 @@ void Scene::Render(Camera2D &camera) {
 void Scene::RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos) {
   for (auto &entity : GetAllEntitiesWith<MeshComponent>()) {
     auto &component = entity.GetComponent<MeshComponent>();
-    if (!component.mesh || !component.shader) {
+    if (!component.mesh || !component.material) {
       continue;
     }
 
     const glm::mat4 model =
         entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
 
-    renderer_->DrawMesh(component.mesh, component.shader, component.texture, model, proj_view, camera_pos);
+    renderer_->DrawMesh(component.mesh, component.material, model, proj_view, camera_pos);
   }
 }
 

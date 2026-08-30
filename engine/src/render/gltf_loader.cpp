@@ -22,6 +22,7 @@
 #include <glm/glm.hpp>
 
 #include "core/logger.hpp"
+#include "render/material.hpp"
 #include "render/mesh.hpp"
 #include "render/model_loader.hpp"
 #include "render/texture.hpp"
@@ -127,6 +128,26 @@ std::vector<unsigned char> ToRGBA(const tinygltf::Image &img) {
   return rgba;
 }
 
+// Decodes and uploads the glTF texture at `texture_index` to a Texture.
+Ref<Texture> LoadGltfTexture(const tinygltf::Model &model, int texture_index) {
+  if (texture_index < 0 || texture_index >= static_cast<int>(model.textures.size())) {
+    return nullptr;
+  }
+  const int image_index = model.textures[texture_index].source;
+  if (image_index < 0 || image_index >= static_cast<int>(model.images.size())) {
+    return nullptr;
+  }
+  const tinygltf::Image &image = model.images[image_index];
+  if (image.image.empty() || image.width <= 0 || image.height <= 0) {
+    return nullptr;
+  }
+
+  std::vector<unsigned char> rgba    = ToRGBA(image);
+  auto                       texture = CreateRef<Texture>();
+  texture->SetData(rgba.data(), image.width, image.height);
+  return texture;
+}
+
 }  // namespace
 
 Ref<Mesh> ModelLoader::LoadGltf(const std::string &path) {
@@ -228,27 +249,46 @@ Ref<Texture> ModelLoader::LoadGltfBaseColorTexture(const std::string &path) {
 
   for (const tinygltf::Material &mat : model.materials) {
     const int texture_index = mat.pbrMetallicRoughness.baseColorTexture.index;
-    if (texture_index < 0 || texture_index >= static_cast<int>(model.textures.size())) {
-      continue;
+    if (auto texture = LoadGltfTexture(model, texture_index)) {
+      return texture;
     }
-
-    const int image_index = model.textures[texture_index].source;
-    if (image_index < 0 || image_index >= static_cast<int>(model.images.size())) {
-      continue;
-    }
-
-    const tinygltf::Image &image = model.images[image_index];
-    if (image.image.empty() || image.width <= 0 || image.height <= 0) {
-      continue;
-    }
-
-    std::vector<unsigned char> rgba = ToRGBA(image);
-    auto                       texture = CreateRef<Texture>();
-    texture->SetData(rgba.data(), image.width, image.height);
-    return texture;
   }
 
   return nullptr;
+}
+
+Ref<Material> ModelLoader::LoadGltfMaterial(const std::string &path) {
+  tinygltf::Model model;
+  std::string     err, warn;
+  if (!LoadFile(model, path, err, warn)) {
+    LOG_ERROR("ModelLoader") << "Failed to load glTF '" << path << "': " << err;
+    return nullptr;
+  }
+
+  if (model.materials.empty()) {
+    LOG_WARN("ModelLoader") << "glTF has no materials: " << path;
+    return nullptr;
+  }
+
+  const tinygltf::Material &mat = model.materials[0];
+  auto                      material = CreateRef<Material>();
+
+  material->SetAlbedoMap(LoadGltfTexture(model, mat.pbrMetallicRoughness.baseColorTexture.index));
+  material->SetMetallicRoughnessMap(
+      LoadGltfTexture(model, mat.pbrMetallicRoughness.metallicRoughnessTexture.index));
+  material->SetNormalMap(LoadGltfTexture(model, mat.normalTexture.index));
+  material->SetAOMap(LoadGltfTexture(model, mat.occlusionTexture.index));
+
+  if (mat.pbrMetallicRoughness.baseColorFactor.size() == 4) {
+    material->SetBaseColorFactor(glm::vec4(static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[0]),
+                                           static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[1]),
+                                           static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[2]),
+                                           static_cast<float>(mat.pbrMetallicRoughness.baseColorFactor[3])));
+  }
+  material->SetMetallicFactor(static_cast<float>(mat.pbrMetallicRoughness.metallicFactor));
+  material->SetRoughnessFactor(static_cast<float>(mat.pbrMetallicRoughness.roughnessFactor));
+
+  return material;
 }
 
 }  // namespace MEngine

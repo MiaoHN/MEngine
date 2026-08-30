@@ -9,19 +9,22 @@
 Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   active_scene_ = std::make_shared<Scene>();
 
-  lit_shader_ = CreateRef<Shader>("res/shaders/lit_vert.glsl", "res/shaders/lit_frag.glsl");
+  pbr_shader_ = CreateRef<Shader>("res/shaders/pbr_vert.glsl", "res/shaders/pbr_frag.glsl");
 
-  // Imported glTF model (geometry + base-color texture).
-  model_mesh_    = ModelLoader::LoadGltf("res/models/duck.glb");
-  model_texture_ = ModelLoader::LoadGltfBaseColorTexture("res/models/duck.glb");
+  // Imported glTF model with a PBR material (metallic-roughness workflow).
+  model_mesh_     = ModelLoader::LoadGltf("res/models/damaged_helmet.glb");
+  model_material_ = ModelLoader::LoadGltfMaterial("res/models/damaged_helmet.glb");
+  if (model_material_) {
+    model_material_->SetShader(pbr_shader_);
+  }
 
-  if (model_mesh_) {
-    model_ = active_scene_->CreateEntity("Duck");
+  if (model_mesh_ && model_material_) {
+    model_ = active_scene_->CreateEntity("DamagedHelmet");
     auto &transform = model_.AddComponent<Transform>();
 
     // Auto-frame: center the model at the origin and normalize its size, so
-    // models authored at arbitrary scales (e.g. duck.glb is ~165 units wide)
-    // still fit the view and the fixed near/far planes.
+    // models authored at arbitrary scales fit the view and the fixed near/far
+    // planes.
     glm::vec3 min(std::numeric_limits<float>::max());
     glm::vec3 max(std::numeric_limits<float>::lowest());
     for (const auto &vertex : model_mesh_->GetVertices()) {
@@ -40,7 +43,7 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
     camera_.SetPosition(glm::vec3(0.0f, 0.0f, distance));
     camera_.LookAt(glm::vec3(0.0f, 0.0f, 0.0f));
 
-    model_.AddComponent<MeshComponent>(model_mesh_, lit_shader_, model_texture_);
+    model_.AddComponent<MeshComponent>(model_mesh_, model_material_);
   }
 
   camera_.SetAspect(16.0f / 9.0f);

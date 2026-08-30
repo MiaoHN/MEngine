@@ -4,6 +4,7 @@
 
 namespace MEngine {
 
+class Material;
 class Mesh;
 class Texture;
 
@@ -33,6 +34,13 @@ class ModelLoader {
   /// Decoded to RGBA and uploaded as a Texture; returns nullptr if the model
   /// has no base-color texture.
   static Ref<Texture> LoadGltfBaseColorTexture(const std::string &path);
+
+  /// @brief Builds a PBR Material from the first glTF material.
+  ///
+  /// Extracts base color / normal / metallic-roughness / occlusion textures
+  /// and the material factors. The shader is not assigned here; callers should
+  /// set it via Material::SetShader.
+  static Ref<Material> LoadGltfMaterial(const std::string &path);
 };
 
 }  // namespace MEngine

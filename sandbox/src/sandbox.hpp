@@ -13,6 +13,7 @@
 #include "core/entry_point.hpp"
 #include "core/script_engine.hpp"
 #include "render/frame_buffer.hpp"
+#include "render/material.hpp"
 #include "render/mesh.hpp"
 #include "render/shader.hpp"
 #include "render/texture.hpp"
@@ -35,11 +36,11 @@ class Sandbox : public Application {
  private:
   std::shared_ptr<Scene> active_scene_;
 
-  Entity       model_;
-  Ref<Mesh>    model_mesh_;
-  Ref<Texture> model_texture_;
+  Entity        model_;
+  Ref<Mesh>     model_mesh_;
+  Ref<Material> model_material_;
 
-  Ref<Shader> lit_shader_;
+  Ref<Shader> pbr_shader_;
 
   PerspectiveCamera camera_;
   float             rotation_speed_ = 30.0f;

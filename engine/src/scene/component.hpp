@@ -17,8 +17,8 @@
 #include <glm/gtx/quaternion.hpp>
 #include <string>
 
+#include "render/material.hpp"
 #include "render/mesh.hpp"
-#include "render/shader.hpp"
 #include "render/texture.hpp"
 
 namespace MEngine {
@@ -139,13 +139,12 @@ struct Transform {
  * drawn with an identity model matrix.
  */
 struct MeshComponent {
-  Ref<Mesh>    mesh;
-  Ref<Shader>  shader;
-  Ref<Texture> texture;  // optional; falls back to tint color
+  Ref<Mesh>     mesh;
+  Ref<Material> material;
 
   MeshComponent() = default;
-  MeshComponent(Ref<Mesh> mesh, Ref<Shader> shader, Ref<Texture> texture = nullptr)
-      : mesh(std::move(mesh)), shader(std::move(shader)), texture(std::move(texture)) {}
+  MeshComponent(Ref<Mesh> mesh, Ref<Material> material)
+      : mesh(std::move(mesh)), material(std::move(material)) {}
 };
 
 struct Sprite2D {

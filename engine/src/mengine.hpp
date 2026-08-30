@@ -5,6 +5,7 @@
 #include "core/input.hpp"
 #include "core/script_engine.hpp"
 #include "render/frame_buffer.hpp"
+#include "render/material.hpp"
 #include "render/mesh.hpp"
 #include "render/renderer.hpp"
 #include "render/shader.hpp"
