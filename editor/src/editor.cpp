@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <limits>
 
 #include "render/asset_manager.hpp"
+#include "render/model_loader.hpp"
 #include "utils/profiler.h"
 
 namespace {
@@ -142,26 +144,42 @@ void Editor::OnUpdate(float dt) {
       ImGui::MenuItem("Open", nullptr, &open);
       ImGui::EndMenu();
     }
+    if (ImGui::BeginMenu("View")) {
+      ImGui::MenuItem("Content Browser", nullptr, &show_content_browser_);
+      ImGui::MenuItem("Scene", nullptr, &show_scene_);
+      ImGui::MenuItem("Viewport", nullptr, &show_viewport_);
+      ImGui::MenuItem("Properties", nullptr, &show_properties_);
+      ImGui::MenuItem("Lighting", nullptr, &show_lighting_);
+      ImGui::MenuItem("Log", nullptr, &show_log_);
+      ImGui::MenuItem("Information", nullptr, &show_information_);
+      ImGui::Separator();
+      if (ImGui::MenuItem("Reset Layout")) {
+        ApplyDefaultLayout(dockspace_id_);
+      }
+      ImGui::EndMenu();
+    }
     ImGui::EndMenuBar();
   }
 
-  ShowImGuiContentBrowser();
-  ShowImGuiViewport();
-  ShowImGuiScene();
-  ShowImGuiProperties();
-  ShowImGuiLighting();
+  if (show_content_browser_) ShowImGuiContentBrowser();
+  if (show_viewport_) ShowImGuiViewport();
+  if (show_scene_) ShowImGuiScene();
+  if (show_properties_) ShowImGuiProperties();
+  if (show_lighting_) ShowImGuiLighting();
 
-  ImGui::Begin("Log");
-  std::ifstream     file("MEngine.log");
-  std::stringstream ss;
-  if (file.is_open()) {
-    ss << file.rdbuf();
+  if (show_log_) {
+    ImGui::Begin("Log");
+    std::ifstream     file("MEngine.log");
+    std::stringstream ss;
+    if (file.is_open()) {
+      ss << file.rdbuf();
+    }
+    std::string log = ss.str();
+    ImGui::Text("%s", log.c_str());
+    ImGui::End();
   }
-  std::string log = ss.str();
-  ImGui::Text("%s", log.c_str());
-  ImGui::End();
 
-  ShowImGuiInformation();
+  if (show_information_) ShowImGuiInformation();
 
   EndImGui();
 }
@@ -220,6 +238,17 @@ void Editor::BeginImGui() {
   style.WindowMinSize.x = 370.0f;
   if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
     ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
+    dockspace_id_        = dockspace_id;
+
+    // Build a sensible default layout the first time (no saved layout yet).
+    static bool first_layout = true;
+    if (first_layout) {
+      first_layout = false;
+      if (ImGui::DockBuilderGetNode(dockspace_id) == nullptr) {
+        ApplyDefaultLayout(dockspace_id);
+      }
+    }
+
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
   }
 }
@@ -426,6 +455,19 @@ void Editor::ShowImGuiViewport() {
 
   ImGui::Image(reinterpret_cast<void *>(static_cast<intptr_t>(frame_buffer_->GetTextureId())), image_size, ImVec2(0, 1),
                ImVec2(1, 0));
+
+  // Drop a model (OBJ / glTF) from the Content Browser to import it.
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+      const auto                 *path = static_cast<const wchar_t *>(payload->Data);
+      const std::filesystem::path file_path(path);
+      const std::string           ext = file_path.extension().string();
+      if (ext == ".obj" || ext == ".gltf" || ext == ".glb") {
+        CreateModelEntity(file_path);
+      }
+    }
+    ImGui::EndDragDropTarget();
+  }
 
   const ImVec2 image_pos = ImGui::GetItemRectMin();
   const ImVec2 image_area = ImGui::GetItemRectSize();
@@ -697,6 +739,75 @@ void Editor::CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh) {
   }
 
   selected_entity_ = entity;
+}
+
+void Editor::CreateModelEntity(const std::filesystem::path &path) {
+  const std::string ext = path.extension().string();
+
+  Ref<Mesh>     mesh;
+  Ref<Material> material = CreateDefaultMaterial();
+
+  if (ext == ".obj") {
+    mesh = ModelLoader::LoadObj(path.string());
+  } else if (ext == ".gltf" || ext == ".glb") {
+    mesh = ModelLoader::LoadGltf(path.string());
+    if (auto mat = ModelLoader::LoadGltfMaterial(path.string())) {
+      mat->SetShader(AssetManager::Instance().GetShader("pbr"));
+      material = mat;
+    }
+  }
+
+  if (!mesh) {
+    LOG_WARN("Editor") << "Failed to load model: " << path;
+    return;
+  }
+
+  Entity entity = active_scene_->CreateEntity(path.stem().string());
+  auto  &transform = entity.AddComponent<Transform>();
+  entity.AddComponent<MeshComponent>(mesh, material);
+
+  // Auto-fit: scale so the longest axis is ~2 units and rest the bottom of the
+  // model's bounds on the ground grid.
+  glm::vec3 min_v(std::numeric_limits<float>::max());
+  glm::vec3 max_v(std::numeric_limits<float>::lowest());
+  for (const auto &v : mesh->GetVertices()) {
+    min_v = glm::min(min_v, v.position);
+    max_v = glm::max(max_v, v.position);
+  }
+  const glm::vec3 extent = max_v - min_v;
+  const float     max_extent = std::max({extent.x, extent.y, extent.z});
+  if (max_extent > 0.0001f) {
+    const float fit_scale = 2.0f / max_extent;
+    transform.scale       = glm::vec3(fit_scale);
+    transform.translation = -glm::vec3((min_v + max_v) * 0.5f) * fit_scale;
+    transform.translation.y = -min_v.y * fit_scale;  // sit on the grid
+  }
+
+  selected_entity_ = entity;
+}
+
+void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
+  ImGui::DockBuilderRemoveNode(dockspace_id);
+  ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+  ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
+
+  ImGuiID dock_left   = 0;
+  ImGuiID dock_right  = 0;
+  ImGuiID dock_bottom = 0;
+
+  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.18f, &dock_left, &dockspace_id);
+  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.22f, &dock_right, &dockspace_id);
+  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Down, 0.25f, &dock_bottom, &dockspace_id);
+
+  ImGui::DockBuilderDockWindow("Scene", dock_left);
+  ImGui::DockBuilderDockWindow("Content Browser", dock_bottom);
+  ImGui::DockBuilderDockWindow("Log", dock_bottom);
+  ImGui::DockBuilderDockWindow("Viewport", dockspace_id);
+  ImGui::DockBuilderDockWindow("Properties", dock_right);
+  ImGui::DockBuilderDockWindow("Lighting", dock_right);
+  ImGui::DockBuilderDockWindow("Information", dock_right);
+
+  ImGui::DockBuilderFinish(dockspace_id);
 }
 
 void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {

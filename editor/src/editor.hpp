@@ -73,7 +73,19 @@ class Editor : public Application {
 
   ImGuizmo::OPERATION gizmo_operation_ = ImGuizmo::TRANSLATE;
 
+  bool show_content_browser_ = true;
+  bool show_scene_           = true;
+  bool show_viewport_        = true;
+  bool show_properties_      = true;
+  bool show_lighting_        = true;
+  bool show_log_             = true;
+  bool show_information_     = true;
+
+  ImGuiID dockspace_id_ = 0;
+
   void CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh);
+  void CreateModelEntity(const std::filesystem::path &path);
+  void ApplyDefaultLayout(ImGuiID dockspace_id);
   void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
 };
 
