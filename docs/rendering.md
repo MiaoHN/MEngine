@@ -172,6 +172,16 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - 资源：`sandbox/res/textures/skybox/`（learnopengl.com 6 面天空盒，LDR JPEG）。
 - 已知限制：无 HDR（`.hdr`）加载、无 GGX 预过滤镜面卷积、irradiance 为均匀半球采样；`Skybox` 为 OpenGL 专属。
 
+## HDR 环境 + 预过滤镜面 IBL（M4c 新增）
+
+- `Skybox` 改为从等距柱状 HDR 加载：`stbi_loadf` 读入浮点 HDR → `GL_RGBA16F` 2D 纹理 → `equirect_to_cube_frag.glsl` 转成 512×512 环境立方体贴图（`GenerateEnvironment`）。
+- 预过滤镜面卷积（`GeneratePrefilter` + `prefilter_frag.glsl`）：Hammersley 低差异序列 + GGX 重要性采样，把环境立方体贴图烘焙为 128×128、5 级 mip 的 prefiltered cubemap，每级 mip 对应一个粗糙度（0 / 0.25 / 0.5 / 0.75 / 1.0）。
+- PBR shader 镜面 IBL 改为 `textureLod(prefiltered_map, R, roughness * max_prefilter_mip)`。
+- `Renderer::DrawMesh` 绑定 `irradiance_map`（slot 5）+ `prefiltered_map`（slot 6）。
+- 新增 shader：`equirect_to_cube_frag.glsl`、`prefilter_frag.glsl`。
+- 资源：`res/textures/hdr/kloppenheim_06_puresky_1k.hdr`（Poly Haven CC0）。
+- 已知限制：无预积分 BRDF LUT（镜面能量略偏）；`Skybox` 为 OpenGL 专属。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：

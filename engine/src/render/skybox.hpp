@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <string>
 
 #include "core/common.hpp"
@@ -13,14 +12,14 @@ class Shader;
 /**
  * @brief Skybox + image-based lighting (IBL) environment.
  *
- * Loads a cubemap from six faces, precomputes an irradiance cubemap for
- * diffuse IBL, renders the skybox as a background, and exposes the environment
- * / irradiance cubemaps to the PBR shader. OpenGL-specific for now.
+ * Loads an equirectangular HDR environment, converts it to a cubemap, and
+ * precomputes an irradiance cubemap (diffuse IBL) and a prefiltered cubemap
+ * (specular IBL with per-roughness mip levels). Also renders the environment
+ * as the scene background. OpenGL-specific for now.
  */
 class Skybox {
  public:
-  /// Face order: +X, -X, +Y, -Y, +Z, -Z (right, left, top, bottom, front, back).
-  Skybox(const std::array<std::string, 6> &faces, int face_size = 1024);
+  Skybox(const std::string &hdr_path, int env_size = 512, int irradiance_size = 32, int prefilter_size = 128);
   ~Skybox();
 
   Skybox(const Skybox &)            = delete;
@@ -31,23 +30,33 @@ class Skybox {
 
   void BindEnvironment(unsigned int slot) const;
   void BindIrradiance(unsigned int slot) const;
+  void BindPrefilter(unsigned int slot) const;
 
-  [[nodiscard]] float GetMaxMipLevel() const { return max_mip_level_; }
+  /// @brief Highest valid mip level of the prefiltered cubemap (0..max).
+  [[nodiscard]] float GetMaxPrefilterMip() const { return static_cast<float>(prefilter_mip_levels_ - 1); }
 
  private:
+  void GenerateEnvironment();
   void GenerateIrradiance();
+  void GeneratePrefilter();
   void RenderCube() const;
 
   unsigned int env_cubemap_        = 0;
   unsigned int irradiance_cubemap_ = 0;
+  unsigned int prefilter_cubemap_  = 0;
+  unsigned int equirect_texture_   = 0;
   unsigned int capture_fbo_        = 0;
   unsigned int capture_rbo_        = 0;
 
-  int   irradiance_size_ = 32;
-  float max_mip_level_   = 0.0f;
+  int env_size_             = 512;
+  int irradiance_size_      = 32;
+  int prefilter_size_       = 128;
+  int prefilter_mip_levels_ = 5;
 
   Ref<Shader> skybox_shader_;
   Ref<Shader> irradiance_shader_;
+  Ref<Shader> prefilter_shader_;
+  Ref<Shader> equirect_shader_;
   Ref<Mesh>   cube_;
 };
 

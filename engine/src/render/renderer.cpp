@@ -73,10 +73,8 @@ Renderer::Renderer() {
   // HDR + bloom post-processing (auto-sizes to the window).
   post_processing_ = CreateRef<PostProcessing>(0, 0);
 
-  // Skybox + IBL environment.
-  skybox_ = CreateRef<Skybox>(std::array<std::string, 6>{
-      "res/textures/skybox/right.jpg", "res/textures/skybox/left.jpg", "res/textures/skybox/top.jpg",
-      "res/textures/skybox/bottom.jpg", "res/textures/skybox/front.jpg", "res/textures/skybox/back.jpg"});
+  // Skybox + IBL environment (equirectangular HDR).
+  skybox_ = CreateRef<Skybox>("res/textures/hdr/kloppenheim_06_puresky_1k.hdr");
 }
 
 Renderer::~Renderer() = default;
@@ -266,12 +264,12 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   shader->SetUniform("shadow_map_size", static_cast<float>(shadow_map_->GetWidth()));
   shader->SetUniform("shadow_pcf_radius", shadow_pcf_radius_);
 
-  // IBL environment (skybox cubemap + irradiance).
-  skybox_->BindEnvironment(5);
-  skybox_->BindIrradiance(6);
-  shader->SetUniform("environment_map", 5);
-  shader->SetUniform("irradiance_map", 6);
-  shader->SetUniform("max_mip_level", skybox_->GetMaxMipLevel());
+  // IBL environment (irradiance + prefiltered specular cubemaps).
+  skybox_->BindIrradiance(5);
+  skybox_->BindPrefilter(6);
+  shader->SetUniform("irradiance_map", 5);
+  shader->SetUniform("prefiltered_map", 6);
+  shader->SetUniform("max_prefilter_mip", skybox_->GetMaxPrefilterMip());
 
   // Point lights (indexed uniform arrays, capped to the shader's MAX).
   constexpr int kMaxPointLights = 8;

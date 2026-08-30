@@ -192,6 +192,28 @@
 - irradiance 卷积为半球均匀采样，无 cos 加权重要性采样。
 - `Skybox` 为 OpenGL 专属。
 
+### M4c — HDR 环境贴图 + 预过滤镜面 IBL ✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add hdr environment and prefiltered specular ibl`
+
+**新增能力：**
+- `Skybox` 改为从等距柱状（equirectangular）HDR 环境图加载（`stbi_loadf` → `GL_RGBA16F` 2D 纹理），用 `equirect_to_cube_frag.glsl` 转成 512×512 环境立方体贴图。
+- 预过滤镜面卷积（`prefilter_frag.glsl`）：用 Hammersley 低差异序列 + GGX 重要性采样，把环境立方体贴图烘焙为 128×128、5 级 mip 的 prefiltered cubemap（每级对应一个粗糙度）。
+- PBR shader 镜面 IBL 改为 `textureLod(prefiltered_map, R, roughness * max_prefilter_mip)`，粗糙度 → mip 精确对应预过滤结果。
+- `Renderer::DrawMesh` 绑定 `irradiance_map`（slot 5）+ `prefiltered_map`（slot 6），上传 `max_prefilter_mip`。
+- 资源：`sandbox/res/textures/hdr/kloppenheim_06_puresky_1k.hdr`（Poly Haven CC0，同样放于 editor）。
+- 新增 shader：`equirect_to_cube_frag.glsl`、`prefilter_frag.glsl`。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（HDR 背景 + 金属模型镜面反射更真实）。
+
+**已知限制：**
+- 预过滤为 GGX 重要性采样（无预积分 BRDF LUT），镜面边缘仍略有能量偏差。
+- `Skybox` 为 OpenGL 专属。
+- 未实现 SSAO / 体积光 / TAA（后续里程碑）。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
@@ -203,7 +225,8 @@
 - [x] M3d：软阴影（PCF）、点光源阴影（cube shadow map）、聚光
 - [x] M4a：HDR 帧缓冲 + Bloom + ACES tone mapping
 - [x] M4b：天空盒 + IBL（环境反射）
-- [ ] M4c：HDR 环境贴图（`.hdr`）、预过滤镜面卷积、SSAO、体积光、TAA/降噪
+- [x] M4c：HDR 环境贴图（`.hdr`）+ 预过滤镜面 IBL
+- [ ] M4d：SSAO、体积光、TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [ ] 补全 Vulkan 资源后端
 
