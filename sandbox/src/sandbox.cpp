@@ -19,8 +19,9 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
     model_ = active_scene_->CreateEntity("Duck");
     auto &transform = model_.AddComponent<Transform>();
 
-    // Auto-frame: center the model at the origin and move the camera back so
-    // the whole model fits the view.
+    // Auto-frame: center the model at the origin and normalize its size, so
+    // models authored at arbitrary scales (e.g. duck.glb is ~165 units wide)
+    // still fit the view and the fixed near/far planes.
     glm::vec3 min(std::numeric_limits<float>::max());
     glm::vec3 max(std::numeric_limits<float>::lowest());
     for (const auto &vertex : model_mesh_->GetVertices()) {
@@ -29,11 +30,13 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
     }
     const glm::vec3 center = (min + max) * 0.5f;
     const float     radius = glm::length(max - min) * 0.5f;
+    const float     scale  = (radius > 1e-6f) ? (1.0f / radius) : 1.0f;
 
-    transform.translation = -center;
+    transform.scale       = glm::vec3(scale);
+    transform.translation = -center * scale;
 
     const float half_fov = glm::radians(camera_.GetFov()) * 0.5f;
-    const float distance = (radius / std::tan(half_fov)) * 1.2f + 1.0f;
+    const float distance = (1.0f / std::tan(half_fov)) * 1.2f + 1.0f;
     camera_.SetPosition(glm::vec3(0.0f, 0.0f, distance));
     camera_.LookAt(glm::vec3(0.0f, 0.0f, 0.0f));
 
