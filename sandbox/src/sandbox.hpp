@@ -15,6 +15,7 @@
 #include "render/frame_buffer.hpp"
 #include "render/mesh.hpp"
 #include "render/shader.hpp"
+#include "render/texture.hpp"
 #include "scene/camera.hpp"
 #include "scene/entity.hpp"
 #include "scene/perspective_camera.hpp"
@@ -34,14 +35,12 @@ class Sandbox : public Application {
  private:
   std::shared_ptr<Scene> active_scene_;
 
-  Entity      rotating_cube_;
-  Ref<Mesh>   cube_mesh_;
-
-  Entity      rotating_sphere_;
-  Ref<Mesh>   sphere_mesh_;
+  Entity       backpack_;
+  Ref<Mesh>    backpack_mesh_;
+  Ref<Texture> backpack_texture_;
 
   Ref<Shader> lit_shader_;
 
   PerspectiveCamera camera_;
-  float             rotation_speed_ = 45.0f;
+  float             rotation_speed_ = 30.0f;
 };
