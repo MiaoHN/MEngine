@@ -8,7 +8,7 @@ uniform vec2  light_pos;  // light source in screen space [0,1]
 uniform float decay   = 0.97;
 uniform float density = 0.6;
 uniform float weight  = 0.04;
-uniform int   samples = 80;
+uniform int   samples = 40;
 
 void main() {
   vec2 tex_coord = uv;

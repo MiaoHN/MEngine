@@ -65,7 +65,7 @@ Renderer::Renderer() {
   // Omnidirectional (point light) shadow maps + depth shader.
   point_light_shadow_maps_.reserve(kMaxPointShadows);
   for (int i = 0; i < kMaxPointShadows; ++i) {
-    point_light_shadow_maps_.push_back(CreateRef<CubeShadowMap>(1024));
+    point_light_shadow_maps_.push_back(CreateRef<CubeShadowMap>(512));
   }
   point_light_depth_shader_ = AssetManager::Instance().GetShader("point_shadow_depth");
 
@@ -329,6 +329,8 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   ssao_->BindTexture(7);
   shader->SetUniform("ssao_map", 7);
   shader->SetUniform("ssao_enabled", ssao_enabled_ ? 1 : 0);
+  shader->SetUniform("viewport_size",
+                     glm::vec2(static_cast<float>(ssao_->GetWidth()), static_cast<float>(ssao_->GetHeight())));
 
   // Point lights (indexed uniform arrays, capped to the shader's MAX).
   constexpr int kMaxPointLights = 8;

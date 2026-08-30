@@ -13,7 +13,7 @@ uniform vec2  noise_scale;
 uniform float radius;
 uniform float bias;
 
-const int SAMPLE_COUNT = 64;
+const int SAMPLE_COUNT = 32;
 
 void main() {
   vec3 frag_pos = texture(g_position, uv).xyz;

@@ -39,6 +39,10 @@ class SSAO {
   /// Binds the (blurred) SSAO texture to the given texture unit.
   void BindTexture(unsigned int slot) const;
 
+  /// @brief Full-resolution size (used by the PBR shader to sample SSAO).
+  [[nodiscard]] int GetWidth() const { return width_; }
+  [[nodiscard]] int GetHeight() const { return height_; }
+
   void SetRadius(float radius) { radius_ = radius; }
   void SetBias(float bias) { bias_ = bias; }
 
@@ -62,6 +66,11 @@ class SSAO {
 
   int width_  = 0;
   int height_ = 0;
+
+  // SSAO runs at half resolution; the box blur smooths the result back out.
+  int ssao_width_  = 0;
+  int ssao_height_ = 0;
+  int sample_count_ = 32;
 
   float radius_ = 0.5f;
   float bias_   = 0.025f;
