@@ -26,6 +26,7 @@ uniform vec3 light_color = vec3(2.5);
 
 uniform sampler2D shadow_map;
 uniform mat4      light_view_proj;
+uniform float     shadow_map_size = 2048.0;
 
 uniform samplerCube environment_map;
 uniform samplerCube irradiance_map;
@@ -37,6 +38,19 @@ uniform vec3  point_light_positions[MAX_POINT_LIGHTS];
 uniform vec3  point_light_colors[MAX_POINT_LIGHTS];
 uniform float point_light_intensities[MAX_POINT_LIGHTS];
 uniform float point_light_radii[MAX_POINT_LIGHTS];
+uniform samplerCube point_light_shadow_maps[MAX_POINT_LIGHTS];
+uniform int   point_light_has_shadow[MAX_POINT_LIGHTS];
+uniform float point_light_far_planes[MAX_POINT_LIGHTS];
+
+#define MAX_SPOT_LIGHTS 4
+uniform int   spot_light_count = 0;
+uniform vec3  spot_light_positions[MAX_SPOT_LIGHTS];
+uniform vec3  spot_light_directions[MAX_SPOT_LIGHTS];
+uniform vec3  spot_light_colors[MAX_SPOT_LIGHTS];
+uniform float spot_light_intensities[MAX_SPOT_LIGHTS];
+uniform float spot_light_ranges[MAX_SPOT_LIGHTS];
+uniform float spot_light_cutoffs[MAX_SPOT_LIGHTS];
+uniform float spot_light_outer_cutoffs[MAX_SPOT_LIGHTS];
 
 const float PI = 3.14159265359;
 
@@ -75,9 +89,27 @@ float ShadowCalculation(vec3 frag_pos_world, vec3 N, vec3 L) {
   if (proj.z > 1.0) {
     return 1.0;
   }
-  float closest = texture(shadow_map, proj.xy).r;
   float current = proj.z;
   float bias    = max(0.002 * (1.0 - dot(N, L)), 0.0005);
+
+  // Percentage-closer filtering: average 3x3 taps to soften the shadow edge.
+  vec2  texel  = 1.0 / vec2(shadow_map_size);
+  float shadow = 0.0;
+  for (int x = -1; x <= 1; ++x) {
+    for (int y = -1; y <= 1; ++y) {
+      float closest = texture(shadow_map, proj.xy + vec2(x, y) * texel).r;
+      shadow += (current - bias > closest) ? 0.0 : 1.0;
+    }
+  }
+  return shadow / 9.0;
+}
+
+float PointShadowCalculation(int light_index, vec3 light_pos, vec3 N, vec3 L) {
+  vec3  frag_to_light = FragPos - light_pos;
+  float current       = length(frag_to_light);
+  float closest       = texture(point_light_shadow_maps[light_index], frag_to_light).r *
+                  point_light_far_planes[light_index];
+  float bias = max(0.05 * (1.0 - dot(N, L)), 0.005);
   return (current - bias > closest) ? 0.0 : 1.0;
 }
 
@@ -104,6 +136,37 @@ vec3 PointLightContribution(vec3 light_pos, vec3 light_color, float intensity, f
 
   float NdotL    = max(dot(N, L), 0.0);
   vec3  radiance = light_color * intensity * attenuation;
+  return (kD * albedo / PI + specular) * radiance * NdotL;
+}
+
+vec3 SpotLightContribution(vec3 light_pos, vec3 light_dir, vec3 light_color, float intensity, float range,
+                           float cutoff, float outer_cutoff, vec3 N, vec3 V, vec3 albedo, float metallic,
+                           float roughness, vec3 F0) {
+  vec3  L        = light_pos - FragPos;
+  float distance = length(L);
+  L             = normalize(L);
+
+  float attenuation = clamp(1.0 - pow(distance / range, 4.0), 0.0, 1.0);
+  attenuation *= attenuation;
+  attenuation /= max(distance * distance, 0.001);
+
+  float theta          = dot(-L, normalize(light_dir));
+  float epsilon        = cutoff - outer_cutoff;
+  float intensity_spot = clamp((theta - outer_cutoff) / max(epsilon, 0.0001), 0.0, 1.0);
+
+  vec3  H   = normalize(V + L);
+  float NDF = DistributionGGX(N, H, roughness);
+  float G   = GeometrySmith(N, V, L, roughness);
+  vec3  F   = FresnelSchlick(max(dot(H, V), 0.0), F0);
+
+  vec3  kS          = F;
+  vec3  kD          = (1.0 - kS) * (1.0 - metallic);
+  vec3  numerator   = NDF * G * F;
+  float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+  vec3  specular    = numerator / denominator;
+
+  float NdotL    = max(dot(N, L), 0.0);
+  vec3  radiance = light_color * intensity * attenuation * intensity_spot;
   return (kD * albedo / PI + specular) * radiance * NdotL;
 }
 
@@ -167,8 +230,19 @@ void main() {
 
   vec3 color = ambient + direct;
   for (int i = 0; i < point_light_count && i < MAX_POINT_LIGHTS; ++i) {
-    color += PointLightContribution(point_light_positions[i], point_light_colors[i], point_light_intensities[i],
-                                    point_light_radii[i], N, V, albedo, metallic, roughness, F0);
+    vec3 contribution = PointLightContribution(point_light_positions[i], point_light_colors[i],
+                                               point_light_intensities[i], point_light_radii[i], N, V, albedo,
+                                               metallic, roughness, F0);
+    if (point_light_has_shadow[i] == 1) {
+      vec3 L_pl = normalize(point_light_positions[i] - FragPos);
+      contribution *= PointShadowCalculation(i, point_light_positions[i], N, L_pl);
+    }
+    color += contribution;
+  }
+  for (int i = 0; i < spot_light_count && i < MAX_SPOT_LIGHTS; ++i) {
+    color += SpotLightContribution(spot_light_positions[i], spot_light_directions[i], spot_light_colors[i],
+                                   spot_light_intensities[i], spot_light_ranges[i], spot_light_cutoffs[i],
+                                   spot_light_outer_cutoffs[i], N, V, albedo, metallic, roughness, F0);
   }
   // HDR linear output; tone mapping + gamma happen in the post-process pass.
   FragColor = vec4(color, 1.0);

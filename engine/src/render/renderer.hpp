@@ -25,6 +25,7 @@ class Material;
 class PostProcessing;
 class Shader;
 class ShadowMap;
+class CubeShadowMap;
 class Skybox;
 class Texture;
 
@@ -43,6 +44,15 @@ class Renderer {
   /// @brief Ends the shadow pass and restores the default framebuffer.
   void EndShadowPass() const;
 
+  /// @brief Begins the cube shadow pass for a shadow-casting point light.
+  void BeginPointShadowPass(int light_index, const glm::vec3 &light_pos, float far_plane) const;
+  /// @brief Attaches + clears one cube face and sets its light-space matrix.
+  void BindPointShadowFace(int light_index, int face, const glm::mat4 &light_space_matrix) const;
+  /// @brief Renders a mesh into the current point shadow face.
+  void DrawMeshPointShadow(const Ref<Mesh> &mesh, const glm::mat4 &model) const;
+  /// @brief Ends the point shadow pass.
+  void EndPointShadowPass(int light_index) const;
+
   /// @brief Draw a 3D mesh with the given PBR material (shadowed by the light).
   void DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
                 const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const;
@@ -53,6 +63,18 @@ class Renderer {
 
   void AddPointLight(const PointLight &light) { point_lights_.push_back(light); }
   void ClearPointLights() { point_lights_.clear(); }
+  [[nodiscard]] const std::vector<PointLight> &GetPointLights() const { return point_lights_; }
+
+  void AddSpotLight(const SpotLight &light) { spot_lights_.push_back(light); }
+  void ClearSpotLights() { spot_lights_.clear(); }
+  [[nodiscard]] const std::vector<SpotLight> &GetSpotLights() const { return spot_lights_; }
+
+  /// @brief Maps a point light index to its cube shadow map index, or -1 when
+  /// the light does not cast a shadow (or exceeds the shadow budget).
+  [[nodiscard]] int GetPointShadowIndex(int light_index) const;
+
+  /// @brief Maximum number of point lights that can cast cube shadows.
+  static constexpr int kMaxPointShadows = 4;
 
   /// @brief Binds the HDR scene framebuffer for the main pass.
   void BeginScene() const;
@@ -76,10 +98,13 @@ class Renderer {
   Ref<Texture>        default_texture_;
   Ref<ShadowMap>      shadow_map_;
   Ref<Shader>         depth_shader_;
+  std::vector<Ref<CubeShadowMap>> point_light_shadow_maps_;
+  Ref<Shader>         point_light_depth_shader_;
   Ref<PostProcessing> post_processing_;
   Ref<Skybox>         skybox_;
   DirectionalLight    light_;
   std::vector<PointLight> point_lights_;
+  std::vector<SpotLight>  spot_lights_;
 };
 
 }  // namespace MEngine

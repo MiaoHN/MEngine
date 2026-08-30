@@ -14,6 +14,7 @@ set(SOURCE_RENDER
   src/render/gltf_loader.cpp
   src/render/renderer.cpp
   src/render/shadow_map.cpp
+  src/render/cube_shadow_map.cpp
   src/render/post_processing.cpp
   src/render/skybox.cpp
   src/render/render_pipeline.cpp

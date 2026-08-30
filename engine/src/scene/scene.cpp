@@ -97,6 +97,34 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   }
   renderer_->EndShadowPass();
 
+  // Omnidirectional (point light) shadow passes: one cube map per
+  // shadow-casting point light, rendered face by face.
+  {
+    const auto &point_lights = renderer_->GetPointLights();
+    for (size_t i = 0; i < point_lights.size(); ++i) {
+      const int shadow_index = renderer_->GetPointShadowIndex(static_cast<int>(i));
+      if (shadow_index < 0) {
+        continue;
+      }
+
+      const auto transforms = point_lights[i].GetShadowMatrices();
+      renderer_->BeginPointShadowPass(shadow_index, point_lights[i].position, point_lights[i].radius);
+      for (int face = 0; face < 6; ++face) {
+        renderer_->BindPointShadowFace(shadow_index, face, transforms[face]);
+        for (auto &entity : entities) {
+          auto &component = entity.GetComponent<MeshComponent>();
+          if (!component.mesh) {
+            continue;
+          }
+          const glm::mat4 model =
+              entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
+          renderer_->DrawMeshPointShadow(component.mesh, model);
+        }
+      }
+      renderer_->EndPointShadowPass(shadow_index);
+    }
+  }
+
   // Main pass into the HDR scene framebuffer.
   renderer_->BeginScene();
   for (auto &entity : entities) {
@@ -122,6 +150,10 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
 void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(light); }
 
 void Scene::ClearPointLights() { renderer_->ClearPointLights(); }
+
+void Scene::AddSpotLight(const SpotLight &light) { renderer_->AddSpotLight(light); }
+
+void Scene::ClearSpotLights() { renderer_->ClearSpotLights(); }
 
 const DirectionalLight &Scene::GetLight() const { return renderer_->GetLight(); }
 

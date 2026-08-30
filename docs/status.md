@@ -125,6 +125,30 @@
 - 无聚光（spot light）。
 - 光照数据每帧按索引 uniform 名上传（未用 UBO）。
 
+### M3d — 软阴影（PCF）+ 点光源阴影 + 聚光 ✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add pcf shadows point cube shadows and spot lights`
+
+**新增能力：**
+- PCF 软阴影：方向光阴影采样改为 3×3 百分比渐近滤波（`shadow_map_size` uniform），阴影边缘变柔和。
+- `CubeShadowMap`（`render/cube_shadow_map.hpp/.cpp`）：立方体深度贴图 + FBO（1024×1024，GL_DEPTH_COMPONENT），用于全方向阴影。
+- `PointLight` 新增 `casts_shadow` + `GetShadowMatrices()`（6 面 90° 透视视图投影）；点光源阴影 pass 逐面渲染场景到 cube depth map（`point_shadow_depth_{vert,frag}.glsl`，写入归一化距离 `gl_FragDepth`）。
+- PBR shader 用 `texture(point_light_shadow_maps[i], fragToLight)` 采样点光阴影，带距离 bias；最多 4 个点光投影阴影（`Renderer::kMaxPointShadows`）。
+- `SpotLight`（position/direction/range/cutoff/outer_cutoff）+ PBR shader 聚光贡献（内外锥平滑衰减）。
+- `Renderer`/`Scene` 新增 `AddSpotLight/ClearSpotLights`、`GetPointLights/GetPointShadowIndex` 与点光阴影 pass 接口。
+- sandbox：两个点光开启 `casts_shadow`，并加一盏冷白聚光灯瞄准头盔。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（软阴影 + 地面点光阴影 + 头盔聚光锥）。
+
+**已知限制：**
+- 点光阴影单次采样（无 PCF），边缘较硬。
+- 聚光无阴影（未做 spot shadow map）。
+- 点光阴影逐面重绘全场景（每盏灯 6 次绘制，最多 4 盏）。
+- `CubeShadowMap` 为 OpenGL 专属。
+
 ### M4a — HDR 帧缓冲 + Bloom 后处理 ✅
 
 **日期**：2026-08-30
@@ -176,7 +200,7 @@
 - [x] M3a：PBR 材质（metallic-roughness）+ 法线贴图
 - [x] M3b：方向光阴影映射
 - [x] M3c：多光源（点光源）
-- [ ] M3d：软阴影（PCF）、点光源阴影（cube shadow map）、聚光
+- [x] M3d：软阴影（PCF）、点光源阴影（cube shadow map）、聚光
 - [x] M4a：HDR 帧缓冲 + Bloom + ACES tone mapping
 - [x] M4b：天空盒 + IBL（环境反射）
 - [ ] M4c：HDR 环境贴图（`.hdr`）、预过滤镜面卷积、SSAO、体积光、TAA/降噪
@@ -190,3 +214,4 @@
 - `Renderer::DrawMesh` 每帧重复设置全部 uniform，后续可引入 material/UBO 批量上传。
 - `RenderContext` 与 `RenderPass` 重复抽象仍未清理。
 - `Camera2D` / `OrthographicCamera` 重叠，相机体系待统一。
+- 点光阴影逐面全量重绘、无 PCF，后续可做分层渲染/软阴影优化。

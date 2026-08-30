@@ -3,6 +3,7 @@
 #include "core/command.hpp"
 #include "render/material.hpp"
 #include "render/mesh.hpp"
+#include "render/cube_shadow_map.hpp"
 #include "render/post_processing.hpp"
 #include "render/rhi/resource_backend.hpp"
 #include "render/rhi/rhi.hpp"
@@ -60,6 +61,14 @@ Renderer::Renderer() {
   // Directional shadow map + depth-only shader.
   shadow_map_    = CreateRef<ShadowMap>(2048, 2048);
   depth_shader_  = CreateRef<Shader>("res/shaders/shadow_depth_vert.glsl", "res/shaders/shadow_depth_frag.glsl");
+
+  // Omnidirectional (point light) shadow maps + depth shader.
+  point_light_shadow_maps_.reserve(kMaxPointShadows);
+  for (int i = 0; i < kMaxPointShadows; ++i) {
+    point_light_shadow_maps_.push_back(CreateRef<CubeShadowMap>(1024));
+  }
+  point_light_depth_shader_ =
+      CreateRef<Shader>("res/shaders/point_shadow_depth_vert.glsl", "res/shaders/point_shadow_depth_frag.glsl");
 
   // HDR + bloom post-processing (auto-sizes to the window).
   post_processing_ = CreateRef<PostProcessing>(0, 0);
@@ -156,6 +165,51 @@ void Renderer::EndShadowPass() const {
   shadow_map_->Unbind();
 }
 
+int Renderer::GetPointShadowIndex(int light_index) const {
+  if (light_index < 0 || light_index >= static_cast<int>(point_lights_.size())) {
+    return -1;
+  }
+  if (!point_lights_[static_cast<size_t>(light_index)].casts_shadow) {
+    return -1;
+  }
+  int shadow_index = 0;
+  for (int i = 0; i < light_index; ++i) {
+    if (point_lights_[static_cast<size_t>(i)].casts_shadow) {
+      ++shadow_index;
+    }
+  }
+  return shadow_index < kMaxPointShadows ? shadow_index : -1;
+}
+
+void Renderer::BeginPointShadowPass(int light_index, const glm::vec3 &light_pos, float far_plane) const {
+  point_light_shadow_maps_[static_cast<size_t>(light_index)]->Bind();
+  point_light_depth_shader_->Bind();
+  point_light_depth_shader_->SetUniform("light_pos", light_pos);
+  point_light_depth_shader_->SetUniform("far_plane", far_plane);
+}
+
+void Renderer::BindPointShadowFace(int light_index, int face, const glm::mat4 &light_space_matrix) const {
+  point_light_shadow_maps_[static_cast<size_t>(light_index)]->BindFace(face);
+  point_light_depth_shader_->SetUniform("light_space_matrix", light_space_matrix);
+}
+
+void Renderer::DrawMeshPointShadow(const Ref<Mesh> &mesh, const glm::mat4 &model) const {
+  if (!mesh) {
+    return;
+  }
+  point_light_depth_shader_->SetUniform("model", model);
+  mesh->Bind();
+  if (const auto *rhi = GetActiveRHI(); rhi) {
+    rhi->DrawIndexedTriangles(mesh->GetIndexCount());
+  }
+  mesh->Unbind();
+}
+
+void Renderer::EndPointShadowPass(int light_index) const {
+  point_light_depth_shader_->Unbind();
+  point_light_shadow_maps_[static_cast<size_t>(light_index)]->Unbind();
+}
+
 void Renderer::BeginScene() const { post_processing_->BeginScene(); }
 
 void Renderer::EndScene() const { post_processing_->EndScene(); }
@@ -207,6 +261,7 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   shadow_map_->BindTexture(4);
   shader->SetUniform("shadow_map", 4);
   shader->SetUniform("light_view_proj", light_view_proj);
+  shader->SetUniform("shadow_map_size", static_cast<float>(shadow_map_->GetWidth()));
 
   // IBL environment (skybox cubemap + irradiance).
   skybox_->BindEnvironment(5);
@@ -228,6 +283,34 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
     shader->SetUniform("point_light_colors[" + index + "]", light.color);
     shader->SetUniform("point_light_intensities[" + index + "]", light.intensity);
     shader->SetUniform("point_light_radii[" + index + "]", light.radius);
+
+    const int shadow_index = GetPointShadowIndex(i);
+    const int has_shadow   = shadow_index >= 0 ? 1 : 0;
+    shader->SetUniform("point_light_has_shadow[" + index + "]", has_shadow);
+    if (has_shadow) {
+      const int slot = 7 + shadow_index;
+      point_light_shadow_maps_[static_cast<size_t>(shadow_index)]->BindTexture(slot);
+      shader->SetUniform("point_light_shadow_maps[" + index + "]", slot);
+    }
+    shader->SetUniform("point_light_far_planes[" + index + "]", light.radius);
+  }
+
+  // Spot lights (indexed uniform arrays, capped to the shader's MAX).
+  constexpr int kMaxSpotLights = 4;
+  const int     spot_light_count = static_cast<int>(spot_lights_.size()) < kMaxSpotLights
+                                        ? static_cast<int>(spot_lights_.size())
+                                        : kMaxSpotLights;
+  shader->SetUniform("spot_light_count", spot_light_count);
+  for (int i = 0; i < spot_light_count; ++i) {
+    const SpotLight  &light = spot_lights_[static_cast<size_t>(i)];
+    const std::string index = std::to_string(i);
+    shader->SetUniform("spot_light_positions[" + index + "]", light.position);
+    shader->SetUniform("spot_light_directions[" + index + "]", light.direction);
+    shader->SetUniform("spot_light_colors[" + index + "]", light.color);
+    shader->SetUniform("spot_light_intensities[" + index + "]", light.intensity);
+    shader->SetUniform("spot_light_ranges[" + index + "]", light.range);
+    shader->SetUniform("spot_light_cutoffs[" + index + "]", light.cutoff);
+    shader->SetUniform("spot_light_outer_cutoffs[" + index + "]", light.outer_cutoff);
   }
 
   mesh->Bind();

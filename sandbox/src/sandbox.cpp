@@ -62,20 +62,32 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   // Keep the directional light relatively dim so the colored point lights stand out.
   active_scene_->GetLight().color = glm::vec3(0.9f);
 
-  // Strong, saturated warm/cool point lights for clear contrast.
+  // Strong, saturated warm/cool point lights for clear contrast (both cast
+  // omnidirectional cube shadows now).
   PointLight warm;
-  warm.position  = glm::vec3(2.5f, 0.5f, 1.2f);
-  warm.color     = glm::vec3(1.0f, 0.4f, 0.1f);
-  warm.intensity = 28.0f;
-  warm.radius    = 5.0f;
+  warm.position     = glm::vec3(2.5f, 0.5f, 1.2f);
+  warm.color        = glm::vec3(1.0f, 0.4f, 0.1f);
+  warm.intensity    = 28.0f;
+  warm.radius       = 5.0f;
+  warm.casts_shadow = true;
   active_scene_->AddPointLight(warm);
 
   PointLight cool;
-  cool.position  = glm::vec3(-2.5f, 0.5f, -1.2f);
-  cool.color     = glm::vec3(0.1f, 0.4f, 1.0f);
-  cool.intensity = 28.0f;
-  cool.radius    = 5.0f;
+  cool.position     = glm::vec3(-2.5f, 0.5f, -1.2f);
+  cool.color        = glm::vec3(0.1f, 0.4f, 1.0f);
+  cool.intensity    = 28.0f;
+  cool.radius       = 5.0f;
+  cool.casts_shadow = true;
   active_scene_->AddPointLight(cool);
+
+  // A cool-white spot light aimed at the helmet from above/front.
+  SpotLight key;
+  key.position  = glm::vec3(0.0f, 3.0f, 2.5f);
+  key.direction = glm::normalize(glm::vec3(0.0f, -1.0f, -0.6f));
+  key.color     = glm::vec3(1.0f, 1.0f, 1.0f);
+  key.intensity = 30.0f;
+  key.range     = 12.0f;
+  active_scene_->AddSpotLight(key);
 
   // Post-processing tuning (exposure / bloom strength / bloom threshold).
   active_scene_->SetExposure(1.1f);

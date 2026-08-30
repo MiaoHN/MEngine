@@ -142,6 +142,16 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - PBR shader 用 uniform 数组（`point_light_positions/colors/intensities/radii`，上限 8），对每个点光源累加 Cook-Torrance 贡献（距离平方衰减 + radius 软截止）。
 - 方向光保留阴影；点光源暂不投影阴影。
 
+## 软阴影 + 点光阴影 + 聚光（M3d 新增）
+
+- **PCF 软阴影**：方向光阴影采样改为 3×3 百分比渐近滤波（`shadow_map_size` uniform），边缘柔化。
+- `CubeShadowMap`（`render/cube_shadow_map.hpp/.cpp`）：立方体深度贴图 + FBO（1024×1024），逐面附着 + 清除。
+- `PointLight` 新增 `casts_shadow` + `GetShadowMatrices()`（6 面 90° 透视视图投影）；点光阴影 pass 用 `point_shadow_depth_{vert,frag}.glsl` 写入归一化距离（`gl_FragDepth`）。
+- PBR shader 用 `texture(point_light_shadow_maps[i], fragToLight)` 采样点光阴影（带距离 bias）；`Renderer::kMaxPointShadows = 4`。
+- `SpotLight`（position/direction/range/cutoff/outer_cutoff）；PBR shader 聚光贡献（内外锥 `clamp((theta - outer) / (cutoff - outer))` 平滑衰减）。
+- 流程（`Scene::RenderMeshes`）：方向光阴影 pass → 点光 cube shadow passes（逐面） → 主 pass → 天空盒 → 后处理。
+- 已知限制：点光阴影无 PCF、聚光无阴影；`CubeShadowMap` 为 OpenGL 专属。
+
 ## HDR 与后处理（M4a 新增）
 
 - `PostProcessing`（`render/post_processing.hpp/.cpp`）：HDR 渲染目标（RGBA16F）+ bloom。

@@ -79,6 +79,9 @@ class Scene {
   void AddPointLight(const PointLight &light);
   void ClearPointLights();
 
+  void AddSpotLight(const SpotLight &light);
+  void ClearSpotLights();
+
   [[nodiscard]] const DirectionalLight &GetLight() const;
   DirectionalLight &GetLight();
   void SetLight(const DirectionalLight &light);
