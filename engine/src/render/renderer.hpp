@@ -22,6 +22,7 @@ class RenderPipeline;
 class RenderPass;
 class Mesh;
 class Material;
+class PostProcessing;
 class Shader;
 class ShadowMap;
 class Texture;
@@ -52,6 +53,13 @@ class Renderer {
   void AddPointLight(const PointLight &light) { point_lights_.push_back(light); }
   void ClearPointLights() { point_lights_.clear(); }
 
+  /// @brief Binds the HDR scene framebuffer for the main pass.
+  void BeginScene() const;
+  /// @brief Unbinds the HDR scene framebuffer.
+  void EndScene() const;
+  /// @brief Runs bloom + tone mapping to the default framebuffer.
+  void PostProcess() const;
+
   unsigned int GetFramebuffer() const;
 
  private:
@@ -60,6 +68,7 @@ class Renderer {
   Ref<Texture>        default_texture_;
   Ref<ShadowMap>      shadow_map_;
   Ref<Shader>         depth_shader_;
+  Ref<PostProcessing> post_processing_;
   DirectionalLight    light_;
   std::vector<PointLight> point_lights_;
 };

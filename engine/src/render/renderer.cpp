@@ -3,6 +3,7 @@
 #include "core/command.hpp"
 #include "render/material.hpp"
 #include "render/mesh.hpp"
+#include "render/post_processing.hpp"
 #include "render/rhi/resource_backend.hpp"
 #include "render/rhi/rhi.hpp"
 #include "render/render_pass.hpp"
@@ -58,6 +59,9 @@ Renderer::Renderer() {
   // Directional shadow map + depth-only shader.
   shadow_map_    = CreateRef<ShadowMap>(2048, 2048);
   depth_shader_  = CreateRef<Shader>("res/shaders/shadow_depth_vert.glsl", "res/shaders/shadow_depth_frag.glsl");
+
+  // HDR + bloom post-processing (auto-sizes to the window).
+  post_processing_ = CreateRef<PostProcessing>(0, 0);
 }
 
 Renderer::~Renderer() = default;
@@ -145,6 +149,12 @@ void Renderer::EndShadowPass() const {
   depth_shader_->Unbind();
   shadow_map_->Unbind();
 }
+
+void Renderer::BeginScene() const { post_processing_->BeginScene(); }
+
+void Renderer::EndScene() const { post_processing_->EndScene(); }
+
+void Renderer::PostProcess() const { post_processing_->Render(); }
 
 void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
                         const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const {

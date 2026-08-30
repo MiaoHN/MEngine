@@ -1,0 +1,145 @@
+#include "render/post_processing.hpp"
+
+#include <glad/glad.h>
+
+#include "render/shader.hpp"
+
+namespace MEngine {
+
+PostProcessing::PostProcessing(int width, int height) {
+  // When no explicit size is given, use the current (GLFW-provided) viewport,
+  // which matches the window's framebuffer size.
+  if (width <= 0 || height <= 0) {
+    int viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    width  = viewport[2];
+    height = viewport[3];
+  }
+  width_  = width;
+  height_ = height;
+  bloom_width_  = width_ / 2;
+  bloom_height_ = height_ / 2;
+
+  // HDR scene framebuffer: RGBA16F color + depth/stencil renderbuffer.
+  glGenFramebuffers(1, &scene_fbo_);
+  glGenTextures(1, &scene_texture_);
+  glBindTexture(GL_TEXTURE_2D, scene_texture_);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width_, height_, 0, GL_RGBA, GL_FLOAT, nullptr);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  glGenRenderbuffers(1, &scene_depth_);
+  glBindRenderbuffer(GL_RENDERBUFFER, scene_depth_);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width_, height_);
+
+  glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo_);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, scene_texture_, 0);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, scene_depth_);
+
+  CreateColorFramebuffer(bright_fbo_, bright_texture_, bloom_width_, bloom_height_);
+  CreateColorFramebuffer(blur_fbo_[0], blur_texture_[0], bloom_width_, bloom_height_);
+  CreateColorFramebuffer(blur_fbo_[1], blur_texture_[1], bloom_width_, bloom_height_);
+
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+  // Dummy VAO for the fullscreen triangle (core profile requires a bound VAO).
+  glGenVertexArrays(1, &fullscreen_vao_);
+
+  brightness_shader_ = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/brightness_frag.glsl");
+  blur_shader_       = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/blur_frag.glsl");
+  composite_shader_  = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/composite_frag.glsl");
+}
+
+PostProcessing::~PostProcessing() {
+  glDeleteTextures(1, &scene_texture_);
+  glDeleteRenderbuffers(1, &scene_depth_);
+  glDeleteFramebuffers(1, &scene_fbo_);
+  glDeleteTextures(1, &bright_texture_);
+  glDeleteFramebuffers(1, &bright_fbo_);
+  glDeleteTextures(2, blur_texture_);
+  glDeleteFramebuffers(2, blur_fbo_);
+  glDeleteVertexArrays(1, &fullscreen_vao_);
+}
+
+void PostProcessing::CreateColorFramebuffer(unsigned int &fbo, unsigned int &texture, int width, int height) const {
+  glGenFramebuffers(1, &fbo);
+  glGenTextures(1, &texture);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+  glDrawBuffer(GL_COLOR_ATTACHMENT0);
+  glReadBuffer(GL_COLOR_ATTACHMENT0);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void PostProcessing::BeginScene() const {
+  glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo_);
+  glViewport(0, 0, width_, height_);
+  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void PostProcessing::EndScene() const { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
+
+void PostProcessing::DrawFullscreenTriangle() const {
+  glBindVertexArray(fullscreen_vao_);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+  glBindVertexArray(0);
+}
+
+void PostProcessing::Render() const {
+  // 1. Brightness pass: scene -> bright (half res).
+  glBindFramebuffer(GL_FRAMEBUFFER, bright_fbo_);
+  glViewport(0, 0, bloom_width_, bloom_height_);
+  glClear(GL_COLOR_BUFFER_BIT);
+  brightness_shader_->Bind();
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, scene_texture_);
+  brightness_shader_->SetUniform("scene", 0);
+  DrawFullscreenTriangle();
+
+  // 2. Gaussian blur ping-pong.
+  unsigned int src = bright_texture_;
+  for (int i = 0; i < blur_passes_; ++i) {
+    const bool         horizontal = (i % 2) == 0;
+    const unsigned int target_fbo = horizontal ? blur_fbo_[0] : blur_fbo_[1];
+
+    glBindFramebuffer(GL_FRAMEBUFFER, target_fbo);
+    glViewport(0, 0, bloom_width_, bloom_height_);
+    blur_shader_->Bind();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, src);
+    blur_shader_->SetUniform("image", 0);
+    blur_shader_->SetUniform("horizontal", horizontal ? 1 : 0);
+    blur_shader_->SetUniform("texel_size", horizontal ? 1.0f / bloom_width_ : 1.0f / bloom_height_);
+    DrawFullscreenTriangle();
+
+    src = horizontal ? blur_texture_[0] : blur_texture_[1];
+  }
+
+  // 3. Composite to the default framebuffer.
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, width_, height_);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  composite_shader_->Bind();
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, scene_texture_);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, src);
+  composite_shader_->SetUniform("scene", 0);
+  composite_shader_->SetUniform("bloom", 1);
+  composite_shader_->SetUniform("exposure", exposure_);
+  composite_shader_->SetUniform("bloom_strength", bloom_strength_);
+  DrawFullscreenTriangle();
+  composite_shader_->Unbind();
+}
+
+}  // namespace MEngine

@@ -23,7 +23,6 @@ uniform float roughness_factor  = 1.0;
 uniform vec3 view_pos;
 uniform vec3 light_dir   = normalize(vec3(-0.3, -1.0, -0.4));
 uniform vec3 light_color = vec3(2.5);
-uniform float exposure   = 1.2;
 
 uniform sampler2D shadow_map;
 uniform mat4      light_view_proj;
@@ -173,11 +172,6 @@ void main() {
     color += PointLightContribution(point_light_positions[i], point_light_colors[i], point_light_intensities[i],
                                     point_light_radii[i], N, V, albedo, metallic, roughness, F0);
   }
-  color *= exposure;
-
-  // Tone mapping + gamma (LDR for now, HDR pipeline comes later).
-  color     = color / (color + vec3(1.0));
-  color     = pow(color, vec3(1.0 / 2.2));
-
+  // HDR linear output; tone mapping + gamma happen in the post-process pass.
   FragColor = vec4(color, 1.0);
 }

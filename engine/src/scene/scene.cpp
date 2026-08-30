@@ -95,6 +95,8 @@ void Scene::RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos
   }
   renderer_->EndShadowPass();
 
+  // Main pass into the HDR scene framebuffer.
+  renderer_->BeginScene();
   for (auto &entity : entities) {
     auto &component = entity.GetComponent<MeshComponent>();
     if (!component.mesh || !component.material) {
@@ -106,6 +108,10 @@ void Scene::RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos
 
     renderer_->DrawMesh(component.mesh, component.material, model, proj_view, camera_pos, light_view_proj);
   }
+  renderer_->EndScene();
+
+  // Bloom + tone mapping to the default framebuffer.
+  renderer_->PostProcess();
 }
 
 void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(light); }
