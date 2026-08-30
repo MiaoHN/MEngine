@@ -144,6 +144,30 @@
 - `PostProcessing` 为 OpenGL 专属。
 - 无 Bloom 强度/曝光运行时调节（硬编码默认值）。
 
+### M4b — 天空盒 + IBL（环境反射）✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add skybox and ibl environment lighting`
+
+**新增能力：**
+- `Skybox`（`render/skybox.hpp/.cpp`）：从 6 张 face 图像构建 GL_TEXTURE_CUBE_MAP（sRGB），生成 mipmap，背景渲染（`glDepthFunc(GL_LEQUAL)` + 去平移 view + `pos.xyww`）。
+- 辐射照度预计算：半球卷积把环境立方体贴图烘焙为 32×32 irradiance cubemap（RGBA16F），供漫反射 IBL 采样。
+- PBR shader 用 `texture(irradiance_map, N)` 做漫反射 IBL、`textureLod(environment_map, R, roughness * max_mip_level)` 做镜面 IBL（粗糙度选 mip），并新增 `FresnelSchlickRoughness`。
+- `Renderer::DrawMesh` 绑定环境/辐射照度贴图（slot 5/6）并上传 `environment_map/irradiance_map/max_mip_level`。
+- `Scene::RenderMeshes` 签名改为 `(view, proj, camera_pos)`，主 pass 后渲染天空盒背景。
+- 新 shader：`skybox_{vert,frag}.glsl`、`irradiance_frag.glsl`。
+- 资源：`sandbox/res/textures/skybox/` 与 `editor/res/textures/skybox/`（learnopengl.com 6 面天空盒）。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（背景天空盒 + 金属模型反射环境）。
+
+**已知限制：**
+- 环境贴图为 8-bit LDR（JPEG），无 HDR（`.hdr`）加载。
+- 无预过滤镜面卷积（specular 直接采样原环境 mip，无 GGX 预过滤）。
+- irradiance 卷积为半球均匀采样，无 cos 加权重要性采样。
+- `Skybox` 为 OpenGL 专属。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
@@ -154,7 +178,8 @@
 - [x] M3c：多光源（点光源）
 - [ ] M3d：软阴影（PCF）、点光源阴影（cube shadow map）、聚光
 - [x] M4a：HDR 帧缓冲 + Bloom + ACES tone mapping
-- [ ] M4b：SSAO、体积光、TAA/降噪
+- [x] M4b：天空盒 + IBL（环境反射）
+- [ ] M4c：HDR 环境贴图（`.hdr`）、预过滤镜面卷积、SSAO、体积光、TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [ ] 补全 Vulkan 资源后端
 

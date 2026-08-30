@@ -97,7 +97,7 @@ void Sandbox::OnUpdate(float dt) {
     transform.rotation.y += rotation_speed_ * dt;
   }
 
-  active_scene_->RenderMeshes(camera_.GetProjectionView(), camera_.GetPosition());
+  active_scene_->RenderMeshes(camera_.GetViewMatrix(), camera_.GetProjectionMatrix(), camera_.GetPosition());
 }
 
 Application *CreateApplication() { return new Sandbox(); }

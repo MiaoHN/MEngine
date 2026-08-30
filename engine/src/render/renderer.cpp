@@ -10,6 +10,7 @@
 #include "render/render_pipeline.hpp"
 #include "render/shader.hpp"
 #include "render/shadow_map.hpp"
+#include "render/skybox.hpp"
 #include "render/texture.hpp"
 #include "scene/component.hpp"
 #include "utils/profiler.h"
@@ -62,6 +63,11 @@ Renderer::Renderer() {
 
   // HDR + bloom post-processing (auto-sizes to the window).
   post_processing_ = CreateRef<PostProcessing>(0, 0);
+
+  // Skybox + IBL environment.
+  skybox_ = CreateRef<Skybox>(std::array<std::string, 6>{
+      "res/textures/skybox/right.jpg", "res/textures/skybox/left.jpg", "res/textures/skybox/top.jpg",
+      "res/textures/skybox/bottom.jpg", "res/textures/skybox/front.jpg", "res/textures/skybox/back.jpg"});
 }
 
 Renderer::~Renderer() = default;
@@ -156,6 +162,8 @@ void Renderer::EndScene() const { post_processing_->EndScene(); }
 
 void Renderer::PostProcess() const { post_processing_->Render(); }
 
+void Renderer::RenderSkybox(const glm::mat4 &view, const glm::mat4 &proj) const { skybox_->Render(view, proj); }
+
 void Renderer::SetExposure(float exposure) { post_processing_->SetExposure(exposure); }
 
 void Renderer::SetBloomStrength(float strength) { post_processing_->SetBloomStrength(strength); }
@@ -199,6 +207,13 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   shadow_map_->BindTexture(4);
   shader->SetUniform("shadow_map", 4);
   shader->SetUniform("light_view_proj", light_view_proj);
+
+  // IBL environment (skybox cubemap + irradiance).
+  skybox_->BindEnvironment(5);
+  skybox_->BindIrradiance(6);
+  shader->SetUniform("environment_map", 5);
+  shader->SetUniform("irradiance_map", 6);
+  shader->SetUniform("max_mip_level", skybox_->GetMaxMipLevel());
 
   // Point lights (indexed uniform arrays, capped to the shader's MAX).
   constexpr int kMaxPointLights = 8;

@@ -150,6 +150,18 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - 相关 shader：`post_vert.glsl`（全屏三角形）、`brightness_frag.glsl`、`blur_frag.glsl`（双 pass 高斯）、`composite_frag.glsl`（ACES）。
 - OpenGL 专属（同 ShadowMap），待 Vulkan 后端抽象。
 
+## 天空盒与 IBL（M4b 新增）
+
+- `Skybox`（`render/skybox.hpp/.cpp`）：从 6 张 face 图像（right/left/top/bottom/front/back）构建 `GL_TEXTURE_CUBE_MAP`（`GL_SRGB8_ALPHA8` + mipmap），计算 `max_mip_level = log2(face_size)`。
+- 背景渲染：`Render(view, proj)` 用 `glDepthFunc(GL_LEQUAL)` + `glDepthMask(GL_FALSE)`，vertex shader 中去平移（`glm::mat3(view)`）并输出 `pos.xyww`（`gl_Position = pos.xyww`）使天空盒深度落在最远端。
+- 辐射照度预计算：`GenerateIrradiance()` 用 capture FBO 依次渲染 6 个面，把环境贴图经半球卷积烘焙为 32×32 irradiance cubemap（`RGBA16F`）。
+- `Renderer::DrawMesh` 绑定环境贴图（slot 5）+ 辐射照度贴图（slot 6），上传 `environment_map/irradiance_map/max_mip_level`。
+- PBR shader IBL：漫反射 `texture(irradiance_map, N)`；镜面 `textureLod(environment_map, R, roughness * max_mip_level)`；新增 `FresnelSchlickRoughness`。
+- `Scene::RenderMeshes(view, proj, camera_pos)`：主 pass 之后调用 `RenderSkybox(view, proj)`。
+- 相关 shader：`skybox_{vert,frag}.glsl`、`irradiance_frag.glsl`。
+- 资源：`sandbox/res/textures/skybox/`（learnopengl.com 6 面天空盒，LDR JPEG）。
+- 已知限制：无 HDR（`.hdr`）加载、无 GGX 预过滤镜面卷积、irradiance 为均匀半球采样；`Skybox` 为 OpenGL 专属。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：

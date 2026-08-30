@@ -72,11 +72,13 @@ void Scene::Render(Camera2D &camera) {
   }
 }
 
-void Scene::RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos) {
+void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos) {
   auto entities = GetAllEntitiesWith<MeshComponent>();
   if (entities.empty()) {
     return;
   }
+
+  const glm::mat4 proj_view = proj * view;
 
   // Directional shadow mapping: models are normalized to a ~1 unit radius by
   // the caller, so a fixed 2-unit orthographic shadow volume covers them.
@@ -108,6 +110,9 @@ void Scene::RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos
 
     renderer_->DrawMesh(component.mesh, component.material, model, proj_view, camera_pos, light_view_proj);
   }
+
+  // Skybox background (drawn after the meshes with depth test LEQUAL).
+  renderer_->RenderSkybox(view, proj);
   renderer_->EndScene();
 
   // Bloom + tone mapping to the default framebuffer.

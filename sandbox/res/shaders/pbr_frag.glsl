@@ -27,6 +27,10 @@ uniform vec3 light_color = vec3(2.5);
 uniform sampler2D shadow_map;
 uniform mat4      light_view_proj;
 
+uniform samplerCube environment_map;
+uniform samplerCube irradiance_map;
+uniform float       max_mip_level = 10.0;
+
 #define MAX_POINT_LIGHTS 8
 uniform int   point_light_count = 0;
 uniform vec3  point_light_positions[MAX_POINT_LIGHTS];
@@ -60,15 +64,8 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0) {
   return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-// Cheap procedural environment (a vertical studio-like gradient). Real IBL via
-// an HDR cubemap should replace this later, but this already gives metals
-// something to reflect so they stop looking flat/dark.
-vec3 EnvironmentColor(vec3 dir) {
-  vec3  zenith  = vec3(0.35, 0.38, 0.45);
-  vec3  horizon = vec3(0.18, 0.18, 0.20);
-  vec3  nadir   = vec3(0.05, 0.05, 0.06);
-  float t       = clamp(dir.y, -1.0, 1.0) * 0.5 + 0.5;
-  return (t < 0.5) ? mix(nadir, horizon, t * 2.0) : mix(horizon, zenith, (t - 0.5) * 2.0);
+vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+  return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 float ShadowCalculation(vec3 frag_pos_world, vec3 N, vec3 L) {
@@ -159,13 +156,14 @@ void main() {
   vec3  direct = (kD * albedo / PI + specular) * light_color * NdotL;
   direct *= ShadowCalculation(FragPos, N, L);
 
-  // Image-based ambient approximation: diffuse irradiance from the normal,
-  // specular environment from the (roughness-blurred) reflection direction.
-  vec3 R      = normalize(reflect(-V, N));
-  R           = normalize(mix(R, N, roughness));
-  vec3 F_ibl  = FresnelSchlick(max(dot(N, V), 0.0), F0);
-  vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metallic);
-  vec3 ambient = (kD_ibl * albedo * EnvironmentColor(N) + F_ibl * EnvironmentColor(R)) * ao;
+  // Image-based lighting: diffuse from the irradiance map, specular from the
+  // prefiltered environment cubemap (roughness selects the mip level).
+  vec3 R          = reflect(-V, N);
+  vec3 F_ibl      = FresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+  vec3 kD_ibl     = (1.0 - F_ibl) * (1.0 - metallic);
+  vec3 irradiance = texture(irradiance_map, N).rgb;
+  vec3 prefiltered = textureLod(environment_map, R, roughness * max_mip_level).rgb;
+  vec3 ambient = (kD_ibl * albedo * irradiance + prefiltered * F_ibl) * ao;
 
   vec3 color = ambient + direct;
   for (int i = 0; i < point_light_count && i < MAX_POINT_LIGHTS; ++i) {

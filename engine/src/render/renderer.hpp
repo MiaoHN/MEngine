@@ -25,6 +25,7 @@ class Material;
 class PostProcessing;
 class Shader;
 class ShadowMap;
+class Skybox;
 class Texture;
 
 class Renderer {
@@ -60,6 +61,9 @@ class Renderer {
   /// @brief Runs bloom + tone mapping to the default framebuffer.
   void PostProcess() const;
 
+  /// @brief Draws the skybox background.
+  void RenderSkybox(const glm::mat4 &view, const glm::mat4 &proj) const;
+
   void SetExposure(float exposure);
   void SetBloomStrength(float strength);
   void SetBloomThreshold(float threshold);
@@ -73,6 +77,7 @@ class Renderer {
   Ref<ShadowMap>      shadow_map_;
   Ref<Shader>         depth_shader_;
   Ref<PostProcessing> post_processing_;
+  Ref<Skybox>         skybox_;
   DirectionalLight    light_;
   std::vector<PointLight> point_lights_;
 };
