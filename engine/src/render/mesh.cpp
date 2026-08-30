@@ -65,6 +65,20 @@ Ref<Mesh> Mesh::CreateCube(float size) {
   return Create(vertices, indices);
 }
 
+Ref<Mesh> Mesh::CreatePlane(float size) {
+  const float h = size * 0.5f;
+
+  const std::vector<Vertex> vertices = {
+      {{-h, 0.0f, -h}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+      {{h, 0.0f, -h}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+      {{h, 0.0f, h}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+      {{-h, 0.0f, h}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+  };
+  const std::vector<unsigned int> indices = {0, 1, 2, 2, 3, 0};
+
+  return Create(vertices, indices);
+}
+
 void MeshLibrary::Add(const std::string &name, const Ref<Mesh> &mesh) {
   if (Exists(name)) {
     LOG_WARN("MeshLibrary") << "Mesh already exists!";

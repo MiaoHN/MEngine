@@ -46,6 +46,19 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
     model_.AddComponent<MeshComponent>(model_mesh_, model_material_);
   }
 
+  // Ground plane to receive the helmet's shadow.
+  auto ground_mesh     = Mesh::CreatePlane(8.0f);
+  auto ground_material = CreateRef<Material>();
+  ground_material->SetShader(pbr_shader_);
+  ground_material->SetBaseColorFactor(glm::vec4(0.5f, 0.5f, 0.55f, 1.0f));
+  ground_material->SetRoughnessFactor(0.9f);
+  ground_material->SetMetallicFactor(0.0f);
+
+  auto ground_entity = active_scene_->CreateEntity("Ground");
+  auto &ground_transform = ground_entity.AddComponent<Transform>();
+  ground_transform.translation = glm::vec3(0.0f, -1.3f, 0.0f);
+  ground_entity.AddComponent<MeshComponent>(ground_mesh, ground_material);
+
   camera_.SetAspect(16.0f / 9.0f);
 }
 

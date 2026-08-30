@@ -36,6 +36,9 @@ class Mesh {
   /// @brief Unit cube with per-face normals and UVs, centered at origin.
   static Ref<Mesh> CreateCube(float size = 1.0f);
 
+  /// @brief Axis-aligned quad in the XZ plane (normal +Y), centered at origin.
+  static Ref<Mesh> CreatePlane(float size = 1.0f);
+
  private:
   std::unique_ptr<IVertexArrayBackend> vao_;
 
