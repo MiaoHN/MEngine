@@ -19,6 +19,7 @@ uniform int  has_ao_map                  = 0;
 uniform vec4  base_color_factor = vec4(1.0);
 uniform float metallic_factor   = 1.0;
 uniform float roughness_factor  = 1.0;
+uniform float specular_intensity = 1.0;
 
 uniform vec3 view_pos;
 uniform vec3 light_dir   = normalize(vec3(-0.3, -1.0, -0.4));
@@ -231,7 +232,7 @@ void main() {
   vec3  specular    = numerator / denominator;
 
   float NdotL  = max(dot(N, L), 0.0);
-  vec3  direct = (kD * albedo / PI + specular) * light_color * NdotL;
+  vec3  direct = (kD * albedo / PI + specular * specular_intensity) * light_color * NdotL;
   direct *= ShadowCalculation(FragPos, N, L);
 
   // Image-based lighting: diffuse from the irradiance map, specular from the
@@ -242,7 +243,7 @@ void main() {
   vec3 irradiance = texture(irradiance_map, N).rgb;
   vec3 prefiltered = textureLod(prefiltered_map, R, roughness * max_prefilter_mip).rgb;
   float ssao = ssao_enabled == 1 ? texture(ssao_map, gl_FragCoord.xy / viewport_size).r : 1.0;
-  vec3 ambient = (kD_ibl * albedo * irradiance + prefiltered * F_ibl) * ao * ibl_intensity * ssao;
+  vec3 ambient = (kD_ibl * albedo * irradiance + prefiltered * F_ibl * specular_intensity) * ao * ibl_intensity * ssao;
 
   vec3 color = ambient + direct;
   for (int i = 0; i < point_light_count && i < MAX_POINT_LIGHTS; ++i) {

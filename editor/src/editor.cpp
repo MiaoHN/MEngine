@@ -16,6 +16,7 @@ Ref<Material> CreateDefaultMaterial() {
   material->SetBaseColorFactor(glm::vec4(0.8f, 0.8f, 0.8f, 1.0f));
   material->SetMetallicFactor(0.0f);
   material->SetRoughnessFactor(0.8f);
+  material->SetSpecularFactor(0.5f);
   return material;
 }
 
@@ -171,6 +172,20 @@ void Editor::OnUpdate(float dt) {
   frame_buffer_->Unbind();
 
   BeginImGui();
+
+  // Editor shortcuts (ignored while typing in a text field).
+  if (!ImGui::GetIO().WantTextInput) {
+    if (ImGui::IsKeyPressed(ImGuiKey_W)) gizmo_operation_ = ImGuizmo::TRANSLATE;
+    if (ImGui::IsKeyPressed(ImGuiKey_E)) gizmo_operation_ = ImGuizmo::ROTATE;
+    if (ImGui::IsKeyPressed(ImGuiKey_R)) gizmo_operation_ = ImGuizmo::SCALE;
+    if (ImGui::IsKeyPressed(ImGuiKey_F) && selected_entity_.GetHandle() != entt::null &&
+        selected_entity_.HasComponent<Transform>()) {
+      editor_camera_.target = selected_entity_.GetComponent<Transform>().translation;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_D) && ImGui::GetIO().KeyCtrl) {
+      DuplicateSelectedEntity();
+    }
+  }
 
   bool open = false;
   if (ImGui::BeginMenuBar()) {
@@ -433,6 +448,12 @@ void Editor::ShowImGuiScene() {
     }
   }
 
+  ImGui::SameLine();
+
+  if (ImGui::Button("Duplicate")) {
+    DuplicateSelectedEntity();
+  }
+
   for (auto &entity : active_scene_->GetAllEntities()) {
     if (entity == grid_entity_) {
       continue;
@@ -628,6 +649,11 @@ void Editor::ShowImGuiProperties() {
         if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f)) {
           material->SetRoughnessFactor(roughness);
         }
+
+        float specular = material->GetSpecularFactor();
+        if (ImGui::SliderFloat("Specular", &specular, 0.0f, 1.0f)) {
+          material->SetSpecularFactor(specular);
+        }
       }
     });
 
@@ -802,6 +828,7 @@ void Editor::CreateModelEntity(const std::filesystem::path &path) {
   material->SetBaseColorFactor(glm::vec4(1.0f));
   material->SetMetallicFactor(0.0f);
   material->SetRoughnessFactor(1.0f);
+  material->SetSpecularFactor(0.3f);  // fabric: keep reflections low
 
   if (ext == ".obj") {
     mesh = ModelLoader::LoadObj(path.string());
@@ -843,6 +870,28 @@ void Editor::CreateModelEntity(const std::filesystem::path &path) {
   }
 
   selected_entity_ = entity;
+}
+
+void Editor::DuplicateSelectedEntity() {
+  if (selected_entity_.GetHandle() == entt::null || selected_entity_ == grid_entity_) {
+    return;
+  }
+
+  Entity source = selected_entity_;
+
+  Entity duplicate = active_scene_->CreateEntity(source.GetComponent<Tag>().tag + " (Copy)");
+  if (source.HasComponent<Transform>()) {
+    duplicate.AddComponent<Transform>(source.GetComponent<Transform>());
+  }
+  if (source.HasComponent<MeshComponent>()) {
+    auto &mesh = source.GetComponent<MeshComponent>();
+    duplicate.AddComponent<MeshComponent>(mesh.mesh, mesh.material);
+  }
+  if (source.HasComponent<CameraComponent>()) {
+    duplicate.AddComponent<CameraComponent>(source.GetComponent<CameraComponent>());
+  }
+
+  selected_entity_ = duplicate;
 }
 
 void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {

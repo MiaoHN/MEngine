@@ -36,10 +36,12 @@ class Material {
   void SetBaseColorFactor(const glm::vec4 &factor) { base_color_factor_ = factor; }
   void SetMetallicFactor(float factor) { metallic_factor_ = factor; }
   void SetRoughnessFactor(float factor) { roughness_factor_ = factor; }
+  void SetSpecularFactor(float factor) { specular_factor_ = factor; }
 
   [[nodiscard]] const glm::vec4 &GetBaseColorFactor() const { return base_color_factor_; }
   [[nodiscard]] float GetMetallicFactor() const { return metallic_factor_; }
   [[nodiscard]] float GetRoughnessFactor() const { return roughness_factor_; }
+  [[nodiscard]] float GetSpecularFactor() const { return specular_factor_; }
 
  private:
   Ref<Shader>  shader_;
@@ -51,6 +53,7 @@ class Material {
   glm::vec4 base_color_factor_{1.0f};
   float     metallic_factor_ = 1.0f;
   float     roughness_factor_ = 1.0f;
+  float     specular_factor_ = 1.0f;
 };
 
 }  // namespace MEngine

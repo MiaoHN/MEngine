@@ -85,6 +85,7 @@ class Editor : public Application {
 
   void CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh);
   void CreateModelEntity(const std::filesystem::path &path);
+  void DuplicateSelectedEntity();
   void ApplyDefaultLayout(ImGuiID dockspace_id);
   void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
 };

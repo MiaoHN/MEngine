@@ -309,6 +309,7 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   shader->SetUniform("base_color_factor", material->GetBaseColorFactor());
   shader->SetUniform("metallic_factor", material->GetMetallicFactor());
   shader->SetUniform("roughness_factor", material->GetRoughnessFactor());
+  shader->SetUniform("specular_intensity", material->GetSpecularFactor());
 
   shader->SetUniform("model", model);
   shader->SetUniform("proj_view", proj_view);
