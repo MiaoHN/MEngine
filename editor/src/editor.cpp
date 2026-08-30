@@ -362,6 +362,39 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
   ImGui::PopID();
 }
 
+/// @brief A single material texture slot: thumbnail + drag-drop + clear.
+static Ref<Texture> DrawTextureSlot(const char *label, Ref<Texture> current) {
+  ImGui::PushID(label);
+  ImGui::Text("%s", label);
+  ImGui::SameLine();
+
+  const ImVec2 thumb_size(56.0f, 56.0f);
+  if (current) {
+    ImGui::Image(reinterpret_cast<ImTextureID>(current->GetID()), thumb_size, ImVec2(0, 1), ImVec2(1, 0));
+  } else {
+    ImGui::Button("None", thumb_size);
+  }
+
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+      const auto                 *path = static_cast<const wchar_t *>(payload->Data);
+      const std::filesystem::path tex_path(path);
+      current = Texture::Create(tex_path.string());
+    }
+    ImGui::EndDragDropTarget();
+  }
+
+  if (current) {
+    ImGui::SameLine();
+    if (ImGui::Button("Clear")) {
+      current = nullptr;
+    }
+  }
+
+  ImGui::PopID();
+  return current;
+}
+
 template <typename T>
 void Editor::DisplayAddComponentEntry(const std::string &entryName) {
   PROFILER_FUNCTION();
@@ -539,30 +572,12 @@ void Editor::ShowImGuiProperties() {
       if (component.material) {
         Material *material = component.material.get();
 
-        // Albedo texture slot: drag an image from the Content Browser onto it.
-        ImGui::Text("Albedo");
-        ImGui::SameLine();
-        const ImVec2 thumb_size(56.0f, 56.0f);
-        if (material->GetAlbedoMap()) {
-          ImGui::Image(reinterpret_cast<ImTextureID>(material->GetAlbedoMap()->GetID()), thumb_size, ImVec2(0, 1),
-                       ImVec2(1, 0));
-        } else {
-          ImGui::Button("None", thumb_size);
-        }
-        if (ImGui::BeginDragDropTarget()) {
-          if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-            const auto                 *path = static_cast<const wchar_t *>(payload->Data);
-            const std::filesystem::path tex_path(path);
-            material->SetAlbedoMap(Texture::Create(tex_path.string()));
-          }
-          ImGui::EndDragDropTarget();
-        }
-        if (material->GetAlbedoMap()) {
-          ImGui::SameLine();
-          if (ImGui::Button("Clear")) {
-            material->SetAlbedoMap(nullptr);
-          }
-        }
+        // Texture map slots: drag images from the Content Browser onto them.
+        material->SetAlbedoMap(DrawTextureSlot("Albedo", material->GetAlbedoMap()));
+        material->SetNormalMap(DrawTextureSlot("Normal", material->GetNormalMap()));
+        material->SetMetallicRoughnessMap(
+            DrawTextureSlot("Metallic-Roughness", material->GetMetallicRoughnessMap()));
+        material->SetAOMap(DrawTextureSlot("Ambient Occlusion", material->GetAOMap()));
 
         glm::vec4 base_color = material->GetBaseColorFactor();
         if (ImGui::ColorEdit4("Base Color", glm::value_ptr(base_color))) {
