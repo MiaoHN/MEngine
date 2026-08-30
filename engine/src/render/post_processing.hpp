@@ -25,8 +25,11 @@ class PostProcessing {
   void BeginScene() const;
   /// Unbinds the HDR scene framebuffer.
   void EndScene() const;
-  /// Runs god rays + bloom + tone mapping and composites to the default framebuffer.
-  void Render(const glm::vec2 &light_screen_pos) const;
+  /// Runs god rays + bloom + tone mapping and composites to `target_fbo`
+  /// (0 = default framebuffer). `target_width`/`target_height` override the
+  /// composite viewport when rendering into a custom framebuffer.
+  void Render(const glm::vec2 &light_screen_pos, unsigned int target_fbo = 0, int target_width = 0,
+              int target_height = 0) const;
 
   /// @brief Resolves the jittered scene into the TAA history buffer.
   void ResolveTAA() const;

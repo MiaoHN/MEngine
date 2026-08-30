@@ -169,7 +169,8 @@ void PostProcessing::ResolveTAA() const {
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void PostProcessing::Render(const glm::vec2 &light_screen_pos) const {
+void PostProcessing::Render(const glm::vec2 &light_screen_pos, unsigned int target_fbo, int target_width,
+                            int target_height) const {
   const unsigned int scene_color = GetSceneColorTexture();
 
   // 1. God rays: radial blur of the scene from the light source (half res).
@@ -198,9 +199,9 @@ void PostProcessing::Render(const glm::vec2 &light_screen_pos) const {
   unsigned int src = bright_texture_;
   for (int i = 0; i < blur_passes_; ++i) {
     const bool         horizontal = (i % 2) == 0;
-    const unsigned int target_fbo = horizontal ? blur_fbo_[0] : blur_fbo_[1];
+    const unsigned int blur_target = horizontal ? blur_fbo_[0] : blur_fbo_[1];
 
-    glBindFramebuffer(GL_FRAMEBUFFER, target_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, blur_target);
     glViewport(0, 0, bloom_width_, bloom_height_);
     blur_shader_->Bind();
     glActiveTexture(GL_TEXTURE0);
@@ -213,9 +214,11 @@ void PostProcessing::Render(const glm::vec2 &light_screen_pos) const {
     src = horizontal ? blur_texture_[0] : blur_texture_[1];
   }
 
-  // 4. Composite to the default framebuffer.
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  glViewport(0, 0, width_, height_);
+  // 4. Composite to the target framebuffer.
+  const int out_width  = target_width > 0 ? target_width : width_;
+  const int out_height = target_height > 0 ? target_height : height_;
+  glBindFramebuffer(GL_FRAMEBUFFER, target_fbo);
+  glViewport(0, 0, out_width, out_height);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   composite_shader_->Bind();
   glActiveTexture(GL_TEXTURE0);

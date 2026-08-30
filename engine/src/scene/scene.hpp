@@ -15,9 +15,11 @@
 #include <memory>
 #include <vector>
 
+#include "core/common.hpp"
 #include "core/logger.hpp"
 #include "render/light.hpp"
 #include "scene/camera.hpp"
+#include "scene/component.hpp"
 #include "scene/entity.hpp"
 
 namespace MEngine {
@@ -63,18 +65,22 @@ class Scene {
   void LoadScene(const std::string &path);
   void SaveScene(const std::string &path);
 
-  Ref<Camera2D> GetDefaultCameraInfo() { return default_camera_info_; }
+  Ref<Camera> GetDefaultCameraInfo() { return default_camera_info_; }
 
-  void OnUpdateEditor(Camera2D &camera);
+  void OnUpdateEditor(const Camera &camera);
 
-  void OnUpdateSimulation(float dt, Camera2D &camera);
+  void OnUpdateSimulation(float dt, const Camera &camera);
 
   void OnUpdateRuntime(float dt, int vw, int vh);
 
-  void Render(Camera2D &camera);
+  void Render(const Camera &camera);
 
   /// @brief Draw all entities with a MeshComponent using the given camera.
-  void RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos);
+  /// `target_fbo` selects the framebuffer the final composite is drawn into
+  /// (0 = default framebuffer); `target_width`/`target_height` override the
+  /// composite viewport when rendering into a custom framebuffer.
+  void RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos,
+                    unsigned int target_fbo = 0, int target_width = 0, int target_height = 0);
 
   void AddPointLight(const PointLight &light);
   void ClearPointLights();
@@ -100,7 +106,7 @@ class Scene {
 
   std::vector<Entity> entities_;
 
-  Ref<Camera2D> default_camera_info_;
+  Ref<Camera> default_camera_info_;
 
   Ref<Renderer> renderer_;
 };

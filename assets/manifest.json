@@ -13,6 +13,7 @@
     "composite":          ["shaders/post_vert.glsl", "shaders/composite_frag.glsl"],
     "god_rays":           ["shaders/post_vert.glsl", "shaders/god_rays_frag.glsl"],
     "taa":                ["shaders/post_vert.glsl", "shaders/taa_frag.glsl"],
+    "grid":               ["shaders/grid_vert.glsl", "shaders/grid_frag.glsl"],
     "ssao_geometry":      ["shaders/ssao_geometry_vert.glsl", "shaders/ssao_geometry_frag.glsl"],
     "ssao":               ["shaders/ssao_vert.glsl", "shaders/ssao_frag.glsl"],
     "ssao_blur":          ["shaders/ssao_vert.glsl", "shaders/ssao_blur_frag.glsl"]

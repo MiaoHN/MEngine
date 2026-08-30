@@ -19,7 +19,6 @@
 #include "render/texture.hpp"
 #include "scene/camera.hpp"
 #include "scene/entity.hpp"
-#include "scene/perspective_camera.hpp"
 #include "scene/scene.hpp"
 
 using namespace MEngine;
@@ -42,6 +41,6 @@ class Sandbox : public Application {
 
   Ref<Shader> pbr_shader_;
 
-  PerspectiveCamera camera_;
+  Camera camera_;
   float             rotation_speed_ = 30.0f;
 };

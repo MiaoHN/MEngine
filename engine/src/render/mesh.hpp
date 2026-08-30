@@ -39,6 +39,9 @@ class Mesh {
   /// @brief Axis-aligned quad in the XZ plane (normal +Y), centered at origin.
   static Ref<Mesh> CreatePlane(float size = 1.0f);
 
+  /// @brief UV sphere centered at origin, with `segments` rings/sectors.
+  static Ref<Mesh> CreateSphere(float radius = 0.5f, int segments = 32);
+
  private:
   std::unique_ptr<IVertexArrayBackend> vao_;
 

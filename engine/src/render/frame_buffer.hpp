@@ -30,6 +30,7 @@ class FrameBuffer {
   void Resize(int width, int height);
 
   unsigned int GetTextureId() const;
+  unsigned int GetFrameBufferId() const;
 
  private:
   std::unique_ptr<IFrameBufferBackend> backend_;

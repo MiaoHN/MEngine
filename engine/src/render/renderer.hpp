@@ -95,8 +95,9 @@ class Renderer {
   void BeginScene() const;
   /// @brief Unbinds the HDR scene framebuffer.
   void EndScene() const;
-  /// @brief Runs god rays + bloom + tone mapping to the default framebuffer.
-  void PostProcess(const glm::mat4 &view, const glm::mat4 &proj) const;
+  /// @brief Runs god rays + bloom + tone mapping to `target_fbo` (0 = default).
+  void PostProcess(const glm::mat4 &view, const glm::mat4 &proj, unsigned int target_fbo = 0,
+                   int target_width = 0, int target_height = 0) const;
 
   /// @brief Resolves the jittered scene into the TAA history buffer.
   void ResolveTAA() const;

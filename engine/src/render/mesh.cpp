@@ -1,5 +1,7 @@
 #include "render/mesh.hpp"
 
+#include <cmath>
+
 #include "core/logger.hpp"
 #include "render/rhi/resource_backend.hpp"
 
@@ -75,6 +77,51 @@ Ref<Mesh> Mesh::CreatePlane(float size) {
       {{-h, 0.0f, h}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
   };
   const std::vector<unsigned int> indices = {0, 1, 2, 2, 3, 0};
+
+  return Create(vertices, indices);
+}
+
+Ref<Mesh> Mesh::CreateSphere(float radius, int segments) {
+  constexpr float kPi = 3.14159265358979323846f;
+
+  std::vector<Vertex>         vertices;
+  std::vector<unsigned int>   indices;
+
+  const int rings   = segments;
+  const int sectors = segments * 2;
+
+  vertices.reserve(static_cast<size_t>(rings + 1) * (sectors + 1));
+  indices.reserve(static_cast<size_t>(rings) * sectors * 6);
+
+  for (int r = 0; r <= rings; ++r) {
+    const float phi        = kPi * static_cast<float>(r) / static_cast<float>(rings);  // 0 .. pi
+    const float y          = std::cos(phi);
+    const float ring_radius = std::sin(phi);
+
+    for (int s = 0; s <= sectors; ++s) {
+      const float theta = 2.0f * kPi * static_cast<float>(s) / static_cast<float>(sectors);
+      const glm::vec3 n(std::cos(theta) * ring_radius, y, std::sin(theta) * ring_radius);
+
+      vertices.push_back({n * radius, n,
+                          {static_cast<float>(s) / static_cast<float>(sectors),
+                           static_cast<float>(r) / static_cast<float>(rings)}});
+    }
+  }
+
+  for (int r = 0; r < rings; ++r) {
+    for (int s = 0; s < sectors; ++s) {
+      const unsigned int a = static_cast<unsigned int>(r * (sectors + 1) + s);
+      const unsigned int b = a + static_cast<unsigned int>(sectors) + 1;
+
+      indices.push_back(a);
+      indices.push_back(b);
+      indices.push_back(a + 1);
+
+      indices.push_back(a + 1);
+      indices.push_back(b);
+      indices.push_back(b + 1);
+    }
+  }
 
   return Create(vertices, indices);
 }

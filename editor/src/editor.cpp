@@ -1,9 +1,23 @@
 #include "editor.hpp"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "render/asset_manager.hpp"
 #include "utils/profiler.h"
+
+namespace {
+
+Ref<Material> CreateDefaultMaterial() {
+  auto material = CreateRef<Material>();
+  material->SetShader(AssetManager::Instance().GetShader("pbr"));
+  material->SetBaseColorFactor(glm::vec4(0.8f, 0.8f, 0.8f, 1.0f));
+  material->SetMetallicFactor(0.0f);
+  material->SetRoughnessFactor(0.8f);
+  return material;
+}
+
+}  // namespace
 
 Editor::Editor() = default;
 
@@ -21,12 +35,7 @@ void Editor::Initialize() {
 
   active_scene_ = std::make_shared<Scene>();
 
-  editor_camera_info_ = std::make_shared<Camera2D>(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, true);
-
-  editor_camera_info_->SetZoomLevel(100.0f);
-
   script_engine_ = std::make_shared<ScriptEngine>();
-
   script_engine_->LoadScript(AssetManager::Instance().Resolve("scripts/test.lua"));
 
   // ImGUI setup
@@ -43,9 +52,36 @@ void Editor::Initialize() {
     exit(-1);
   }
 
+  // Viewport framebuffer: match the window framebuffer on startup; it is
+  // resized to the viewport image area afterwards.
   frame_buffer_ = std::make_shared<FrameBuffer>();
+  int fb_width = 0;
+  int fb_height = 0;
+  glfwGetFramebufferSize(window_, &fb_width, &fb_height);
+  if (fb_width > 0 && fb_height > 0) {
+    frame_buffer_->Resize(fb_width, fb_height);
+    frame_buffer_->CheckStatus();
+    viewport_width_  = fb_width;
+    viewport_height_ = fb_height;
+  }
 
-  // TODO
+  editor_camera_.Reset();
+  editor_camera_.aspect = static_cast<float>(fb_width) / static_cast<float>(std::max(1, fb_height));
+
+  default_material_ = CreateDefaultMaterial();
+
+  // Ground grid: a large XZ plane with a procedural grid shader.
+  auto grid_material = CreateRef<Material>();
+  grid_material->SetShader(AssetManager::Instance().GetShader("grid"));
+  grid_entity_ = active_scene_->CreateEntity("Grid");
+  grid_entity_.AddComponent<Transform>();
+  grid_entity_.AddComponent<MeshComponent>(Mesh::CreatePlane(500.0f), grid_material);
+
+  // Starter cube so the viewport is never empty.
+  Entity cube = active_scene_->CreateEntity("Cube");
+  cube.AddComponent<Transform>(glm::vec3(0.0f, 0.5f, 0.0f));
+  cube.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateDefaultMaterial());
+
   base_directory_    = std::filesystem::current_path();
   current_directory_ = base_directory_;
   directory_icon_    = AssetManager::Instance().GetTexture("icons/DirectoryIcon.png");
@@ -54,36 +90,29 @@ void Editor::Initialize() {
 
 void Editor::OnUpdate(float dt) {
   PROFILER_FUNCTION();
+  (void)dt;
 
   if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
     glfwSetWindowShouldClose(window_, true);
   }
 
   if (viewport_resized_) {
-    editor_camera_info_->OnWindowResize(viewport_width_, viewport_height_);
-  }
-
-  frame_buffer_->Bind();
-  frame_buffer_->Clear();
-  if (viewport_resized_) {
     frame_buffer_->Resize(viewport_width_, viewport_height_);
     frame_buffer_->CheckStatus();
-    frame_buffer_->AttachTexture();
-    frame_buffer_->AttachRenderBuffer();
+    viewport_resized_ = false;
   }
 
-  switch (game_mode_) {
-    case GameMode::Edit: {
-      active_scene_->OnUpdateEditor(*editor_camera_info_);
-      break;
-    }
-    case GameMode::Play: {
-      active_scene_->OnUpdateRuntime(dt, viewport_width_, viewport_height_);
-      break;
-    }
+  // Sync the editor's point lights into the scene renderer.
+  active_scene_->ClearPointLights();
+  for (const auto &light : point_lights_) {
+    active_scene_->AddPointLight(light);
   }
 
-  frame_buffer_->Unbind();
+  // Render the 3D scene into the viewport framebuffer.
+  editor_camera_.aspect = static_cast<float>(viewport_width_) / static_cast<float>(std::max(1, viewport_height_));
+  active_scene_->RenderMeshes(editor_camera_.GetViewMatrix(), editor_camera_.GetProjectionMatrix(),
+                              editor_camera_.GetPosition(), frame_buffer_->GetFrameBufferId(), viewport_width_,
+                              viewport_height_);
 
   BeginImGui();
 
@@ -91,72 +120,16 @@ void Editor::OnUpdate(float dt) {
   if (ImGui::BeginMenuBar()) {
     if (ImGui::BeginMenu("File")) {
       ImGui::MenuItem("Open", nullptr, &open);
-
       ImGui::EndMenu();
     }
-
     ImGui::EndMenuBar();
   }
 
-  // Content Browser
-  ImGui::Begin("Content Browser");
-
-  if (current_directory_ != std::filesystem::path(base_directory_)) {
-    if (ImGui::Button("<-")) {
-      current_directory_ = current_directory_.parent_path();
-    }
-  }
-
-  static float padding       = 16.0f;
-  static float thumbnailSize = 128.0f;
-  float        cellSize      = thumbnailSize + padding;
-
-  float panelWidth  = ImGui::GetContentRegionAvail().x;
-  int   columnCount = static_cast<int>(panelWidth / cellSize);
-  if (columnCount < 1) columnCount = 1;
-
-  ImGui::Columns(columnCount, nullptr, false);
-
-  for (auto &directoryEntry : std::filesystem::directory_iterator(current_directory_)) {
-    const auto &path           = directoryEntry.path();
-    std::string filenameString = path.filename().string();
-
-    ImGui::PushID(filenameString.c_str());
-    std::shared_ptr<Texture> icon = directoryEntry.is_directory() ? directory_icon_ : file_icon_;
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    ImGui::ImageButton(reinterpret_cast<ImTextureID>(icon->GetID()), {thumbnailSize, thumbnailSize}, {0, 1}, {1, 0});
-
-    if (ImGui::BeginDragDropSource()) {
-      std::filesystem::path relativePath(path);
-      const wchar_t        *itemPath = relativePath.c_str();
-      ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", itemPath, (wcslen(itemPath) + 1) * sizeof(wchar_t));
-      ImGui::EndDragDropSource();
-    }
-
-    ImGui::PopStyleColor();
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-      if (directoryEntry.is_directory()) current_directory_ /= path.filename();
-    }
-    ImGui::TextWrapped("%s", filenameString.c_str());
-
-    ImGui::NextColumn();
-
-    ImGui::PopID();
-  }
-
-  ImGui::Columns(1);
-
-  ImGui::SliderFloat("Thumbnail Size", &thumbnailSize, 16, 512);
-  ImGui::SliderFloat("Padding", &padding, 0, 32);
-
-  // TODO: status bar
-  ImGui::End();
-
+  ShowImGuiContentBrowser();
   ShowImGuiViewport();
-
   ShowImGuiScene();
-
   ShowImGuiProperties();
+  ShowImGuiLighting();
 
   ImGui::Begin("Log");
   std::ifstream     file("MEngine.log");
@@ -166,41 +139,9 @@ void Editor::OnUpdate(float dt) {
   }
   std::string log = ss.str();
   ImGui::Text("%s", log.c_str());
-
   ImGui::End();
 
-  // print fps
-  ImGui::Begin("Information");
-  ImGui::Text("FPS: %d", GetFPS());
-  // control editor camera
-  ImGui::Text("Camera Control");
-  if (ImGui::DragFloat2("Position", glm::value_ptr(editor_camera_info_->GetPosition()), 0.1f)) {
-    editor_camera_info_->RecalculateViewMatrix();
-  }
-  if (ImGui::DragFloat("Rotation", &editor_camera_info_->GetRotation(), 0.1f)) {
-    editor_camera_info_->RecalculateViewMatrix();
-  }
-  if (ImGui::DragFloat("Zoom Level", &editor_camera_info_->GetZoomLevel(), 0.1f, 0.1f, 100.0f)) {
-    editor_camera_info_->SetProjection(-editor_camera_info_->GetAspectRatio() * editor_camera_info_->GetZoomLevel(),
-                                       editor_camera_info_->GetAspectRatio() * editor_camera_info_->GetZoomLevel(),
-                                       -editor_camera_info_->GetZoomLevel(), editor_camera_info_->GetZoomLevel());
-  }
-  if (ImGui::DragFloat("Aspect Ratio", &editor_camera_info_->GetAspectRatio(), 0.1f)) {
-    editor_camera_info_->SetProjection(-editor_camera_info_->GetAspectRatio() * editor_camera_info_->GetZoomLevel(),
-                                       editor_camera_info_->GetAspectRatio() * editor_camera_info_->GetZoomLevel(),
-                                       -editor_camera_info_->GetZoomLevel(), editor_camera_info_->GetZoomLevel());
-  }
-
-  if (ImGui::Button("Reset Camera")) {
-    editor_camera_info_->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
-    editor_camera_info_->SetRotation(0.0f);
-    editor_camera_info_->SetZoomLevel(1.0f);
-    editor_camera_info_->SetAspectRatio(static_cast<float>(viewport_width_) / viewport_height_);
-  }
-
-  ImGui::End();
-
-  ImGui::End();
+  ShowImGuiInformation();
 
   EndImGui();
 }
@@ -388,22 +329,36 @@ void Editor::ShowImGuiScene() {
   ImGui::Begin("Scene");
 
   if (ImGui::Button("Create")) {
-    active_scene_->CreateEntity();
+    ImGui::OpenPopup("CreateEntity");
+  }
+
+  if (ImGui::BeginPopup("CreateEntity")) {
+    if (ImGui::MenuItem("Empty Entity")) CreatePrimitive("Empty", nullptr);
+    if (ImGui::MenuItem("Cube")) CreatePrimitive("Cube", Mesh::CreateCube());
+    if (ImGui::MenuItem("Plane")) CreatePrimitive("Plane", Mesh::CreatePlane());
+    if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere", Mesh::CreateSphere());
+    ImGui::EndPopup();
   }
 
   ImGui::SameLine();
 
   // delete selected entity
   if (ImGui::Button("Delete")) {
-    if (selected_entity_.GetHandle() != entt::null) {
+    if (selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_) {
       active_scene_->DestroyEntity(selected_entity_);
       selected_entity_ = Entity();
     }
   }
 
-  const std::vector<Entity> &entities = active_scene_->GetAllEntities();
+  for (auto &entity : active_scene_->GetAllEntities()) {
+    if (entity == grid_entity_) {
+      continue;
+    }
 
-  for (const Entity &entity : entities) {
+    const std::string &tag = entity.GetComponent<Tag>().tag;
+    const ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen |
+                                     (entity == selected_entity_ ? ImGuiTreeNodeFlags_Selected : 0);
+    ImGui::TreeNodeEx(tag.c_str(), flags);
     if (ImGui::IsItemClicked()) {
       selected_entity_ = entity;
     }
@@ -414,37 +369,63 @@ void Editor::ShowImGuiScene() {
 
 void Editor::ShowImGuiViewport() {
   PROFILER_FUNCTION();
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
   ImGui::Begin("Viewport");
-  ImVec2         size        = ImGui::GetContentRegionAvail();
-  constexpr auto button_size = ImVec2(50, 25);
-  size.y -= button_size.y + 5;
-  if (viewport_width_ != size.x || viewport_height_ != size.y) {
-    viewport_width_   = size.x;
-    viewport_height_  = size.y;
+
+  const ImVec2 avail = ImGui::GetContentRegionAvail();
+
+  // Toolbar: gizmo operation + play/stop.
+  constexpr float toolbar_height = 26.0f;
+  ImGui::BeginChild("##ViewportToolbar", ImVec2(avail.x, toolbar_height));
+  if (ImGui::Button("Translate")) gizmo_operation_ = ImGuizmo::TRANSLATE;
+  ImGui::SameLine();
+  if (ImGui::Button("Rotate")) gizmo_operation_ = ImGuizmo::ROTATE;
+  ImGui::SameLine();
+  if (ImGui::Button("Scale")) gizmo_operation_ = ImGuizmo::SCALE;
+  ImGui::SameLine();
+  const char *play_label = game_mode_ == GameMode::Edit ? "Play" : "Stop";
+  if (ImGui::Button(play_label)) {
+    game_mode_ = game_mode_ == GameMode::Edit ? GameMode::Play : GameMode::Edit;
+  }
+  ImGui::EndChild();
+
+  const ImVec2 image_size(avail.x, std::max(1.0f, avail.y - toolbar_height - 4.0f));
+
+  // Resize the viewport framebuffer when the image area changes.
+  const int w = static_cast<int>(image_size.x);
+  const int h = static_cast<int>(image_size.y);
+  if (w != viewport_width_ || h != viewport_height_) {
+    viewport_width_   = w;
+    viewport_height_  = h;
     viewport_resized_ = true;
-    frame_buffer_->Resize(viewport_width_, viewport_height_);
-  } else {
-    viewport_resized_ = false;
   }
 
-  const ImVec2 button_pos((size.x - button_size.x) / 2, button_size.y);
-
-  ImGui::SetCursorPos(button_pos);
-
-  if (game_mode_ == GameMode::Edit) {
-    if (ImGui::Button("Play", button_size)) {
-      game_mode_ = GameMode::Play;
-    }
-  } else {
-    if (ImGui::Button("Stop", button_size)) {
-      game_mode_ = GameMode::Edit;
-    }
-  }
-
-  ImGui::Image(reinterpret_cast<void *>(static_cast<intptr_t>(frame_buffer_->GetTextureId())), size, ImVec2(0, 1),
+  ImGui::Image(reinterpret_cast<void *>(static_cast<intptr_t>(frame_buffer_->GetTextureId())), image_size, ImVec2(0, 1),
                ImVec2(1, 0));
 
+  const ImVec2 image_pos = ImGui::GetItemRectMin();
+  const ImVec2 image_area = ImGui::GetItemRectSize();
+
+  // Editor camera input (orbit / pan / zoom) while hovering the viewport.
+  const bool hovered     = ImGui::IsItemHovered();
+  const bool using_gizmo = ImGuizmo::IsUsing();
+  if (hovered && !using_gizmo) {
+    const ImGuiIO &io = ImGui::GetIO();
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+      editor_camera_.Orbit(io.MouseDelta.x, io.MouseDelta.y);
+    }
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+      editor_camera_.Pan(io.MouseDelta.x, io.MouseDelta.y);
+    }
+    if (io.MouseWheel != 0.0f) {
+      editor_camera_.Zoom(io.MouseWheel);
+    }
+  }
+
+  ShowGizmo(image_pos, image_area);
+
   ImGui::End();
+  ImGui::PopStyleVar();
 }
 
 void Editor::ShowImGuiProperties() {
@@ -468,8 +449,8 @@ void Editor::ShowImGuiProperties() {
 
     if (ImGui::BeginPopup("AddComponent")) {
       DisplayAddComponentEntry<Transform>("Transform");
-      DisplayAddComponentEntry<Sprite2D>("Sprite2D");
-      DisplayAddComponentEntry<Camera2D>("Camera2D");
+      DisplayAddComponentEntry<MeshComponent>("Mesh");
+      DisplayAddComponentEntry<CameraComponent>("Camera");
 
       ImGui::EndPopup();
     }
@@ -484,37 +465,199 @@ void Editor::ShowImGuiProperties() {
       DrawVec3Control("Scale", component.scale, 1.0f);
     });
 
-    DrawComponent<Camera2D>("Camera", selected_entity_, [](auto &component) {
-      ImGui::Checkbox("Primary", &component.primary);
-
-      DrawVec3Control("Position", component.position);
-
-      ImGui::DragFloat("Rotation", &component.rotation, 0.1f);
-
-      ImGui::DragFloat("Zoom Level", &component.zoom_level, 0.1f, 0.0f, 100.0f);
-
-      ImGui::DragFloat("Aspect Ratio", &component.aspect_ratio, 0.1f);
-    });
-
-    DrawComponent<Sprite2D>("Sprite2D", selected_entity_, [](auto &component) {
-      ImGui::ColorEdit4("Color", glm::value_ptr(component.color));
-
-      ImGui::Button("Texture", ImVec2(100.0f, 0.0f));
-      if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-          const auto                 *path = static_cast<const wchar_t *>(payload->Data);
-          const std::filesystem::path texturePath(path);
-          std::shared_ptr<Texture>    texture = Texture::Create(texturePath.string());
-          component.texture                   = texture;
-        }
-        ImGui::EndDragDropTarget();
+    DrawComponent<MeshComponent>("Mesh", selected_entity_, [](auto &component) {
+      if (component.mesh) {
+        ImGui::Text("Triangles: %d", component.mesh->GetIndexCount() / 3);
       }
 
-      ImGui::DragFloat("Tiling Factor", &component.tiling_factor, 0.1f, 0.0f, 100.0f);
+      if (component.material) {
+        Material *material = component.material.get();
+
+        glm::vec4 base_color = material->GetBaseColorFactor();
+        if (ImGui::ColorEdit4("Base Color", glm::value_ptr(base_color))) {
+          material->SetBaseColorFactor(base_color);
+        }
+
+        float metallic = material->GetMetallicFactor();
+        if (ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f)) {
+          material->SetMetallicFactor(metallic);
+        }
+
+        float roughness = material->GetRoughnessFactor();
+        if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f)) {
+          material->SetRoughnessFactor(roughness);
+        }
+      }
+    });
+
+    DrawComponent<CameraComponent>("Camera", selected_entity_, [](auto &component) {
+      ImGui::Checkbox("Primary", &component.primary);
+
+      const char *items[]   = {"Perspective", "Orthographic"};
+      int         current   = component.camera.projection_type == ProjectionType::Perspective ? 0 : 1;
+      if (ImGui::Combo("Projection", &current, items, 2)) {
+        component.camera.projection_type = current == 0 ? ProjectionType::Perspective : ProjectionType::Orthographic;
+      }
+
+      ImGui::DragFloat("FOV", &component.camera.fov_degrees, 0.5f, 1.0f, 179.0f);
+      ImGui::DragFloat("Ortho Size", &component.camera.ortho_size, 0.1f, 0.1f, 1000.0f);
+      ImGui::DragFloat("Near", &component.camera.near_plane, 0.01f, 0.001f, 1000.0f);
+      ImGui::DragFloat("Far", &component.camera.far_plane, 1.0f, 0.1f, 10000.0f);
     });
   }
 
   ImGui::End();
+}
+
+void Editor::ShowImGuiLighting() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Lighting");
+
+  DirectionalLight &dir_light = active_scene_->GetLight();
+  ImGui::Text("Directional Light");
+  DrawVec3Control("Direction", dir_light.direction);
+  ImGui::ColorEdit3("Color", glm::value_ptr(dir_light.color));
+
+  ImGui::Separator();
+  ImGui::Text("Point Lights");
+  if (ImGui::Button("Add Point Light")) {
+    PointLight light;
+    light.position    = glm::vec3(0.0f, 2.0f, 0.0f);
+    light.color       = glm::vec3(1.0f);
+    light.intensity   = 2.0f;
+    light.radius      = 6.0f;
+    light.casts_shadow = false;
+    point_lights_.push_back(light);
+  }
+
+  for (size_t i = 0; i < point_lights_.size(); ++i) {
+    PointLight    &light     = point_lights_[i];
+    const std::string label  = "Point Light " + std::to_string(i);
+    if (ImGui::CollapsingHeader(label.c_str())) {
+      DrawVec3Control("Position", light.position);
+      ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
+      ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 100.0f);
+      ImGui::DragFloat("Radius", &light.radius, 0.1f, 0.1f, 100.0f);
+      ImGui::Checkbox("Cast Shadow", &light.casts_shadow);
+      if (ImGui::Button("Remove")) {
+        point_lights_.erase(point_lights_.begin() + static_cast<std::ptrdiff_t>(i));
+        --i;
+      }
+    }
+  }
+
+  ImGui::End();
+}
+
+void Editor::ShowImGuiInformation() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Information");
+  ImGui::Text("FPS: %d", GetFPS());
+
+  ImGui::Text("Editor Camera");
+  DrawVec3Control("Target", editor_camera_.target);
+  ImGui::DragFloat("Yaw", &editor_camera_.yaw, 0.5f);
+  ImGui::DragFloat("Pitch", &editor_camera_.pitch, 0.5f, -89.0f, 89.0f);
+  ImGui::DragFloat("Distance", &editor_camera_.distance, 0.1f, 0.1f, 10000.0f);
+  ImGui::DragFloat("FOV", &editor_camera_.fov, 0.5f, 1.0f, 179.0f);
+  if (ImGui::Button("Reset Camera")) {
+    editor_camera_.Reset();
+  }
+  ImGui::End();
+}
+
+void Editor::ShowImGuiContentBrowser() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Content Browser");
+
+  if (current_directory_ != std::filesystem::path(base_directory_)) {
+    if (ImGui::Button("<-")) {
+      current_directory_ = current_directory_.parent_path();
+    }
+  }
+
+  static float padding       = 16.0f;
+  static float thumbnailSize = 128.0f;
+  float        cellSize      = thumbnailSize + padding;
+
+  float panelWidth  = ImGui::GetContentRegionAvail().x;
+  int   columnCount = static_cast<int>(panelWidth / cellSize);
+  if (columnCount < 1) columnCount = 1;
+
+  ImGui::Columns(columnCount, nullptr, false);
+
+  for (auto &directoryEntry : std::filesystem::directory_iterator(current_directory_)) {
+    const auto &path           = directoryEntry.path();
+    std::string filenameString = path.filename().string();
+
+    ImGui::PushID(filenameString.c_str());
+    std::shared_ptr<Texture> icon = directoryEntry.is_directory() ? directory_icon_ : file_icon_;
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::ImageButton(reinterpret_cast<ImTextureID>(icon->GetID()), {thumbnailSize, thumbnailSize}, {0, 1}, {1, 0});
+
+    if (ImGui::BeginDragDropSource()) {
+      std::filesystem::path relativePath(path);
+      const wchar_t        *itemPath = relativePath.c_str();
+      ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", itemPath, (wcslen(itemPath) + 1) * sizeof(wchar_t));
+      ImGui::EndDragDropSource();
+    }
+
+    ImGui::PopStyleColor();
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+      if (directoryEntry.is_directory()) current_directory_ /= path.filename();
+    }
+    ImGui::TextWrapped("%s", filenameString.c_str());
+
+    ImGui::NextColumn();
+
+    ImGui::PopID();
+  }
+
+  ImGui::Columns(1);
+
+  ImGui::SliderFloat("Thumbnail Size", &thumbnailSize, 16, 512);
+  ImGui::SliderFloat("Padding", &padding, 0, 32);
+
+  ImGui::End();
+}
+
+void Editor::CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh) {
+  Entity entity = active_scene_->CreateEntity(name);
+  entity.AddComponent<Transform>();
+
+  if (mesh) {
+    entity.AddComponent<MeshComponent>(mesh, CreateRef<Material>(*default_material_));
+    // Rest solid primitives on the ground grid.
+    entity.GetComponent<Transform>().translation.y = 0.5f;
+  }
+
+  selected_entity_ = entity;
+}
+
+void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {
+  if (selected_entity_.GetHandle() == entt::null || !selected_entity_.HasComponent<Transform>()) {
+    return;
+  }
+
+  auto      &transform = selected_entity_.GetComponent<Transform>();
+  glm::mat4 model      = transform.GetTransform();
+
+  ImGuizmo::SetDrawlist();
+  ImGuizmo::SetRect(image_pos.x, image_pos.y, image_size.x, image_size.y);
+  ImGuizmo::Manipulate(glm::value_ptr(editor_camera_.GetViewMatrix()),
+                       glm::value_ptr(editor_camera_.GetProjectionMatrix()), gizmo_operation_, ImGuizmo::LOCAL,
+                       glm::value_ptr(model));
+
+  if (ImGuizmo::IsUsing()) {
+    glm::vec3 translation;
+    glm::vec3 rotation;
+    glm::vec3 scale;
+    ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model), glm::value_ptr(translation), glm::value_ptr(rotation),
+                                          glm::value_ptr(scale));
+    transform.translation = translation;
+    transform.rotation    = rotation;  // degrees (matches Transform's convention)
+    transform.scale       = scale;
+  }
 }
 
 Application *CreateApplication() { return new Editor(); }

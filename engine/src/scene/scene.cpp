@@ -6,7 +6,12 @@
 namespace MEngine {
 
 Scene::Scene() {
-  default_camera_info_ = CreateRef<Camera2D>(-1.6f, 1.6f, -0.9f, 0.9f, 1.0f, true);
+  default_camera_info_                = CreateRef<Camera>();
+  default_camera_info_->projection_type = ProjectionType::Orthographic;
+  default_camera_info_->ortho_size      = 5.0f;
+  default_camera_info_->near_plane      = -100.0f;
+  default_camera_info_->far_plane       = 100.0f;
+  default_camera_info_->position        = glm::vec3(0.0f);
 
   renderer_ = CreateRef<Renderer>();
 }
@@ -14,46 +19,33 @@ Scene::Scene() {
 Scene::~Scene() {}
 
 void Scene::LoadScene(const std::string &path) {
+  (void)path;
   // TODO: Implement
 }
 
 void Scene::SaveScene(const std::string &path) {
+  (void)path;
   // TODO: Implement
 }
 
-void Scene::OnUpdateEditor(Camera2D &camera) { Render(camera); }
+void Scene::OnUpdateEditor(const Camera &camera) { Render(camera); }
 
-void Scene::OnUpdateSimulation(float dt, Camera2D &camera) {
+void Scene::OnUpdateSimulation(float dt, const Camera &camera) {
+  (void)dt;
   // TODO: Update scene status
   Render(camera);
 }
 
 void Scene::OnUpdateRuntime(float dt, int vw, int vh) {
+  (void)dt;
   // TODO: Implement
   bool has_primary_camera = false;
-  for (auto &entity : GetAllEntitiesWith<Camera2D>()) {
-    auto     &camera_info = entity.GetComponent<Camera2D>();
-    glm::vec3 position;
-    float     rotation;
-    if (entity.HasComponent<Sprite2D>()) {
-      auto &sprite = entity.GetComponent<Sprite2D>();
-      position     = sprite.position;
-      rotation     = sprite.rotation.z;
-    } else if (entity.HasComponent<AnimatedSprite2D>()) {
-      auto &sprite = entity.GetComponent<AnimatedSprite2D>();
-      position     = sprite.position;
-      rotation     = sprite.rotation.z;
-    } else {
-      position = glm::vec3(0.0f);
-      rotation = 0.0f;
-    }
-    if (camera_info.primary) {
+  for (auto &entity : GetAllEntitiesWith<CameraComponent>()) {
+    auto &component = entity.GetComponent<CameraComponent>();
+    if (component.primary) {
       has_primary_camera = true;
-      camera_info.SetPosition(position);
-      camera_info.SetRotation(rotation);
-      camera_info.SetProjection(-1.0f, 1.0f, -1.0f, 1.0f);
-      camera_info.SetAspectRatio((float)vw / vh);
-      Render(camera_info);
+      component.camera.SetAspect(static_cast<float>(vw) / static_cast<float>(vh));
+      Render(component.camera);
     }
   }
   if (!has_primary_camera) {
@@ -61,18 +53,20 @@ void Scene::OnUpdateRuntime(float dt, int vw, int vh) {
   }
 }
 
-void Scene::Render(Camera2D &camera) {
+void Scene::Render(const Camera &camera) {
+  const glm::mat4 proj_view = camera.GetProjectionView();
   for (auto &entity : GetAllEntitiesWith<Sprite2D>()) {
     auto &sprite = entity.GetComponent<Sprite2D>();
-    renderer_->RenderSprite(sprite, camera.GetProjectionView());
+    renderer_->RenderSprite(sprite, proj_view);
   }
   for (auto &entity : GetAllEntitiesWith<AnimatedSprite2D>()) {
     auto &sprite = entity.GetComponent<AnimatedSprite2D>();
-    renderer_->RenderSprite(sprite, camera.GetProjectionView());
+    renderer_->RenderSprite(sprite, proj_view);
   }
 }
 
-void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos) {
+void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos,
+                         unsigned int target_fbo, int target_width, int target_height) {
   auto entities = GetAllEntitiesWith<MeshComponent>();
   if (entities.empty()) {
     return;
@@ -167,8 +161,8 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   // TAA resolve blends the jittered frame with the history buffer.
   renderer_->ResolveTAA();
 
-  // Bloom + tone mapping to the default framebuffer.
-  renderer_->PostProcess(view, proj);
+  // Bloom + tone mapping to the target framebuffer.
+  renderer_->PostProcess(view, proj, target_fbo, target_width, target_height);
 }
 
 void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(light); }
