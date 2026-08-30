@@ -35,6 +35,14 @@ void Editor::Initialize() {
 
   active_scene_ = std::make_shared<Scene>();
 
+  // Tune lighting to match the sandbox's validated look: lower IBL ambient so
+  // meshes don't read as self-emissive, softer shadows, and gentler bloom.
+  active_scene_->SetIblIntensity(0.4f);
+  active_scene_->SetExposure(1.1f);
+  active_scene_->SetBloomStrength(0.015f);
+  active_scene_->SetShadowPcfRadius(4.0f);
+  active_scene_->SetGodRaysStrength(0.06f);
+
   script_engine_ = std::make_shared<ScriptEngine>();
   script_engine_->LoadScript(AssetManager::Instance().Resolve("scripts/test.lua"));
 
