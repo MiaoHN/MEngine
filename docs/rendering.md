@@ -126,6 +126,15 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - glTF 加载器新增 `ModelLoader::LoadGltfMaterial`，提取 PBR 贴图与因子。
 - 样例：`sandbox/res/models/damaged_helmet.glb`（Khronos PBR 测试模型）。
 
+## 阴影映射（M3b 新增）
+
+- `DirectionalLight`（`render/light.hpp`）：方向光（direction/color），`GetLightSpaceMatrix` 生成正交光照空间矩阵。
+- `ShadowMap`（`render/shadow_map.hpp/.cpp`）：深度贴图 + FBO（2048×2048，GL_DEPTH_COMPONENT），OpenGL 专属（待 Vulkan 后端抽象）。
+- 渲染流程（`Scene::RenderMeshes`）：
+  1. 阴影 pass：用 depth-only shader（`shadow_depth_{vert,frag}.glsl`）从光视角渲染所有网格到阴影贴图。
+  2. 主 pass：PBR shader 采样阴影贴图（`ShadowCalculation`，带 bias），对直接光乘以阴影因子。
+- `Renderer` 持有 `ShadowMap` + depth shader + `DirectionalLight`，提供 `BeginShadowPass/DrawMeshShadow/EndShadowPass`。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：

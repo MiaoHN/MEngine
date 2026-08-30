@@ -85,13 +85,34 @@
 - 无阴影映射（M3b）。
 - tone mapping 作用于 LDR，无 HDR 帧缓冲（M4）。
 
+### M3b — 方向光阴影映射 ✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add directional shadow mapping`
+
+**新增能力：**
+- `DirectionalLight` + `ShadowMap`（2048×2048 深度贴图）。
+- 阴影 pass（depth-only shader）+ 主 pass 采样阴影（bias 硬阴影）。
+- `Renderer` 新增 `BeginShadowPass/DrawMeshShadow/EndShadowPass`；`Scene::RenderMeshes` 两遍渲染。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（头盔投射阴影）。
+
+**已知限制：**
+- 仅单个方向光，无点光/聚光（多光源待 M3c）。
+- 硬阴影（无 PCF 软阴影）。
+- 阴影体固定半径 2.0（适配归一化模型）。
+- `ShadowMap` 为 OpenGL 专属，未抽象到 RHI。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
 - [x] M2b：glTF 2.0 导入（tinygltf）
 - [ ] M2c：多网格/多材质 `Model`、MeshLibrary 接入资产系统
 - [x] M3a：PBR 材质（metallic-roughness）+ 法线贴图
-- [ ] M3b：多光源 + 阴影映射
+- [x] M3b：方向光阴影映射
+- [ ] M3c：多光源（点光/聚光）+ 软阴影（PCF）
 - [ ] M4：HDR/Bloom/ToneMapping、SSAO、体积光、TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [ ] 补全 Vulkan 资源后端
