@@ -77,6 +77,11 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   cool.radius    = 5.0f;
   active_scene_->AddPointLight(cool);
 
+  // Post-processing tuning (exposure / bloom strength / bloom threshold).
+  active_scene_->SetExposure(1.1f);
+  active_scene_->SetBloomStrength(0.015f);
+  active_scene_->SetBloomThreshold(1.0f);
+
   camera_.SetAspect(16.0f / 9.0f);
 }
 

@@ -83,6 +83,10 @@ class Scene {
   DirectionalLight &GetLight();
   void SetLight(const DirectionalLight &light);
 
+  void SetExposure(float exposure);
+  void SetBloomStrength(float strength);
+  void SetBloomThreshold(float threshold);
+
  private:
   entt::registry registry_;
 

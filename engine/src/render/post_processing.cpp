@@ -104,6 +104,7 @@ void PostProcessing::Render() const {
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, scene_texture_);
   brightness_shader_->SetUniform("scene", 0);
+  brightness_shader_->SetUniform("threshold", bloom_threshold_);
   DrawFullscreenTriangle();
 
   // 2. Gaussian blur ping-pong.

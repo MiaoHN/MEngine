@@ -60,6 +60,10 @@ class Renderer {
   /// @brief Runs bloom + tone mapping to the default framebuffer.
   void PostProcess() const;
 
+  void SetExposure(float exposure);
+  void SetBloomStrength(float strength);
+  void SetBloomThreshold(float threshold);
+
   unsigned int GetFramebuffer() const;
 
  private:

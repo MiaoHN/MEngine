@@ -28,6 +28,10 @@ class PostProcessing {
   /// Runs bloom + tone mapping and composites to the default framebuffer.
   void Render() const;
 
+  void SetExposure(float exposure) { exposure_ = exposure; }
+  void SetBloomStrength(float strength) { bloom_strength_ = strength; }
+  void SetBloomThreshold(float threshold) { bloom_threshold_ = threshold; }
+
  private:
   void DrawFullscreenTriangle() const;
   void CreateColorFramebuffer(unsigned int &fbo, unsigned int &texture, int width, int height) const;
@@ -49,7 +53,8 @@ class PostProcessing {
 
   int   blur_passes_     = 8;
   float exposure_        = 1.2f;
-  float bloom_strength_  = 0.04f;
+  float bloom_strength_  = 0.02f;
+  float bloom_threshold_ = 1.0f;
 
   unsigned int fullscreen_vao_ = 0;
 

@@ -156,6 +156,12 @@ void Renderer::EndScene() const { post_processing_->EndScene(); }
 
 void Renderer::PostProcess() const { post_processing_->Render(); }
 
+void Renderer::SetExposure(float exposure) { post_processing_->SetExposure(exposure); }
+
+void Renderer::SetBloomStrength(float strength) { post_processing_->SetBloomStrength(strength); }
+
+void Renderer::SetBloomThreshold(float threshold) { post_processing_->SetBloomThreshold(threshold); }
+
 void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
                         const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const {
   PROFILER_FUNCTION();

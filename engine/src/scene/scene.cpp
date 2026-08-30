@@ -124,4 +124,10 @@ DirectionalLight &Scene::GetLight() { return renderer_->GetLight(); }
 
 void Scene::SetLight(const DirectionalLight &light) { renderer_->SetLight(light); }
 
+void Scene::SetExposure(float exposure) { renderer_->SetExposure(exposure); }
+
+void Scene::SetBloomStrength(float strength) { renderer_->SetBloomStrength(strength); }
+
+void Scene::SetBloomThreshold(float threshold) { renderer_->SetBloomThreshold(threshold); }
+
 }  // namespace MEngine
