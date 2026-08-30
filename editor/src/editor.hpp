@@ -64,6 +64,8 @@ class Editor : public Application {
   std::shared_ptr<Texture> directory_icon_;
   std::shared_ptr<Texture> file_icon_;
 
+  std::unordered_map<std::string, Ref<Texture>> thumbnail_cache_;
+
   Entity        grid_entity_;
   Ref<Material> default_material_;
 

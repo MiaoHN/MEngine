@@ -17,6 +17,14 @@ Ref<Material> CreateDefaultMaterial() {
   return material;
 }
 
+bool IsImageFile(const std::filesystem::path &path) {
+  const std::string ext = path.extension().string();
+  for (const char *e : {".png", ".jpg", ".jpeg", ".bmp", ".tga"}) {
+    if (ext == e) return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 Editor::Editor() = default;
@@ -90,7 +98,7 @@ void Editor::Initialize() {
   cube.AddComponent<Transform>(glm::vec3(0.0f, 0.5f, 0.0f));
   cube.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateDefaultMaterial());
 
-  base_directory_    = std::filesystem::current_path();
+  base_directory_    = std::filesystem::absolute(AssetManager::Instance().GetAssetRoot());
   current_directory_ = base_directory_;
   directory_icon_    = AssetManager::Instance().GetTexture("icons/DirectoryIcon.png");
   file_icon_         = AssetManager::Instance().GetTexture("icons/FileIcon.png");
@@ -489,6 +497,31 @@ void Editor::ShowImGuiProperties() {
       if (component.material) {
         Material *material = component.material.get();
 
+        // Albedo texture slot: drag an image from the Content Browser onto it.
+        ImGui::Text("Albedo");
+        ImGui::SameLine();
+        const ImVec2 thumb_size(56.0f, 56.0f);
+        if (material->GetAlbedoMap()) {
+          ImGui::Image(reinterpret_cast<ImTextureID>(material->GetAlbedoMap()->GetID()), thumb_size, ImVec2(0, 1),
+                       ImVec2(1, 0));
+        } else {
+          ImGui::Button("None", thumb_size);
+        }
+        if (ImGui::BeginDragDropTarget()) {
+          if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+            const auto                 *path = static_cast<const wchar_t *>(payload->Data);
+            const std::filesystem::path tex_path(path);
+            material->SetAlbedoMap(Texture::Create(tex_path.string()));
+          }
+          ImGui::EndDragDropTarget();
+        }
+        if (material->GetAlbedoMap()) {
+          ImGui::SameLine();
+          if (ImGui::Button("Clear")) {
+            material->SetAlbedoMap(nullptr);
+          }
+        }
+
         glm::vec4 base_color = material->GetBaseColorFactor();
         if (ImGui::ColorEdit4("Base Color", glm::value_ptr(base_color))) {
           material->SetBaseColorFactor(base_color);
@@ -608,6 +641,22 @@ void Editor::ShowImGuiContentBrowser() {
 
     ImGui::PushID(filenameString.c_str());
     std::shared_ptr<Texture> icon = directoryEntry.is_directory() ? directory_icon_ : file_icon_;
+
+    // Preview image assets with their actual content (cached by path).
+    if (!directoryEntry.is_directory() && IsImageFile(path)) {
+      const std::string key = path.string();
+      auto              it  = thumbnail_cache_.find(key);
+      if (it == thumbnail_cache_.end()) {
+        std::shared_ptr<Texture> thumb = Texture::Create(key);
+        if (thumb) {
+          it = thumbnail_cache_.emplace(key, thumb).first;
+        }
+      }
+      if (it != thumbnail_cache_.end() && it->second && it->second->GetID() != 0) {
+        icon = it->second;
+      }
+    }
+
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
     ImGui::ImageButton(reinterpret_cast<ImTextureID>(icon->GetID()), {thumbnailSize, thumbnailSize}, {0, 1}, {1, 0});
 

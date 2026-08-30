@@ -170,7 +170,7 @@ void PostProcessing::ResolveTAA() const {
 }
 
 void PostProcessing::Render(const glm::vec2 &light_screen_pos, unsigned int target_fbo, int target_width,
-                            int target_height) const {
+                            int target_height, float god_rays_scale) const {
   const unsigned int scene_color = GetSceneColorTexture();
 
   // 1. God rays: radial blur of the scene from the light source (half res).
@@ -232,7 +232,7 @@ void PostProcessing::Render(const glm::vec2 &light_screen_pos, unsigned int targ
   composite_shader_->SetUniform("god_rays", 2);
   composite_shader_->SetUniform("exposure", exposure_);
   composite_shader_->SetUniform("bloom_strength", bloom_strength_);
-  composite_shader_->SetUniform("god_rays_strength", god_rays_strength_);
+  composite_shader_->SetUniform("god_rays_strength", god_rays_strength_ * god_rays_scale);
   DrawFullscreenTriangle();
   composite_shader_->Unbind();
 }

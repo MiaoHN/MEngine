@@ -239,15 +239,20 @@ void Renderer::EndScene() const { post_processing_->EndScene(); }
 void Renderer::PostProcess(const glm::mat4 &view, const glm::mat4 &proj, unsigned int target_fbo, int target_width,
                            int target_height) const {
   // The directional light travels along `direction`, so the sun is opposite.
-  // Project it to screen space as the god-rays light source (falls back to the
-  // center when the sun is behind the camera).
+  // Project it to screen space as the god-rays light source. God rays are only
+  // meaningful when the sun is actually on screen; otherwise they would smear
+  // the scene from a fallback position.
   const glm::vec4 sun_clip = proj * view * glm::vec4(-light_.direction, 0.0f);
   glm::vec2       light_pos(0.5f, 0.5f);
+  float           god_rays_scale = 0.0f;
   if (sun_clip.w > 0.0f) {
     const glm::vec2 ndc = glm::vec2(sun_clip.x, sun_clip.y) / sun_clip.w;
-    light_pos           = ndc * 0.5f + 0.5f;
+    if (ndc.x >= -1.0f && ndc.x <= 1.0f && ndc.y >= -1.0f && ndc.y <= 1.0f) {
+      light_pos      = ndc * 0.5f + 0.5f;
+      god_rays_scale = 1.0f;
+    }
   }
-  post_processing_->Render(light_pos, target_fbo, target_width, target_height);
+  post_processing_->Render(light_pos, target_fbo, target_width, target_height, god_rays_scale);
 }
 
 void Renderer::RenderSkybox(const glm::mat4 &view, const glm::mat4 &proj) const { skybox_->Render(view, proj); }
