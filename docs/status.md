@@ -214,6 +214,27 @@
 - `Skybox` 为 OpenGL 专属。
 - 未实现 SSAO / 体积光 / TAA（后续里程碑）。
 
+### M4d — SSAO（屏幕空间环境光遮蔽）✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add screen-space ambient occlusion`
+
+**新增能力：**
+- `SSAO`（`render/ssao.hpp/.cpp`）：几何 pass 把视图空间 position + normal 写入 G-buffer（RGBA16F MRT），随后全屏 pass 用 64 个切空间半球样本 + 4×4 随机旋转噪声估计遮蔽，再用 4×4 box blur 去噪。
+- `Renderer` 新增 `BeginSSAOPass/DrawMeshSSAO/EndSSAOPass/GenerateSSAO/BindSSAO` + `SetSSAOEnabled`；`Scene::RenderMeshes` 在主 pass 前插入 SSAO 几何 pass 与 AO 生成。
+- PBR shader 新增 `ssao_map`/`ssao_enabled`，把 SSAO 乘进环境光项（只压暗 ambient，不影响直接光）。
+- 新增 shader：`ssao_geometry_{vert,frag}.glsl`、`ssao_{vert,frag}.glsl`、`ssao_blur_frag.glsl`。
+- sandbox 开启 SSAO 演示。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（头盔/地面接触处出现软 AO 暗角）。
+
+**已知限制：**
+- SSAO 纹理尺寸固定为构造时窗口尺寸（无 resize 处理）。
+- 全分辨率 64 样本，无半分辨率/时域优化。
+- `SSAO` 为 OpenGL 专属。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
@@ -226,7 +247,8 @@
 - [x] M4a：HDR 帧缓冲 + Bloom + ACES tone mapping
 - [x] M4b：天空盒 + IBL（环境反射）
 - [x] M4c：HDR 环境贴图（`.hdr`）+ 预过滤镜面 IBL
-- [ ] M4d：SSAO、体积光、TAA/降噪
+- [x] M4d：SSAO（屏幕空间环境光遮蔽）
+- [ ] M4e：体积光、TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [ ] 补全 Vulkan 资源后端
 

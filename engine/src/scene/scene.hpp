@@ -90,6 +90,8 @@ class Scene {
   void SetBloomStrength(float strength);
   void SetBloomThreshold(float threshold);
   void SetShadowPcfRadius(float radius);
+  void SetIblIntensity(float intensity);
+  void SetSSAOEnabled(bool enabled);
 
  private:
   entt::registry registry_;

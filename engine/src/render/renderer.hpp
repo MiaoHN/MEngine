@@ -27,6 +27,7 @@ class Shader;
 class ShadowMap;
 class CubeShadowMap;
 class Skybox;
+class SSAO;
 class Texture;
 
 class Renderer {
@@ -52,6 +53,20 @@ class Renderer {
   void DrawMeshPointShadow(const Ref<Mesh> &mesh, const glm::mat4 &model) const;
   /// @brief Ends the point shadow pass.
   void EndPointShadowPass(int light_index) const;
+
+  /// @brief Begins the SSAO geometry pass (view-space position + normal).
+  void BeginSSAOPass(const glm::mat4 &proj, const glm::mat4 &view) const;
+  /// @brief Renders a mesh into the SSAO G-buffer.
+  void DrawMeshSSAO(const Ref<Mesh> &mesh, const glm::mat4 &model) const;
+  /// @brief Ends the SSAO geometry pass.
+  void EndSSAOPass() const;
+  /// @brief Runs the SSAO sampling + blur passes.
+  void GenerateSSAO(const glm::mat4 &proj, const glm::mat4 &view) const;
+  /// @brief Binds the blurred SSAO texture to the given texture unit.
+  void BindSSAO(unsigned int slot) const;
+
+  void SetSSAOEnabled(bool enabled) { ssao_enabled_ = enabled; }
+  [[nodiscard]] bool IsSSAOEnabled() const { return ssao_enabled_; }
 
   /// @brief Draw a 3D mesh with the given PBR material (shadowed by the light).
   void DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
@@ -90,6 +105,7 @@ class Renderer {
   void SetBloomStrength(float strength);
   void SetBloomThreshold(float threshold);
   void SetShadowPcfRadius(float radius);
+  void SetIblIntensity(float intensity);
 
   unsigned int GetFramebuffer() const;
 
@@ -103,10 +119,13 @@ class Renderer {
   Ref<Shader>         point_light_depth_shader_;
   Ref<PostProcessing> post_processing_;
   Ref<Skybox>         skybox_;
+  Ref<SSAO>           ssao_;
   DirectionalLight    light_;
   std::vector<PointLight> point_lights_;
   std::vector<SpotLight>  spot_lights_;
   float shadow_pcf_radius_ = 2.0f;
+  float ibl_intensity_     = 1.0f;
+  bool  ssao_enabled_      = false;
 };
 
 }  // namespace MEngine

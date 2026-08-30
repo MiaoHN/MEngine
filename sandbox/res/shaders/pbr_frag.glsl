@@ -32,6 +32,10 @@ uniform float     shadow_pcf_radius = 2.0;
 uniform samplerCube irradiance_map;
 uniform samplerCube prefiltered_map;
 uniform float       max_prefilter_mip = 4.0;
+uniform float       ibl_intensity     = 1.0;
+
+uniform sampler2D ssao_map;
+uniform int       ssao_enabled = 0;
 
 #define MAX_POINT_LIGHTS 8
 uniform int   point_light_count = 0;
@@ -236,7 +240,8 @@ void main() {
   vec3 kD_ibl     = (1.0 - F_ibl) * (1.0 - metallic);
   vec3 irradiance = texture(irradiance_map, N).rgb;
   vec3 prefiltered = textureLod(prefiltered_map, R, roughness * max_prefilter_mip).rgb;
-  vec3 ambient = (kD_ibl * albedo * irradiance + prefiltered * F_ibl) * ao;
+  float ssao = ssao_enabled == 1 ? texture(ssao_map, gl_FragCoord.xy / textureSize(ssao_map, 0)).r : 1.0;
+  vec3 ambient = (kD_ibl * albedo * irradiance + prefiltered * F_ibl) * ao * ibl_intensity * ssao;
 
   vec3 color = ambient + direct;
   for (int i = 0; i < point_light_count && i < MAX_POINT_LIGHTS; ++i) {

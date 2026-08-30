@@ -95,6 +95,11 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   active_scene_->SetBloomThreshold(1.0f);
   // Wider PCF kernel for visibly softer directional shadows.
   active_scene_->SetShadowPcfRadius(4.0f);
+  // The HDR sky is bright; tone the IBL down so metallic surfaces do not
+  // wash out while the direct lights keep their intensity.
+  active_scene_->SetIblIntensity(0.4f);
+  // Screen-space ambient occlusion for contact shadowing.
+  active_scene_->SetSSAOEnabled(true);
 
   camera_.SetAspect(16.0f / 9.0f);
 }

@@ -17,6 +17,7 @@ set(SOURCE_RENDER
   src/render/cube_shadow_map.cpp
   src/render/post_processing.cpp
   src/render/skybox.cpp
+  src/render/ssao.cpp
   src/render/render_pipeline.cpp
   src/render/render_pass.cpp
   src/render/frame_buffer.cpp

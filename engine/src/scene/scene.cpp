@@ -125,6 +125,22 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     }
   }
 
+  // SSAO geometry pass (view-space position + normal), then the AO passes.
+  if (renderer_->IsSSAOEnabled()) {
+    renderer_->BeginSSAOPass(proj, view);
+    for (auto &entity : entities) {
+      auto &component = entity.GetComponent<MeshComponent>();
+      if (!component.mesh) {
+        continue;
+      }
+      const glm::mat4 model =
+          entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
+      renderer_->DrawMeshSSAO(component.mesh, model);
+    }
+    renderer_->EndSSAOPass();
+    renderer_->GenerateSSAO(proj, view);
+  }
+
   // Main pass into the HDR scene framebuffer.
   renderer_->BeginScene();
   for (auto &entity : entities) {
@@ -168,5 +184,9 @@ void Scene::SetBloomStrength(float strength) { renderer_->SetBloomStrength(stren
 void Scene::SetBloomThreshold(float threshold) { renderer_->SetBloomThreshold(threshold); }
 
 void Scene::SetShadowPcfRadius(float radius) { renderer_->SetShadowPcfRadius(radius); }
+
+void Scene::SetIblIntensity(float intensity) { renderer_->SetIblIntensity(intensity); }
+
+void Scene::SetSSAOEnabled(bool enabled) { renderer_->SetSSAOEnabled(enabled); }
 
 }  // namespace MEngine

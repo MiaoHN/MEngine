@@ -12,6 +12,7 @@
 #include "render/shader.hpp"
 #include "render/shadow_map.hpp"
 #include "render/skybox.hpp"
+#include "render/ssao.hpp"
 #include "render/texture.hpp"
 #include "scene/component.hpp"
 #include "utils/profiler.h"
@@ -72,6 +73,9 @@ Renderer::Renderer() {
 
   // HDR + bloom post-processing (auto-sizes to the window).
   post_processing_ = CreateRef<PostProcessing>(0, 0);
+
+  // Screen-space ambient occlusion.
+  ssao_ = CreateRef<SSAO>(0, 0);
 
   // Skybox + IBL environment (equirectangular HDR).
   skybox_ = CreateRef<Skybox>("res/textures/hdr/kloppenheim_06_puresky_1k.hdr");
@@ -208,6 +212,28 @@ void Renderer::EndPointShadowPass(int light_index) const {
   point_light_shadow_maps_[static_cast<size_t>(light_index)]->Unbind();
 }
 
+void Renderer::BeginSSAOPass(const glm::mat4 &proj, const glm::mat4 &view) const {
+  ssao_->BeginGeometryPass(proj, view);
+}
+
+void Renderer::DrawMeshSSAO(const Ref<Mesh> &mesh, const glm::mat4 &model) const {
+  if (!mesh) {
+    return;
+  }
+  ssao_->SetGeometryModel(model);
+  mesh->Bind();
+  if (const auto *rhi = GetActiveRHI(); rhi) {
+    rhi->DrawIndexedTriangles(mesh->GetIndexCount());
+  }
+  mesh->Unbind();
+}
+
+void Renderer::EndSSAOPass() const { ssao_->EndGeometryPass(); }
+
+void Renderer::GenerateSSAO(const glm::mat4 &proj, const glm::mat4 &view) const { ssao_->Generate(proj, view); }
+
+void Renderer::BindSSAO(unsigned int slot) const { ssao_->BindTexture(slot); }
+
 void Renderer::BeginScene() const { post_processing_->BeginScene(); }
 
 void Renderer::EndScene() const { post_processing_->EndScene(); }
@@ -223,6 +249,8 @@ void Renderer::SetBloomStrength(float strength) { post_processing_->SetBloomStre
 void Renderer::SetBloomThreshold(float threshold) { post_processing_->SetBloomThreshold(threshold); }
 
 void Renderer::SetShadowPcfRadius(float radius) { shadow_pcf_radius_ = radius; }
+
+void Renderer::SetIblIntensity(float intensity) { ibl_intensity_ = intensity; }
 
 void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
                         const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const {
@@ -270,6 +298,12 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   shader->SetUniform("irradiance_map", 5);
   shader->SetUniform("prefiltered_map", 6);
   shader->SetUniform("max_prefilter_mip", skybox_->GetMaxPrefilterMip());
+  shader->SetUniform("ibl_intensity", ibl_intensity_);
+
+  // Screen-space ambient occlusion.
+  ssao_->BindTexture(7);
+  shader->SetUniform("ssao_map", 7);
+  shader->SetUniform("ssao_enabled", ssao_enabled_ ? 1 : 0);
 
   // Point lights (indexed uniform arrays, capped to the shader's MAX).
   constexpr int kMaxPointLights = 8;
@@ -289,7 +323,7 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
     const int has_shadow   = shadow_index >= 0 ? 1 : 0;
     shader->SetUniform("point_light_has_shadow[" + index + "]", has_shadow);
     if (has_shadow) {
-      const int slot = 7 + shadow_index;
+      const int slot = 8 + shadow_index;
       point_light_shadow_maps_[static_cast<size_t>(shadow_index)]->BindTexture(slot);
       shader->SetUniform("point_light_shadow_maps[" + index + "]", slot);
     }

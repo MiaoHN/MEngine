@@ -182,6 +182,14 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - 资源：`res/textures/hdr/kloppenheim_06_puresky_1k.hdr`（Poly Haven CC0）。
 - 已知限制：无预积分 BRDF LUT（镜面能量略偏）；`Skybox` 为 OpenGL 专属。
 
+## SSAO（M4d 新增）
+
+- `SSAO`（`render/ssao.hpp/.cpp`）：几何 pass 用 MRT 写 G-buffer（视图空间 position + normal，RGBA16F），全屏 pass 用 64 个切空间半球样本 + 4×4 随机旋转噪声估计遮蔽，最后 4×4 box blur 去噪。
+- 流程（`Scene::RenderMeshes`）：方向光阴影 → 点光 cube 阴影 → **SSAO 几何 pass + AO 生成** → 主 pass → 天空盒 → 后处理。
+- PBR shader：`ssao = texture(ssao_map, gl_FragCoord.xy / textureSize(...))`，只乘进 ambient 项（`ambient *= ssao`），不影响直接光。
+- 新增 shader：`ssao_geometry_{vert,frag}.glsl`、`ssao_{vert,frag}.glsl`、`ssao_blur_frag.glsl`。
+- 已知限制：无 resize 处理、全分辨率 64 样本无优化；`SSAO` 为 OpenGL 专属。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：
