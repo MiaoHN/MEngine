@@ -91,6 +91,7 @@ class Scene {
   void SetBloomThreshold(float threshold);
   void SetShadowPcfRadius(float radius);
   void SetIblIntensity(float intensity);
+  void SetGodRaysStrength(float strength);
   void SetSSAOEnabled(bool enabled);
 
  private:

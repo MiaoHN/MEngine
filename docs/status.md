@@ -235,6 +235,25 @@
 - 全分辨率 64 样本，无半分辨率/时域优化。
 - `SSAO` 为 OpenGL 专属。
 
+### M4e — 体积光（God Rays）✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add volumetric light god rays`
+
+**新增能力：**
+- 后处理新增 god rays pass（`god_rays_frag.glsl`）：从方向光太阳的屏幕位置做径向模糊，累加场景亮部形成光柱。
+- `composite_frag.glsl` 新增 `god_rays`/`god_rays_strength`，与 bloom 一起叠加在 tone mapping 之前。
+- `Renderer::PostProcess(view, proj)` 把方向光反方向（太阳）投影到屏幕空间作为光源，传给后处理。
+- `Renderer`/`Scene` 新增 `SetGodRaysStrength`；sandbox 调整方向光使太阳可见并开启体积光。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（太阳方向出现光柱）。
+
+**已知限制：**
+- 为屏幕空间径向模糊（非真正体积雾/光线步进），无深度遮挡。
+- god rays 纹理尺寸固定为半分辨率、构造时窗口尺寸。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
@@ -248,7 +267,8 @@
 - [x] M4b：天空盒 + IBL（环境反射）
 - [x] M4c：HDR 环境贴图（`.hdr`）+ 预过滤镜面 IBL
 - [x] M4d：SSAO（屏幕空间环境光遮蔽）
-- [ ] M4e：体积光、TAA/降噪
+- [x] M4e：体积光（God Rays）
+- [ ] M4f：TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [ ] 补全 Vulkan 资源后端
 

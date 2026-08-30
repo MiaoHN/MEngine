@@ -160,7 +160,7 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   renderer_->EndScene();
 
   // Bloom + tone mapping to the default framebuffer.
-  renderer_->PostProcess();
+  renderer_->PostProcess(view, proj);
 }
 
 void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(light); }
@@ -186,6 +186,8 @@ void Scene::SetBloomThreshold(float threshold) { renderer_->SetBloomThreshold(th
 void Scene::SetShadowPcfRadius(float radius) { renderer_->SetShadowPcfRadius(radius); }
 
 void Scene::SetIblIntensity(float intensity) { renderer_->SetIblIntensity(intensity); }
+
+void Scene::SetGodRaysStrength(float strength) { renderer_->SetGodRaysStrength(strength); }
 
 void Scene::SetSSAOEnabled(bool enabled) { renderer_->SetSSAOEnabled(enabled); }
 

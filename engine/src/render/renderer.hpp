@@ -95,8 +95,8 @@ class Renderer {
   void BeginScene() const;
   /// @brief Unbinds the HDR scene framebuffer.
   void EndScene() const;
-  /// @brief Runs bloom + tone mapping to the default framebuffer.
-  void PostProcess() const;
+  /// @brief Runs god rays + bloom + tone mapping to the default framebuffer.
+  void PostProcess(const glm::mat4 &view, const glm::mat4 &proj) const;
 
   /// @brief Draws the skybox background.
   void RenderSkybox(const glm::mat4 &view, const glm::mat4 &proj) const;
@@ -106,6 +106,7 @@ class Renderer {
   void SetBloomThreshold(float threshold);
   void SetShadowPcfRadius(float radius);
   void SetIblIntensity(float intensity);
+  void SetGodRaysStrength(float strength);
 
   unsigned int GetFramebuffer() const;
 

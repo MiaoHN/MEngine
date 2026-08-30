@@ -41,6 +41,7 @@ PostProcessing::PostProcessing(int width, int height) {
   CreateColorFramebuffer(bright_fbo_, bright_texture_, bloom_width_, bloom_height_);
   CreateColorFramebuffer(blur_fbo_[0], blur_texture_[0], bloom_width_, bloom_height_);
   CreateColorFramebuffer(blur_fbo_[1], blur_texture_[1], bloom_width_, bloom_height_);
+  CreateColorFramebuffer(god_rays_fbo_, god_rays_texture_, bloom_width_, bloom_height_);
 
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -50,6 +51,7 @@ PostProcessing::PostProcessing(int width, int height) {
   brightness_shader_ = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/brightness_frag.glsl");
   blur_shader_       = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/blur_frag.glsl");
   composite_shader_  = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/composite_frag.glsl");
+  god_rays_shader_   = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/god_rays_frag.glsl");
 }
 
 PostProcessing::~PostProcessing() {
@@ -60,6 +62,8 @@ PostProcessing::~PostProcessing() {
   glDeleteFramebuffers(1, &bright_fbo_);
   glDeleteTextures(2, blur_texture_);
   glDeleteFramebuffers(2, blur_fbo_);
+  glDeleteTextures(1, &god_rays_texture_);
+  glDeleteFramebuffers(1, &god_rays_fbo_);
   glDeleteVertexArrays(1, &fullscreen_vao_);
 }
 
@@ -95,8 +99,19 @@ void PostProcessing::DrawFullscreenTriangle() const {
   glBindVertexArray(0);
 }
 
-void PostProcessing::Render() const {
-  // 1. Brightness pass: scene -> bright (half res).
+void PostProcessing::Render(const glm::vec2 &light_screen_pos) const {
+  // 1. God rays: radial blur of the scene from the light source (half res).
+  glBindFramebuffer(GL_FRAMEBUFFER, god_rays_fbo_);
+  glViewport(0, 0, bloom_width_, bloom_height_);
+  glClear(GL_COLOR_BUFFER_BIT);
+  god_rays_shader_->Bind();
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, scene_texture_);
+  god_rays_shader_->SetUniform("scene", 0);
+  god_rays_shader_->SetUniform("light_pos", light_screen_pos);
+  DrawFullscreenTriangle();
+
+  // 2. Brightness pass: scene -> bright (half res).
   glBindFramebuffer(GL_FRAMEBUFFER, bright_fbo_);
   glViewport(0, 0, bloom_width_, bloom_height_);
   glClear(GL_COLOR_BUFFER_BIT);
@@ -107,7 +122,7 @@ void PostProcessing::Render() const {
   brightness_shader_->SetUniform("threshold", bloom_threshold_);
   DrawFullscreenTriangle();
 
-  // 2. Gaussian blur ping-pong.
+  // 3. Gaussian blur ping-pong.
   unsigned int src = bright_texture_;
   for (int i = 0; i < blur_passes_; ++i) {
     const bool         horizontal = (i % 2) == 0;
@@ -126,7 +141,7 @@ void PostProcessing::Render() const {
     src = horizontal ? blur_texture_[0] : blur_texture_[1];
   }
 
-  // 3. Composite to the default framebuffer.
+  // 4. Composite to the default framebuffer.
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glViewport(0, 0, width_, height_);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -135,10 +150,14 @@ void PostProcessing::Render() const {
   glBindTexture(GL_TEXTURE_2D, scene_texture_);
   glActiveTexture(GL_TEXTURE1);
   glBindTexture(GL_TEXTURE_2D, src);
+  glActiveTexture(GL_TEXTURE2);
+  glBindTexture(GL_TEXTURE_2D, god_rays_texture_);
   composite_shader_->SetUniform("scene", 0);
   composite_shader_->SetUniform("bloom", 1);
+  composite_shader_->SetUniform("god_rays", 2);
   composite_shader_->SetUniform("exposure", exposure_);
   composite_shader_->SetUniform("bloom_strength", bloom_strength_);
+  composite_shader_->SetUniform("god_rays_strength", god_rays_strength_);
   DrawFullscreenTriangle();
   composite_shader_->Unbind();
 }

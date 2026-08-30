@@ -4,7 +4,7 @@
 >
 > 原则：**小步快跑，每阶段可运行、可验证**。必要时允许重构现有结构（已获授权）。
 >
-> **当前进度**：见 [status.md](./status.md)。M1（3D 地基）+ M2a/M2b（OBJ/glTF 导入）+ M3a（PBR 材质）+ M3b（阴影映射）+ M3c（点光源）+ M3d（软阴影/点光阴影/聚光）+ M4a（HDR/Bloom）+ M4b（天空盒/IBL）+ M4c（HDR 环境/预过滤镜面 IBL）+ M4d（SSAO）已完成 ✅。
+> **当前进度**：见 [status.md](./status.md)。M1（3D 地基）+ M2a/M2b（OBJ/glTF 导入）+ M3a（PBR 材质）+ M3b（阴影映射）+ M3c（点光源）+ M3d（软阴影/点光阴影/聚光）+ M4a（HDR/Bloom）+ M4b（天空盒/IBL）+ M4c（HDR 环境/预过滤镜面 IBL）+ M4d（SSAO）+ M4e（体积光）已完成 ✅。
 
 ## 现状评估（做 3D 前必须认清）
 

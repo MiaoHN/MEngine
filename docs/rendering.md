@@ -190,6 +190,14 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - 新增 shader：`ssao_geometry_{vert,frag}.glsl`、`ssao_{vert,frag}.glsl`、`ssao_blur_frag.glsl`。
 - 已知限制：无 resize 处理、全分辨率 64 样本无优化；`SSAO` 为 OpenGL 专属。
 
+## 体积光 / God Rays（M4e 新增）
+
+- 后处理新增 god rays pass（`god_rays_frag.glsl`）：从方向光太阳的屏幕位置做径向模糊（累加场景亮部，decay/density/weight 控制衰减），形成光柱。
+- `composite_frag.glsl` 在 ACES tone mapping 之前叠加 `god_rays * god_rays_strength`。
+- `Renderer::PostProcess(view, proj)` 把 `-light.direction`（太阳方向）投影到屏幕空间作为光源。
+- `Renderer`/`Scene` 新增 `SetGodRaysStrength`。
+- 已知限制：屏幕空间径向模糊（无深度遮挡/真正体积雾）；god rays 为半分辨率、构造时尺寸。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：

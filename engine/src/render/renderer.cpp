@@ -238,7 +238,18 @@ void Renderer::BeginScene() const { post_processing_->BeginScene(); }
 
 void Renderer::EndScene() const { post_processing_->EndScene(); }
 
-void Renderer::PostProcess() const { post_processing_->Render(); }
+void Renderer::PostProcess(const glm::mat4 &view, const glm::mat4 &proj) const {
+  // The directional light travels along `direction`, so the sun is opposite.
+  // Project it to screen space as the god-rays light source (falls back to the
+  // center when the sun is behind the camera).
+  const glm::vec4 sun_clip = proj * view * glm::vec4(-light_.direction, 0.0f);
+  glm::vec2       light_pos(0.5f, 0.5f);
+  if (sun_clip.w > 0.0f) {
+    const glm::vec2 ndc = glm::vec2(sun_clip.x, sun_clip.y) / sun_clip.w;
+    light_pos           = ndc * 0.5f + 0.5f;
+  }
+  post_processing_->Render(light_pos);
+}
 
 void Renderer::RenderSkybox(const glm::mat4 &view, const glm::mat4 &proj) const { skybox_->Render(view, proj); }
 
@@ -251,6 +262,8 @@ void Renderer::SetBloomThreshold(float threshold) { post_processing_->SetBloomTh
 void Renderer::SetShadowPcfRadius(float radius) { shadow_pcf_radius_ = radius; }
 
 void Renderer::SetIblIntensity(float intensity) { ibl_intensity_ = intensity; }
+
+void Renderer::SetGodRaysStrength(float strength) { post_processing_->SetGodRaysStrength(strength); }
 
 void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
                         const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const {

@@ -25,12 +25,13 @@ class PostProcessing {
   void BeginScene() const;
   /// Unbinds the HDR scene framebuffer.
   void EndScene() const;
-  /// Runs bloom + tone mapping and composites to the default framebuffer.
-  void Render() const;
+  /// Runs god rays + bloom + tone mapping and composites to the default framebuffer.
+  void Render(const glm::vec2 &light_screen_pos) const;
 
   void SetExposure(float exposure) { exposure_ = exposure; }
   void SetBloomStrength(float strength) { bloom_strength_ = strength; }
   void SetBloomThreshold(float threshold) { bloom_threshold_ = threshold; }
+  void SetGodRaysStrength(float strength) { god_rays_strength_ = strength; }
 
  private:
   void DrawFullscreenTriangle() const;
@@ -46,6 +47,9 @@ class PostProcessing {
   unsigned int blur_fbo_[2]     = {0, 0};
   unsigned int blur_texture_[2] = {0, 0};
 
+  unsigned int god_rays_fbo_     = 0;
+  unsigned int god_rays_texture_ = 0;
+
   int width_        = 0;
   int height_       = 0;
   int bloom_width_  = 0;
@@ -55,12 +59,14 @@ class PostProcessing {
   float exposure_        = 1.2f;
   float bloom_strength_  = 0.02f;
   float bloom_threshold_ = 1.0f;
+  float god_rays_strength_ = 0.05f;
 
   unsigned int fullscreen_vao_ = 0;
 
   Ref<Shader> brightness_shader_;
   Ref<Shader> blur_shader_;
   Ref<Shader> composite_shader_;
+  Ref<Shader> god_rays_shader_;
 };
 
 }  // namespace MEngine

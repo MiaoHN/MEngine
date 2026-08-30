@@ -60,7 +60,9 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   ground_entity.AddComponent<MeshComponent>(ground_mesh, ground_material);
 
   // Keep the directional light relatively dim so the colored point lights stand out.
-  active_scene_->GetLight().color = glm::vec3(0.9f);
+  // Point the sun into the view (in front of the camera) so the god rays show.
+  active_scene_->GetLight().direction = glm::normalize(glm::vec3(-0.3f, -1.0f, 0.5f));
+  active_scene_->GetLight().color     = glm::vec3(0.9f);
 
   // Strong, saturated warm/cool point lights for clear contrast (both cast
   // omnidirectional cube shadows now).
@@ -100,6 +102,8 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   active_scene_->SetIblIntensity(0.4f);
   // Screen-space ambient occlusion for contact shadowing.
   active_scene_->SetSSAOEnabled(true);
+  // Volumetric light (god rays) strength.
+  active_scene_->SetGodRaysStrength(0.06f);
 
   camera_.SetAspect(16.0f / 9.0f);
 }
