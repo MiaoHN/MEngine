@@ -112,4 +112,10 @@ void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(li
 
 void Scene::ClearPointLights() { renderer_->ClearPointLights(); }
 
+const DirectionalLight &Scene::GetLight() const { return renderer_->GetLight(); }
+
+DirectionalLight &Scene::GetLight() { return renderer_->GetLight(); }
+
+void Scene::SetLight(const DirectionalLight &light) { renderer_->SetLight(light); }
+
 }  // namespace MEngine

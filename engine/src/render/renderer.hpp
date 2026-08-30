@@ -46,6 +46,7 @@ class Renderer {
                 const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const;
 
   [[nodiscard]] const DirectionalLight &GetLight() const { return light_; }
+  DirectionalLight &GetLight() { return light_; }
   void SetLight(const DirectionalLight &light) { light_ = light; }
 
   void AddPointLight(const PointLight &light) { point_lights_.push_back(light); }

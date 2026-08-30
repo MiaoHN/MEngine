@@ -79,6 +79,10 @@ class Scene {
   void AddPointLight(const PointLight &light);
   void ClearPointLights();
 
+  [[nodiscard]] const DirectionalLight &GetLight() const;
+  DirectionalLight &GetLight();
+  void SetLight(const DirectionalLight &light);
+
  private:
   entt::registry registry_;
 
