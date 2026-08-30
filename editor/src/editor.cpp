@@ -114,6 +114,10 @@ void Editor::OnUpdate(float dt) {
                               editor_camera_.GetPosition(), frame_buffer_->GetFrameBufferId(), viewport_width_,
                               viewport_height_);
 
+  // The scene composite leaves the viewport framebuffer bound; unbind it so
+  // ImGui draws to the window instead of into the offscreen texture.
+  frame_buffer_->Unbind();
+
   BeginImGui();
 
   bool open = false;
@@ -370,10 +374,6 @@ void Editor::ShowImGuiScene() {
 void Editor::ShowImGuiViewport() {
   PROFILER_FUNCTION();
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-
-  // Give the viewport a sensible default size on first use so its auto-sized
-  // content (whose height depends on the window size) never collapses to 1px.
-  ImGui::SetNextWindowSize(ImVec2(800.0f, 600.0f), ImGuiCond_FirstUseEver);
   ImGui::Begin("Viewport");
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
