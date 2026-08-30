@@ -1,5 +1,6 @@
 #include "core/application.hpp"
 #include "core/logger.hpp"
+#include "render/asset_manager.hpp"
 #include "utils/profiler.h"
 
 namespace MEngine {
@@ -14,6 +15,9 @@ Application::Application(GraphicsAPI api) : graphics_api_(api) {
     exit(-1);
   }
   s_app = this;
+
+  // Shared asset root (single source of truth for shaders / textures / ...).
+  AssetManager::Instance().SetAssetRoot("assets");
 
   LOG_INFO("Application") << "Application started";
 

@@ -3,17 +3,19 @@
 #include <cmath>
 #include <limits>
 
+#include "render/asset_manager.hpp"
 #include "render/model_loader.hpp"
 #include "utils/profiler.h"
 
 Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   active_scene_ = std::make_shared<Scene>();
 
-  pbr_shader_ = CreateRef<Shader>("res/shaders/pbr_vert.glsl", "res/shaders/pbr_frag.glsl");
+  pbr_shader_ = AssetManager::Instance().GetShader("pbr");
 
   // Imported glTF model with a PBR material (metallic-roughness workflow).
-  model_mesh_     = ModelLoader::LoadGltf("res/models/damaged_helmet.glb");
-  model_material_ = ModelLoader::LoadGltfMaterial("res/models/damaged_helmet.glb");
+  const std::string helmet_path = AssetManager::Instance().Resolve("models/damaged_helmet.glb");
+  model_mesh_                   = ModelLoader::LoadGltf(helmet_path);
+  model_material_               = ModelLoader::LoadGltfMaterial(helmet_path);
   if (model_material_) {
     model_material_->SetShader(pbr_shader_);
   }

@@ -2,6 +2,7 @@
 
 #include <glad/glad.h>
 
+#include "render/asset_manager.hpp"
 #include "render/shader.hpp"
 
 namespace MEngine {
@@ -61,11 +62,11 @@ PostProcessing::PostProcessing(int width, int height) {
   // Dummy VAO for the fullscreen triangle (core profile requires a bound VAO).
   glGenVertexArrays(1, &fullscreen_vao_);
 
-  brightness_shader_ = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/brightness_frag.glsl");
-  blur_shader_       = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/blur_frag.glsl");
-  composite_shader_  = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/composite_frag.glsl");
-  god_rays_shader_   = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/god_rays_frag.glsl");
-  taa_shader_        = CreateRef<Shader>("res/shaders/post_vert.glsl", "res/shaders/taa_frag.glsl");
+  brightness_shader_ = AssetManager::Instance().GetShader("brightness");
+  blur_shader_       = AssetManager::Instance().GetShader("blur");
+  composite_shader_  = AssetManager::Instance().GetShader("composite");
+  god_rays_shader_   = AssetManager::Instance().GetShader("god_rays");
+  taa_shader_        = AssetManager::Instance().GetShader("taa");
 }
 
 PostProcessing::~PostProcessing() {

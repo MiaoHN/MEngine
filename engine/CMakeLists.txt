@@ -9,6 +9,7 @@ set(SOURCE_CORE
 set(SOURCE_RENDER
   src/render/shader.cpp
   src/render/texture.cpp
+  src/render/asset_manager.cpp
   src/render/mesh.cpp
   src/render/model_loader.cpp
   src/render/gltf_loader.cpp

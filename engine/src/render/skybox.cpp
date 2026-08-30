@@ -7,6 +7,7 @@
 #include <stb_image.h>
 
 #include "core/logger.hpp"
+#include "render/asset_manager.hpp"
 #include "render/mesh.hpp"
 #include "render/rhi/rhi.hpp"
 #include "render/shader.hpp"
@@ -104,10 +105,10 @@ Skybox::Skybox(const std::string &hdr_path, int env_size, int irradiance_size, i
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
   cube_              = Mesh::CreateCube(1.0f);
-  skybox_shader_     = CreateRef<Shader>("res/shaders/skybox_vert.glsl", "res/shaders/skybox_frag.glsl");
-  irradiance_shader_ = CreateRef<Shader>("res/shaders/skybox_vert.glsl", "res/shaders/irradiance_frag.glsl");
-  prefilter_shader_  = CreateRef<Shader>("res/shaders/skybox_vert.glsl", "res/shaders/prefilter_frag.glsl");
-  equirect_shader_   = CreateRef<Shader>("res/shaders/skybox_vert.glsl", "res/shaders/equirect_to_cube_frag.glsl");
+  skybox_shader_     = AssetManager::Instance().GetShader("skybox");
+  irradiance_shader_ = AssetManager::Instance().GetShader("irradiance");
+  prefilter_shader_  = AssetManager::Instance().GetShader("prefilter");
+  equirect_shader_   = AssetManager::Instance().GetShader("equirect_to_cube");
 
   GenerateEnvironment();
   GenerateIrradiance();

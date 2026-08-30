@@ -31,6 +31,12 @@ add_custom_command(TARGET editor POST_BUILD
 )
 
 add_custom_command(TARGET editor POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${PROJECT_SOURCE_DIR}/assets
+  $<TARGET_FILE_DIR:editor>/assets
+)
+
+add_custom_command(TARGET editor POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
   ${CMAKE_CURRENT_SOURCE_DIR}/res/imgui.ini
   $<TARGET_FILE_DIR:editor>/imgui.ini

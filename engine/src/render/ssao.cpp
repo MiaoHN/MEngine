@@ -5,6 +5,7 @@
 
 #include <glad/glad.h>
 
+#include "render/asset_manager.hpp"
 #include "render/shader.hpp"
 
 namespace MEngine {
@@ -109,9 +110,9 @@ SSAO::SSAO(int width, int height) {
 
   glGenVertexArrays(1, &fullscreen_vao_);
 
-  geometry_shader_ = CreateRef<Shader>("res/shaders/ssao_geometry_vert.glsl", "res/shaders/ssao_geometry_frag.glsl");
-  ssao_shader_     = CreateRef<Shader>("res/shaders/ssao_vert.glsl", "res/shaders/ssao_frag.glsl");
-  blur_shader_     = CreateRef<Shader>("res/shaders/ssao_vert.glsl", "res/shaders/ssao_blur_frag.glsl");
+  geometry_shader_ = AssetManager::Instance().GetShader("ssao_geometry");
+  ssao_shader_     = AssetManager::Instance().GetShader("ssao");
+  blur_shader_     = AssetManager::Instance().GetShader("ssao_blur");
 }
 
 SSAO::~SSAO() {

@@ -4,6 +4,7 @@
 #include "core/entry_point.hpp"
 #include "core/input.hpp"
 #include "core/script_engine.hpp"
+#include "render/asset_manager.hpp"
 #include "render/frame_buffer.hpp"
 #include "render/material.hpp"
 #include "render/mesh.hpp"

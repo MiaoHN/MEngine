@@ -30,6 +30,12 @@ add_custom_command(TARGET sandbox POST_BUILD
   $<TARGET_FILE_DIR:sandbox>/res
 )
 
+add_custom_command(TARGET sandbox POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${PROJECT_SOURCE_DIR}/assets
+  $<TARGET_FILE_DIR:sandbox>/assets
+)
+
 # add_custom_command(TARGET sandbox POST_BUILD
 #   COMMAND ${CMAKE_COMMAND} -E copy
 #   ${CMAKE_SOURCE_DIR}/sandbox/res/imgui.ini

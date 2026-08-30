@@ -2,6 +2,7 @@
 
 #include <cstdio>
 
+#include "render/asset_manager.hpp"
 #include "utils/profiler.h"
 
 Editor::Editor() = default;
@@ -26,7 +27,7 @@ void Editor::Initialize() {
 
   script_engine_ = std::make_shared<ScriptEngine>();
 
-  script_engine_->LoadScript("res/scripts/test.lua");
+  script_engine_->LoadScript(AssetManager::Instance().Resolve("scripts/test.lua"));
 
   // ImGUI setup
   IMGUI_CHECKVERSION();
@@ -47,8 +48,8 @@ void Editor::Initialize() {
   // TODO
   base_directory_    = std::filesystem::current_path();
   current_directory_ = base_directory_;
-  directory_icon_    = Texture::Create("res/icon/DirectoryIcon.png");
-  file_icon_         = Texture::Create("res/icon/FileIcon.png");
+  directory_icon_    = AssetManager::Instance().GetTexture("icons/DirectoryIcon.png");
+  file_icon_         = AssetManager::Instance().GetTexture("icons/FileIcon.png");
 }
 
 void Editor::OnUpdate(float dt) {

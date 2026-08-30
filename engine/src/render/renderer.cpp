@@ -1,6 +1,7 @@
 #include "render/renderer.hpp"
 
 #include "core/command.hpp"
+#include "render/asset_manager.hpp"
 #include "render/material.hpp"
 #include "render/mesh.hpp"
 #include "render/cube_shadow_map.hpp"
@@ -41,7 +42,7 @@ Renderer::Renderer() {
   vertex_array->SetIndexBuffer(indices, 6);
 
   // TODO: 默认 shader 怎么存放
-  const auto shader = CreateRef<Shader>("res/shaders/default_vert.glsl", "res/shaders/default_frag.glsl");
+  const auto shader = AssetManager::Instance().GetShader("default");
   shader->Bind();
   shader->SetUniform("texture1", 0);
   MEngine::Shader::Unbind();
@@ -55,21 +56,18 @@ Renderer::Renderer() {
   pass_->AddPipeline(pipeline_);
 
   // 1x1 white fallback texture for meshes without a texture.
-  unsigned char white[4] = {255, 255, 255, 255};
-  default_texture_       = CreateRef<Texture>();
-  default_texture_->SetData(white, 1, 1);
+  default_texture_ = AssetManager::Instance().GetDefaultTexture();
 
   // Directional shadow map + depth-only shader.
-  shadow_map_    = CreateRef<ShadowMap>(2048, 2048);
-  depth_shader_  = CreateRef<Shader>("res/shaders/shadow_depth_vert.glsl", "res/shaders/shadow_depth_frag.glsl");
+  shadow_map_   = CreateRef<ShadowMap>(2048, 2048);
+  depth_shader_ = AssetManager::Instance().GetShader("shadow_depth");
 
   // Omnidirectional (point light) shadow maps + depth shader.
   point_light_shadow_maps_.reserve(kMaxPointShadows);
   for (int i = 0; i < kMaxPointShadows; ++i) {
     point_light_shadow_maps_.push_back(CreateRef<CubeShadowMap>(1024));
   }
-  point_light_depth_shader_ =
-      CreateRef<Shader>("res/shaders/point_shadow_depth_vert.glsl", "res/shaders/point_shadow_depth_frag.glsl");
+  point_light_depth_shader_ = AssetManager::Instance().GetShader("point_shadow_depth");
 
   // HDR + bloom post-processing (auto-sizes to the window).
   post_processing_ = CreateRef<PostProcessing>(0, 0);
@@ -78,7 +76,7 @@ Renderer::Renderer() {
   ssao_ = CreateRef<SSAO>(0, 0);
 
   // Skybox + IBL environment (equirectangular HDR).
-  skybox_ = CreateRef<Skybox>("res/textures/hdr/kloppenheim_06_puresky_1k.hdr");
+  skybox_ = CreateRef<Skybox>(AssetManager::Instance().Resolve("textures/hdr/kloppenheim_06_puresky_1k.hdr"));
 }
 
 Renderer::~Renderer() = default;
