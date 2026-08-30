@@ -1,5 +1,8 @@
 #include "sandbox.hpp"
 
+#include <cmath>
+#include <limits>
+
 #include "render/model_loader.hpp"
 #include "utils/profiler.h"
 
@@ -8,21 +11,35 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
 
   lit_shader_ = CreateRef<Shader>("res/shaders/lit_vert.glsl", "res/shaders/lit_frag.glsl");
 
-  // Imported backpack model (OBJ + diffuse texture).
-  backpack_mesh_    = ModelLoader::LoadObj("res/models/backpack/backpack.obj");
-  backpack_texture_ = Texture::Create("res/models/backpack/diffuse.jpg");
+  // Imported glTF model (geometry + base-color texture).
+  model_mesh_    = ModelLoader::LoadGltf("res/models/duck.glb");
+  model_texture_ = ModelLoader::LoadGltfBaseColorTexture("res/models/duck.glb");
 
-  if (backpack_mesh_) {
-    backpack_ = active_scene_->CreateEntity("Backpack");
-    auto &transform = backpack_.AddComponent<Transform>();
-    // The raw model is roughly centered at (0.05, 0.57, -0.94); translate it
-    // so its center lands at the origin for a clean turntable rotation.
-    transform.translation = glm::vec3(0.05f, -0.57f, 0.94f);
-    backpack_.AddComponent<MeshComponent>(backpack_mesh_, lit_shader_, backpack_texture_);
+  if (model_mesh_) {
+    model_ = active_scene_->CreateEntity("Duck");
+    auto &transform = model_.AddComponent<Transform>();
+
+    // Auto-frame: center the model at the origin and move the camera back so
+    // the whole model fits the view.
+    glm::vec3 min(std::numeric_limits<float>::max());
+    glm::vec3 max(std::numeric_limits<float>::lowest());
+    for (const auto &vertex : model_mesh_->GetVertices()) {
+      min = glm::min(min, vertex.position);
+      max = glm::max(max, vertex.position);
+    }
+    const glm::vec3 center = (min + max) * 0.5f;
+    const float     radius = glm::length(max - min) * 0.5f;
+
+    transform.translation = -center;
+
+    const float half_fov = glm::radians(camera_.GetFov()) * 0.5f;
+    const float distance = (radius / std::tan(half_fov)) * 1.2f + 1.0f;
+    camera_.SetPosition(glm::vec3(0.0f, 0.0f, distance));
+    camera_.LookAt(glm::vec3(0.0f, 0.0f, 0.0f));
+
+    model_.AddComponent<MeshComponent>(model_mesh_, lit_shader_, model_texture_);
   }
 
-  camera_.SetPosition(glm::vec3(0.0f, 0.0f, 7.0f));
-  camera_.LookAt(glm::vec3(0.0f, 0.0f, 0.0f));
   camera_.SetAspect(16.0f / 9.0f);
 }
 
@@ -33,8 +50,8 @@ void Sandbox::Initialize() {}
 void Sandbox::OnUpdate(float dt) {
   PROFILER_FUNCTION();
 
-  if (backpack_.HasComponent<Transform>()) {
-    auto &transform = backpack_.GetComponent<Transform>();
+  if (model_.HasComponent<Transform>()) {
+    auto &transform = model_.GetComponent<Transform>();
     transform.rotation.y += rotation_speed_ * dt;
   }
 

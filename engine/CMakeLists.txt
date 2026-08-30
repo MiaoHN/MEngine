@@ -11,6 +11,7 @@ set(SOURCE_RENDER
   src/render/texture.cpp
   src/render/mesh.cpp
   src/render/model_loader.cpp
+  src/render/gltf_loader.cpp
   src/render/renderer.cpp
   src/render/render_pipeline.cpp
   src/render/render_pass.cpp
@@ -52,6 +53,8 @@ target_include_directories(engine SYSTEM PRIVATE
   ${PROJECT_SOURCE_DIR}/deps/glad/include
   ${PROJECT_SOURCE_DIR}/deps/stb
   ${PROJECT_SOURCE_DIR}/deps/lua
+  ${PROJECT_SOURCE_DIR}/deps/tinygltf
+  ${PROJECT_SOURCE_DIR}/deps/nlohmann
 )
 
 # _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING is an MSVC/STL-only define;

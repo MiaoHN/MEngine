@@ -35,9 +35,9 @@ class Sandbox : public Application {
  private:
   std::shared_ptr<Scene> active_scene_;
 
-  Entity       backpack_;
-  Ref<Mesh>    backpack_mesh_;
-  Ref<Texture> backpack_texture_;
+  Entity       model_;
+  Ref<Mesh>    model_mesh_;
+  Ref<Texture> model_texture_;
 
   Ref<Shader> lit_shader_;
 
