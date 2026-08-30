@@ -1,6 +1,7 @@
 #include "core/logger.hpp"
 
 #include <chrono>
+#include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -29,7 +30,12 @@ static std::string CurrentTimeStr() {
   auto      now_c = std::chrono::system_clock::to_time_t(now);
   struct tm buffer;
 
+// localtime_s is MSVC-only; use the POSIX localtime_r everywhere else.
+#if defined(_WIN32)
   localtime_s(&buffer, &now_c);
+#else
+  localtime_r(&now_c, &buffer);
+#endif
 
   std::ostringstream oss;
   oss << std::put_time(&buffer, "%Y-%m-%d %H:%M:%S");
@@ -42,8 +48,6 @@ Logger::Logger(const std::string &name, Level level) : name_(name), level_(level
 Logger::~Logger() {
   // output format: [time] [level] [name] message
   std::ofstream file(kLogFileName.data(), std::ios::app);
-  auto          now   = std::chrono::system_clock::now();
-  auto          now_c = std::chrono::system_clock::to_time_t(now);
   file << "[" << CurrentTimeStr() << "] ";
   file << "[" << LogLevelToString(level_) << "] ";
   file << "[" << name_ << "] ";

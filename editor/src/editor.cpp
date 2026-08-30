@@ -1,5 +1,7 @@
 #include "editor.hpp"
 
+#include <cstdio>
+
 #include "utils/profiler.h"
 
 Editor::Editor() = default;
@@ -451,7 +453,7 @@ void Editor::ShowImGuiProperties() {
   if (selected_entity_.GetHandle() != entt::null) {
     auto &tag         = selected_entity_.GetComponent<Tag>().tag;
     char  buffer[256] = {};
-    strcpy_s(buffer, sizeof(buffer), tag.c_str());
+    std::snprintf(buffer, sizeof(buffer), "%s", tag.c_str());
     if (ImGui::InputText("##Tag", buffer, sizeof(buffer))) {
       tag = std::string(buffer);
     }
