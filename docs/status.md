@@ -125,6 +125,25 @@
 - 无聚光（spot light）。
 - 光照数据每帧按索引 uniform 名上传（未用 UBO）。
 
+### M4a — HDR 帧缓冲 + Bloom 后处理 ✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add hdr framebuffer and bloom post-processing`
+
+**新增能力：**
+- `PostProcessing`：RGBA16F HDR 帧缓冲 + bloom（brightness 提取 + 高斯 blur ping-pong）+ ACES tone mapping + gamma。
+- 主 pass 渲染到 HDR 帧缓冲，PBR shader 输出 HDR 线性。
+- 全屏三角形后处理（`gl_VertexID`，无需顶点缓冲）。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（高光泛光）。
+
+**已知限制：**
+- 帧缓冲尺寸固定为构造时的窗口尺寸（无 resize 处理）。
+- `PostProcessing` 为 OpenGL 专属。
+- 无 Bloom 强度/曝光运行时调节（硬编码默认值）。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
@@ -134,7 +153,8 @@
 - [x] M3b：方向光阴影映射
 - [x] M3c：多光源（点光源）
 - [ ] M3d：软阴影（PCF）、点光源阴影（cube shadow map）、聚光
-- [ ] M4：HDR/Bloom/ToneMapping、SSAO、体积光、TAA/降噪
+- [x] M4a：HDR 帧缓冲 + Bloom + ACES tone mapping
+- [ ] M4b：SSAO、体积光、TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [ ] 补全 Vulkan 资源后端
 

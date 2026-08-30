@@ -142,6 +142,14 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - PBR shader 用 uniform 数组（`point_light_positions/colors/intensities/radii`，上限 8），对每个点光源累加 Cook-Torrance 贡献（距离平方衰减 + radius 软截止）。
 - 方向光保留阴影；点光源暂不投影阴影。
 
+## HDR 与后处理（M4a 新增）
+
+- `PostProcessing`（`render/post_processing.hpp/.cpp`）：HDR 渲染目标（RGBA16F）+ bloom。
+- 流程（`Scene::RenderMeshes`）：阴影 pass → 主 pass 渲染到 HDR 帧缓冲（`BeginScene/EndScene`）→ `PostProcess()` 做 brightness 提取 + 高斯模糊（ping-pong）+ 合成（ACES tone mapping + gamma）。
+- PBR shader 改为输出 **HDR 线性**（tone mapping/gamma 移到后处理）。
+- 相关 shader：`post_vert.glsl`（全屏三角形）、`brightness_frag.glsl`、`blur_frag.glsl`（双 pass 高斯）、`composite_frag.glsl`（ACES）。
+- OpenGL 专属（同 ShadowMap），待 Vulkan 后端抽象。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：
