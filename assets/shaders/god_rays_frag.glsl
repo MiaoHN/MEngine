@@ -19,9 +19,9 @@ void main() {
 
   for (int i = 0; i < samples; ++i) {
     tex_coord -= delta;
-    vec4 sample = texture(scene, tex_coord);
-    sample *= illumination_decay * weight;
-    color += sample;
+    vec4 sample_color = texture(scene, tex_coord);
+    sample_color *= illumination_decay * weight;
+    color += sample_color;
     illumination_decay *= decay;
   }
 
