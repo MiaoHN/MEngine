@@ -1,10 +1,13 @@
 #include "render/renderer.hpp"
 
 #include "core/command.hpp"
+#include "render/mesh.hpp"
 #include "render/rhi/resource_backend.hpp"
+#include "render/rhi/rhi.hpp"
 #include "render/render_pass.hpp"
 #include "render/render_pipeline.hpp"
 #include "render/shader.hpp"
+#include "render/texture.hpp"
 #include "scene/component.hpp"
 #include "utils/profiler.h"
 
@@ -44,6 +47,11 @@ Renderer::Renderer() {
 
   pass_ = CreateRef<RenderPass>();
   pass_->AddPipeline(pipeline_);
+
+  // 1x1 white fallback texture for meshes without a texture.
+  unsigned char white[4] = {255, 255, 255, 255};
+  default_texture_       = CreateRef<Texture>();
+  default_texture_->SetData(white, 1, 1);
 }
 
 Renderer::~Renderer() = default;
@@ -106,6 +114,35 @@ void Renderer::RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view
   // pass_->End();
 
   // texture->Unbind();
+}
+
+void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Shader> &shader, const Ref<Texture> &texture,
+                        const glm::mat4 &model, const glm::mat4 &proj_view, const glm::vec3 &view_pos) const {
+  PROFILER_FUNCTION();
+
+  if (!mesh || !shader) {
+    return;
+  }
+
+  const Ref<Texture> &tex = texture ? texture : default_texture_;
+
+  shader->Bind();
+  tex->Bind(0);
+
+  shader->SetUniform("model", model);
+  shader->SetUniform("proj_view", proj_view);
+  shader->SetUniform("view_pos", view_pos);
+  shader->SetUniform("texture1", 0);
+  shader->SetUniform("has_texture", texture ? 1 : 0);
+
+  mesh->Bind();
+  if (const auto *rhi = GetActiveRHI(); rhi) {
+    rhi->DrawIndexedTriangles(mesh->GetIndexCount());
+  }
+  mesh->Unbind();
+
+  tex->Unbind();
+  shader->Unbind();
 }
 
 unsigned int Renderer::GetFramebuffer() const { return pass_->GetFramebuffer(); }

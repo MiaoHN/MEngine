@@ -4,18 +4,16 @@
 Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   active_scene_ = std::make_shared<Scene>();
 
-  Entity camera_entity = active_scene_->CreateEntity("Camera Entity");
-  auto  &camera        = camera_entity.AddComponent<Camera2D>();
-  camera.primary       = true;
-  camera.zoom_level    = 1.0f;
+  cube_mesh_  = Mesh::CreateCube(1.0f);
+  lit_shader_ = CreateRef<Shader>("res/shaders/lit_vert.glsl", "res/shaders/lit_frag.glsl");
 
-  rotating_square_ = active_scene_->CreateEntity("Rotating Square");
-  auto &sprite     = rotating_square_.AddComponent<Sprite2D>();
-  sprite.position  = glm::vec3(0.0f, 0.0f, 0.0f);
-  sprite.scale     = glm::vec3(0.5f, 0.5f, 1.0f);
-  sprite.rotation  = glm::vec3(0.0f, 0.0f, 0.0f);
-  sprite.color     = glm::vec4(128.0f, 120.0f, 70.0f, 255.0f);
-  sprite.texture   = Texture::Create("res/textures/checkerboard.png");
+  rotating_cube_ = active_scene_->CreateEntity("Rotating Cube");
+  rotating_cube_.AddComponent<Transform>();
+  rotating_cube_.AddComponent<MeshComponent>(cube_mesh_, lit_shader_);
+
+  camera_.SetPosition(glm::vec3(0.0f, 0.5f, 3.0f));
+  camera_.LookAt(glm::vec3(0.0f, 0.0f, 0.0f));
+  camera_.SetAspect(16.0f / 9.0f);
 }
 
 Sandbox::~Sandbox() {}
@@ -25,12 +23,13 @@ void Sandbox::Initialize() {}
 void Sandbox::OnUpdate(float dt) {
   PROFILER_FUNCTION();
 
-  if (rotating_square_.HasComponent<Sprite2D>()) {
-    auto &sprite = rotating_square_.GetComponent<Sprite2D>();
-    sprite.rotation.z += rotation_speed_ * dt;
+  if (rotating_cube_.HasComponent<Transform>()) {
+    auto &transform = rotating_cube_.GetComponent<Transform>();
+    transform.rotation.y += rotation_speed_ * dt;
+    transform.rotation.x += rotation_speed_ * 0.5f * dt;
   }
 
-  active_scene_->OnUpdateRuntime(dt, viewport_width_, viewport_height_);
+  active_scene_->RenderMeshes(camera_.GetProjectionView(), camera_.GetPosition());
 }
 
 Application *CreateApplication() { return new Sandbox(); }

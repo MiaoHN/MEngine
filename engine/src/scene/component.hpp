@@ -17,6 +17,8 @@
 #include <glm/gtx/quaternion.hpp>
 #include <string>
 
+#include "render/mesh.hpp"
+#include "render/shader.hpp"
 #include "render/texture.hpp"
 
 namespace MEngine {
@@ -124,6 +126,22 @@ struct Transform {
 
     return glm::translate(glm::mat4(1.0f), translation) * rotation * glm::scale(glm::mat4(1.0f), scale);
   }
+};
+
+/**
+ * @brief Attaches a renderable 3D mesh to an entity.
+ *
+ * Requires a `Transform` component to position the mesh; if absent the mesh is
+ * drawn with an identity model matrix.
+ */
+struct MeshComponent {
+  Ref<Mesh>    mesh;
+  Ref<Shader>  shader;
+  Ref<Texture> texture;  // optional; falls back to tint color
+
+  MeshComponent() = default;
+  MeshComponent(Ref<Mesh> mesh, Ref<Shader> shader, Ref<Texture> texture = nullptr)
+      : mesh(std::move(mesh)), shader(std::move(shader)), texture(std::move(texture)) {}
 };
 
 struct Sprite2D {

@@ -72,6 +72,9 @@ class Scene {
 
   void Render(Camera2D &camera);
 
+  /// @brief Draw all entities with a MeshComponent using the given camera.
+  void RenderMeshes(const glm::mat4 &proj_view, const glm::vec3 &camera_pos);
+
  private:
   entt::registry registry_;
 

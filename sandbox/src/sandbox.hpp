@@ -13,8 +13,11 @@
 #include "core/entry_point.hpp"
 #include "core/script_engine.hpp"
 #include "render/frame_buffer.hpp"
+#include "render/mesh.hpp"
+#include "render/shader.hpp"
 #include "scene/camera.hpp"
 #include "scene/entity.hpp"
+#include "scene/perspective_camera.hpp"
 #include "scene/scene.hpp"
 
 using namespace MEngine;
@@ -29,12 +32,12 @@ class Sandbox : public Application {
   void OnUpdate(float dt) override;
 
  private:
-  int  viewport_width_   = 1280;
-  int  viewport_height_  = 720;
-  bool viewport_resized_ = false;
-
   std::shared_ptr<Scene> active_scene_;
 
-  Entity rotating_square_;
-  float  rotation_speed_ = 90.0f;
+  Entity      rotating_cube_;
+  Ref<Mesh>   cube_mesh_;
+  Ref<Shader> lit_shader_;
+
+  PerspectiveCamera camera_;
+  float             rotation_speed_ = 45.0f;
 };

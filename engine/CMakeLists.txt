@@ -9,6 +9,7 @@ set(SOURCE_CORE
 set(SOURCE_RENDER
   src/render/shader.cpp
   src/render/texture.cpp
+  src/render/mesh.cpp
   src/render/renderer.cpp
   src/render/render_pipeline.cpp
   src/render/render_pass.cpp
