@@ -27,10 +27,27 @@
 - 网格复用 `IVertexArrayBackend` 接口（已有 Vulkan 空壳实现，后续只需补全）。
 - 相机/shader 接口与后端解耦。
 
+### M2a — OBJ 模型导入 ✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add obj model loader and mesh library`
+
+**新增能力：**
+- `ModelLoader::LoadObj(path)`：解析 Wavefront OBJ（`v`/`vt`/`vn`/`f`，支持 `v/vt`、`v//vn`、`v/vt/vn`），多边形三角化、负索引、无 `vn` 时生成平面法线。
+- `MeshLibrary`：按名字缓存 Mesh。
+- `tools/gen_sphere.py`：UV 球体 OBJ 生成脚本。
+- `sandbox/res/models/sphere.obj`：演示模型。
+- sandbox 演示：左侧程序化立方体 + 右侧导入球体，各自旋转。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉效果待用户运行 `sandbox.exe` 确认（左侧方块、右侧球体）。
+
 ## 待办（后续里程碑）
 
-- [ ] M2：模型导入（glTF/obj/fbx，tinygltf 或 Assimp）
-- [ ] M2：Mesh/Material 资源缓存与场景序列化
+- [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
+- [ ] M2b：glTF 2.0（tinygltf）或 Assimp 多格式导入
+- [ ] M2c：多材质/多网格 Model、MeshLibrary 接入资产系统
 - [ ] M3：多光源 + 阴影映射 + PBR
 - [ ] M4：HDR/Bloom/ToneMapping、SSAO、体积光、TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI

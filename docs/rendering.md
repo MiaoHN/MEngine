@@ -107,6 +107,16 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - `Renderer::DrawMesh(mesh, shader, texture, model, proj_view, view_pos)`：绑定 shader/texture → 设置 uniform → `DrawIndexedTriangles`；无纹理时使用 1×1 白色兜底纹理。
 - `Scene::RenderMeshes(proj_view, camera_pos)`：遍历带 `MeshComponent` 的实体，结合 `Transform` 计算 model 矩阵后绘制。
 
+## 模型导入（M2 新增）
+
+- `ModelLoader`（`render/model_loader.hpp/.cpp`）：加载模型文件为 `Mesh`。
+  - 当前支持 Wavefront OBJ：`v` / `vt` / `vn` / `f`（含 `v/vt`、`v//vn`、`v/vt/vn` 三种形式）、多边形扇形三角化、负索引。
+  - 文件缺 `vn` 时自动生成平面（flat）面法线。
+  - 返回 `nullptr` 表示加载失败。
+- `MeshLibrary`（`mesh.hpp`）：按名字缓存 `Mesh`，与 `ShaderLibrary`/`TextureLibrary` 对齐。
+- 示例资源：`sandbox/res/models/sphere.obj`（由 `tools/gen_sphere.py` 生成）。
+- 后续扩展点：glTF 2.0（tinygltf）或 Assimp，不影响调用方 API。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：
