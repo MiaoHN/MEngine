@@ -370,6 +370,10 @@ void Editor::ShowImGuiScene() {
 void Editor::ShowImGuiViewport() {
   PROFILER_FUNCTION();
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+  // Give the viewport a sensible default size on first use so its auto-sized
+  // content (whose height depends on the window size) never collapses to 1px.
+  ImGui::SetNextWindowSize(ImVec2(800.0f, 600.0f), ImGuiCond_FirstUseEver);
   ImGui::Begin("Viewport");
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -389,7 +393,11 @@ void Editor::ShowImGuiViewport() {
   }
   ImGui::EndChild();
 
-  const ImVec2 image_size(avail.x, std::max(1.0f, avail.y - toolbar_height - 4.0f));
+  // Image fills the remaining region; clamp to a minimum so a degenerate
+  // (collapsed) window never renders a 0/1-pixel framebuffer.
+  ImVec2 image_size(avail.x, avail.y - toolbar_height - 4.0f);
+  if (image_size.x < 64.0f) image_size.x = 64.0f;
+  if (image_size.y < 64.0f) image_size.y = 64.0f;
 
   // Resize the viewport framebuffer when the image area changes.
   const int w = static_cast<int>(image_size.x);
