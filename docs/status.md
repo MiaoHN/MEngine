@@ -105,6 +105,26 @@
 - 阴影体固定半径 2.0（适配归一化模型）。
 - `ShadowMap` 为 OpenGL 专属，未抽象到 RHI。
 
+### M3c — 多光源（点光源）✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add point lights for multi-light pbr`
+
+**新增能力：**
+- `PointLight`（position/color/intensity/radius 距离衰减）。
+- Renderer/Scene 支持点光源列表（上限 8）。
+- PBR shader 对每个点光源累加 Cook-Torrance（距离平方衰减 + 软截止）。
+- sandbox 加了暖色/冷色两个点光源演示。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户确认（头盔受暖/冷双色点光源影响）。
+
+**已知限制：**
+- 点光源无阴影（需要 cube shadow map）。
+- 无聚光（spot light）。
+- 光照数据每帧按索引 uniform 名上传（未用 UBO）。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
@@ -112,7 +132,8 @@
 - [ ] M2c：多网格/多材质 `Model`、MeshLibrary 接入资产系统
 - [x] M3a：PBR 材质（metallic-roughness）+ 法线贴图
 - [x] M3b：方向光阴影映射
-- [ ] M3c：多光源（点光/聚光）+ 软阴影（PCF）
+- [x] M3c：多光源（点光源）
+- [ ] M3d：软阴影（PCF）、点光源阴影（cube shadow map）、聚光
 - [ ] M4：HDR/Bloom/ToneMapping、SSAO、体积光、TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [ ] 补全 Vulkan 资源后端

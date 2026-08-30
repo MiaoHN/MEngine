@@ -135,6 +135,13 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
   2. 主 pass：PBR shader 采样阴影贴图（`ShadowCalculation`，带 bias），对直接光乘以阴影因子。
 - `Renderer` 持有 `ShadowMap` + depth shader + `DirectionalLight`，提供 `BeginShadowPass/DrawMeshShadow/EndShadowPass`。
 
+## 多光源（M3c 新增）
+
+- `PointLight`（`render/light.hpp`）：点光源（position/color/intensity/radius，距离衰减）。
+- `Renderer` 维护点光源列表（`AddPointLight/ClearPointLights`），`Scene` 透传。
+- PBR shader 用 uniform 数组（`point_light_positions/colors/intensities/radii`，上限 8），对每个点光源累加 Cook-Torrance 贡献（距离平方衰减 + radius 软截止）。
+- 方向光保留阴影；点光源暂不投影阴影。
+
 ## RHI 抽象（IRHI）
 
 `engine/src/render/rhi/rhi.hpp`：
