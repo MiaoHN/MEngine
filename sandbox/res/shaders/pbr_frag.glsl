@@ -22,8 +22,8 @@ uniform float roughness_factor  = 1.0;
 
 uniform vec3 view_pos;
 uniform vec3 light_dir   = normalize(vec3(-0.3, -1.0, -0.4));
-uniform vec3 light_color = vec3(1.0);
-uniform vec3 ambient     = vec3(0.03);
+uniform vec3 light_color = vec3(2.5);
+uniform float exposure   = 1.2;
 
 const float PI = 3.14159265359;
 
@@ -49,6 +49,17 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 
 vec3 FresnelSchlick(float cosTheta, vec3 F0) {
   return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// Cheap procedural environment (a vertical studio-like gradient). Real IBL via
+// an HDR cubemap should replace this later, but this already gives metals
+// something to reflect so they stop looking flat/dark.
+vec3 EnvironmentColor(vec3 dir) {
+  vec3  zenith  = vec3(0.55, 0.60, 0.68);
+  vec3  horizon = vec3(0.30, 0.30, 0.32);
+  vec3  nadir   = vec3(0.10, 0.10, 0.11);
+  float t       = clamp(dir.y, -1.0, 1.0) * 0.5 + 0.5;
+  return (t < 0.5) ? mix(nadir, horizon, t * 2.0) : mix(horizon, zenith, (t - 0.5) * 2.0);
 }
 
 void main() {
@@ -98,11 +109,19 @@ void main() {
 
   float NdotL  = max(dot(N, L), 0.0);
   vec3  direct = (kD * albedo / PI + specular) * light_color * NdotL;
-  vec3  amb    = ambient * albedo * ao;
 
-  vec3 color = amb + direct;
+  // Image-based ambient approximation: diffuse irradiance from the normal,
+  // specular environment from the (roughness-blurred) reflection direction.
+  vec3 R      = normalize(reflect(-V, N));
+  R           = normalize(mix(R, N, roughness));
+  vec3 F_ibl  = FresnelSchlick(max(dot(N, V), 0.0), F0);
+  vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metallic);
+  vec3 ambient = (kD_ibl * albedo * EnvironmentColor(N) + F_ibl * EnvironmentColor(R)) * ao;
 
-  // Simple tone mapping + gamma (LDR for now, HDR pipeline comes later).
+  vec3 color = ambient + direct;
+  color *= exposure;
+
+  // Tone mapping + gamma (LDR for now, HDR pipeline comes later).
   color     = color / (color + vec3(1.0));
   color     = pow(color, vec3(1.0 / 2.2));
 
