@@ -43,11 +43,32 @@
 - Clang / MSVC 均构建通过（0 错误）。
 - 视觉效果待用户运行 `sandbox.exe` 确认（左侧方块、右侧球体）。
 
+### M2b — glTF 2.0 导入 ✅
+
+**日期**：2026-08-30
+**commit**：`feat(render): add gltf 2.0 loader via tinygltf`
+
+**新增能力：**
+- `ModelLoader::LoadGltf(path)`：基于 tinygltf 加载 `.gltf`/`.glb`，取第一个 mesh 的第一个 primitive，使用 POSITION/NORMAL/TEXCOORD_0（缺法线自动生成平面法线）。
+- `ModelLoader::LoadGltfBaseColorTexture(path)`：提取第一份材质的 baseColor 贴图并转为 RGBA。
+- vendored 依赖：`deps/tinygltf/tiny_gltf.h`（v2.9.7）+ `deps/nlohmann/json.hpp`（v3.11.3），MIT。
+- 样例：`sandbox/res/models/duck.glb`（Khronos glTF 样例）。
+- sandbox 改为渲染 duck.glb，并加了**自动取景**（按包围盒居中 + 自动相机距离）。
+
+**验证：**
+- Clang / MSVC 均构建通过（0 错误）。
+- 视觉待用户运行确认（贴图小黄鸭）。
+
+**已知限制：**
+- 只取第一个 mesh/primitive，多网格、多材质待 M2c。
+- 不支持 sparse accessor、Draco 压缩、骨骼/动画。
+- 法线贴图（normal.png 等 PBR 贴图）尚未接入，待 M3/PBR。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
-- [ ] M2b：glTF 2.0（tinygltf）或 Assimp 多格式导入
-- [ ] M2c：多材质/多网格 Model、MeshLibrary 接入资产系统
+- [x] M2b：glTF 2.0 导入（tinygltf）
+- [ ] M2c：多网格/多材质 `Model`、MeshLibrary 接入资产系统
 - [ ] M3：多光源 + 阴影映射 + PBR
 - [ ] M4：HDR/Bloom/ToneMapping、SSAO、体积光、TAA/降噪
 - [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI

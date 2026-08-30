@@ -107,15 +107,16 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - `Renderer::DrawMesh(mesh, shader, texture, model, proj_view, view_pos)`：绑定 shader/texture → 设置 uniform → `DrawIndexedTriangles`；无纹理时使用 1×1 白色兜底纹理。
 - `Scene::RenderMeshes(proj_view, camera_pos)`：遍历带 `MeshComponent` 的实体，结合 `Transform` 计算 model 矩阵后绘制。
 
-## 模型导入（M2 新增）
+## 模型导入
 
-- `ModelLoader`（`render/model_loader.hpp/.cpp`）：加载模型文件为 `Mesh`。
-  - 当前支持 Wavefront OBJ：`v` / `vt` / `vn` / `f`（含 `v/vt`、`v//vn`、`v/vt/vn` 三种形式）、多边形扇形三角化、负索引。
-  - 文件缺 `vn` 时自动生成平面（flat）面法线。
+- `ModelLoader`（`render/model_loader.hpp/.cpp` + `render/gltf_loader.cpp`）：加载模型文件为 `Mesh`。
+  - **Wavefront OBJ**：`v` / `vt` / `vn` / `f`（含 `v/vt`、`v//vn`、`v/vt/vn` 三种形式）、多边形扇形三角化、负索引；文件缺 `vn` 时自动生成平面面法线。
+  - **glTF 2.0**（`.gltf` / `.glb`，基于 tinygltf）：取第一个 mesh 的第一个 primitive，使用 POSITION / NORMAL（缺时生成平面法线）/ TEXCOORD_0 属性；`LoadGltfBaseColorTexture` 可提取第一份材质的 baseColor 贴图。
   - 返回 `nullptr` 表示加载失败。
+- 依赖：`deps/tinygltf/tiny_gltf.h` + `deps/nlohmann/json.hpp`（vendored 单头文件，MIT）。
 - `MeshLibrary`（`mesh.hpp`）：按名字缓存 `Mesh`，与 `ShaderLibrary`/`TextureLibrary` 对齐。
-- 示例资源：`sandbox/res/models/sphere.obj`（由 `tools/gen_sphere.py` 生成）。
-- 后续扩展点：glTF 2.0（tinygltf）或 Assimp，不影响调用方 API。
+- 示例资源：`sandbox/res/models/sphere.obj`（由 `tools/gen_sphere.py` 生成）、`sandbox/res/models/duck.glb`（Khronos glTF 样例）。
+- 后续扩展点：Assimp 多格式、多网格/多材质 `Model`。
 
 ## RHI 抽象（IRHI）
 
