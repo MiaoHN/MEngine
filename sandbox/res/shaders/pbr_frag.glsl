@@ -65,9 +65,9 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0) {
 // an HDR cubemap should replace this later, but this already gives metals
 // something to reflect so they stop looking flat/dark.
 vec3 EnvironmentColor(vec3 dir) {
-  vec3  zenith  = vec3(0.55, 0.60, 0.68);
-  vec3  horizon = vec3(0.30, 0.30, 0.32);
-  vec3  nadir   = vec3(0.10, 0.10, 0.11);
+  vec3  zenith  = vec3(0.35, 0.38, 0.45);
+  vec3  horizon = vec3(0.18, 0.18, 0.20);
+  vec3  nadir   = vec3(0.05, 0.05, 0.06);
   float t       = clamp(dir.y, -1.0, 1.0) * 0.5 + 0.5;
   return (t < 0.5) ? mix(nadir, horizon, t * 2.0) : mix(horizon, zenith, (t - 0.5) * 2.0);
 }

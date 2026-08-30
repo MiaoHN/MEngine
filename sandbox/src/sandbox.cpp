@@ -60,20 +60,20 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   ground_entity.AddComponent<MeshComponent>(ground_mesh, ground_material);
 
   // Keep the directional light relatively dim so the colored point lights stand out.
-  active_scene_->GetLight().color = glm::vec3(1.2f);
+  active_scene_->GetLight().color = glm::vec3(0.9f);
 
-  // A couple of strong colored point lights to show multi-light PBR.
+  // Strong, saturated warm/cool point lights for clear contrast.
   PointLight warm;
   warm.position  = glm::vec3(2.5f, 0.5f, 1.2f);
-  warm.color     = glm::vec3(1.0f, 0.55f, 0.25f);
-  warm.intensity = 15.0f;
+  warm.color     = glm::vec3(1.0f, 0.4f, 0.1f);
+  warm.intensity = 28.0f;
   warm.radius    = 5.0f;
   active_scene_->AddPointLight(warm);
 
   PointLight cool;
   cool.position  = glm::vec3(-2.5f, 0.5f, -1.2f);
-  cool.color     = glm::vec3(0.25f, 0.5f, 1.0f);
-  cool.intensity = 15.0f;
+  cool.color     = glm::vec3(0.1f, 0.4f, 1.0f);
+  cool.intensity = 28.0f;
   cool.radius    = 5.0f;
   active_scene_->AddPointLight(cool);
 
