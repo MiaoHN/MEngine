@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-05 — 渲染诊断：stress 场景剔除核查 + 默认背面剔除
+
+- **分支**：`refractor`；commit：`2c4e523`(editor --scene + grid 双面)、`53453db`(render 默认背面剔除 + 平面绕序 + tools/ppm_to_png.py)
+- **背景/用户反馈**：①“打开 stress 场景好像没有真的 cull”；②“紧密排列的方块被前面的挡住，应该算深度测试吧”；③“相机移进方块内部后看到一些叠在一起的面”。
+- **核查结论（均已实测/截图）**：
+  1. **视锥剔除确实生效**：`stress_cull`(1600) 在编辑器 Edit 视角 culled=1149/visible=451；`stress_10000` culled=9357/visible=643；沙盒同理。run_smoke 原来只断言 culled+visible==总数（culled=0 也能过），所以才显得“像没剔除”。
+  2. **深度缓冲/深度测试本来就工作**（场景 FBO 带 DEPTH24_STENCIL8，主 pass 逐像素正确遮挡；从外部/内部截图均只显示应显示的面）。
+  3. **根因（用户看到的“叠影/内壁”）**：材质默认 `CullMode::None`（不背面剔除）→ 进入闭合几何内部时会画内壁面；相邻立方体共享**共面**面被画两次（谁先画谁赢/穿越边界时交替），即“叠在一起”的来源。
+- **改动**：
+  1. `Material` 默认 cull 改为 `Back`（闭合不透明网格不再光栅化内部/背面）；需双面的对象显式 `CullMode::None`（编辑器网格底纹已显式）。
+  2. `Mesh::CreatePlane` 原绕序几何法线为 -Y（从上看是背面）→ 改为 +Y，保证默认背面剔除下地面/平面从上方可见。
+  3. Editor 支持 `--scene <path>` 启动即打开场景（Edit 模式，镜像 File→Open），便于无人值守复现/回归。
+  4. 新增 `tools/ppm_to_png.py`（纯标准库 P6→PNG），便于查看 `--capture-frame` 截图。
+- **验证（无头+像素）**：cube/sphere/plane 外部视角渲染正常；内部视角帧像素与改动前一致且更干净（共面输家面被剔除）；editor 默认场景截图正常、网格可见；`python tools/run_smoke.py --preset windows-clang-debug` → **8/8 PASS**；debug/release 全链零警告。
+- **说明/下一步**：以上处理的是“面/像素级遮挡”。若还要**跳过整棵被完全遮挡物体的 draw（对象级遮挡剔除/早期-Z）**，那是独立的大特性（HZB 或 occlusion query），见 DEV-PLAN P3 延伸；需要时再单独做。
+
+---
+
 ## 2026-09-05 — Editor File 菜单：新建/打开/关闭/保存场景
 
 - **分支**：`refractor`；commit：`editor:` File menu scene new/open/close/save（本记录后提交）
