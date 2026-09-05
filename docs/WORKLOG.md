@@ -5,6 +5,23 @@
 
 ---
 
+## 2026-09-06 — Editor：关键帧时间轴动画（AnimationComponent + Timeline 面板 + Play 自动播放）
+
+- **需求**：在父子层级地基之上实现“关键帧时间轴动画”（DEV-PLAN 推荐路线 A）。
+- **引擎改动**（component.hpp / scene.hpp/.cpp / scene_serializer.cpp）：
+  - 新增 `Keyframe{time, value}` + `AnimationComponent`（translation/rotation/scale 三条时间排序通道，`Empty()/Duration()`）；旋转存 XYZ 度数与 `Transform` 一致。
+  - `Scene` 共享时间轴时钟：`SetAnimationTime`（采样所有动画实体写入本地 Transform，即 scrub/预览）、`AdvanceAnimation`、`ResetAnimation`、`GetAnimationDuration/HasAnyAnimation`；`SetAnimationPlaying/Loop`。采样按通道线性插值、端外钳制、空通道不写。层级渲染自动让动画作用在**本地 Transform** 上（父实体动、子实体跟随——上一阶段的成果直接复用）。
+  - `StartSimulation` 先回 t=0 再 CapturePlaySnapshot → 每次 Play 从起点确定性播放且 Stop 恢复 t0 位姿；`StepSimulation` 每帧推进时钟；`StopSimulation`/文件操作重置时钟。
+  - **Loop 是场景级设置并持久化**：`root["animation"]={"loop":bool}`（含动画才写），独立沙盒与编辑器播放行为一致；实体动画 JSON 只存三通道（无 per-entity loop）。Editor 文件自检新增 “round-trip preserves animation” 检查。
+- **编辑器改动**：新增可停靠 `Timeline` 面板（底部 Dock，View 菜单可开关）：Play/Pause/Stop/Loop + 时间线 scrub；选中实体三通道 **Key** 按钮（当前时间记录当前位姿；同刻覆盖/按时间排序）、关键帧点击跳转、`x` 删除（删空自动移除组件）、Remove Animation。组件只在实际加关键帧时创建（不会因打开面板产生空组件）。Duplicate 深拷贝动画。
+- **验证**：
+  - 像素探针：非循环 clip（t0 x=0 → t2 x=2）：跑大量帧后**末帧 = 静态终点立方体逐像素一致（mean diff 0.000）**（自动播放、越界后钳制停表、采样到末关键帧）；**早帧严格落在 x0 与 x2 之间**（从 t0 起步、随时间线性推进）。
+  - Editor 文件自检 8/8 PASS（新增 animation round-trip）；`tools/run_smoke.py` ALL PASS；debug/release 全链零警告。
+- **已知边界**：采样为线性、无贝塞尔/切线；时间轴 UI 初版（无多选关键帧/无缩放条）；与物理同实体的动画由“每帧后写”覆盖（动画优先，文档化）；Camera/灯光组件仍世界系。
+- **下一步**：动画时间轴打磨（切线/曲线、自动打关键帧“auto-key”跟随 gizmo）或 P4 Script 编辑器。
+
+---
+
 ## 2026-09-05 — Editor/Engine：父子层级 + 场景树（父实体移动子实体跟随）
 
 - **需求**：用户确认“先实现父子层级场景树”，为后续 Editor 关键帧动画 / glTF 骨骼动画铺路（此前 `Transform` 无 parent/child，渲染把本地矩阵当世界矩阵用）。
