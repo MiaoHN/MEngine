@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 
 #include "core/common.hpp"
+#include "render/rhi/rhi.hpp"
 #include "render/shader.hpp"
 #include "render/texture.hpp"
 
@@ -19,6 +20,10 @@ class Material {
  public:
   Material()  = default;
   ~Material() = default;
+
+  /// @brief Face culling applied while drawing with this material.
+  void SetCullMode(CullMode mode) { cull_mode_ = mode; }
+  [[nodiscard]] CullMode GetCullMode() const { return cull_mode_; }
 
   void SetShader(Ref<Shader> shader) { shader_ = std::move(shader); }
   [[nodiscard]] Ref<Shader> GetShader() const { return shader_; }
@@ -54,6 +59,7 @@ class Material {
   float     metallic_factor_ = 1.0f;
   float     roughness_factor_ = 1.0f;
   float     specular_factor_ = 1.0f;
+  CullMode  cull_mode_ = CullMode::None;
 };
 
 }  // namespace MEngine

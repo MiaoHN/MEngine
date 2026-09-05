@@ -13,6 +13,9 @@ namespace MEngine {
 
 enum class GraphicsAPI { OpenGL, Vulkan };
 
+/// @brief Face culling configuration (default None keeps old behaviour).
+enum class CullMode { None, Back, Front };
+
 class IRHI {
  public:
   virtual ~IRHI() = default;
@@ -43,6 +46,9 @@ class IRHI {
 
   /// @brief Toggles wireframe rasterization for subsequent draw calls.
   virtual void SetWireframe(bool wireframe) const = 0;
+
+  /// @brief Sets the face-culling state for subsequent draw calls.
+  virtual void SetCullMode(CullMode mode) const = 0;
 
   /// @brief Reads the currently bound (default) framebuffer back to CPU as RGB.
   /// Returns false when the backend cannot read pixels (e.g. the Vulkan stub).

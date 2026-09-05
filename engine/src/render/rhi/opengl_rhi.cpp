@@ -77,6 +77,22 @@ void OpenGLRHI::DrawIndexedInstanced(int index_count, int instance_count) const 
   glDrawElementsInstanced(GL_TRIANGLES, index_count, GL_UNSIGNED_INT, nullptr, instance_count);
 }
 
+void OpenGLRHI::SetCullMode(CullMode mode) const {
+  switch (mode) {
+    case CullMode::None:
+      glDisable(GL_CULL_FACE);
+      break;
+    case CullMode::Back:
+      glEnable(GL_CULL_FACE);
+      glCullFace(GL_BACK);
+      break;
+    case CullMode::Front:
+      glEnable(GL_CULL_FACE);
+      glCullFace(GL_FRONT);
+      break;
+  }
+}
+
 void OpenGLRHI::SetWireframe(bool wireframe) const {
   glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
 }

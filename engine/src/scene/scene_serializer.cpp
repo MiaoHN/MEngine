@@ -104,6 +104,18 @@ json MaterialToJson(const Ref<Material> &material) {
   j["roughness"]  = material->GetRoughnessFactor();
   j["specular"]   = material->GetSpecularFactor();
 
+  switch (material->GetCullMode()) {
+    case CullMode::Back:
+      j["cull"] = "back";
+      break;
+    case CullMode::Front:
+      j["cull"] = "front";
+      break;
+    case CullMode::None:
+    default:
+      break;  // default omitted for backward-compatible scenes
+  }
+
   const auto texture_path = [](const Ref<Texture> &texture) -> json {
     if (texture && !texture->GetPath().empty()) return ToAssetRelative(texture->GetPath());
     return nullptr;
@@ -123,6 +135,13 @@ Ref<Material> MaterialFromJson(const json &j) {
   material->SetMetallicFactor(j.value("metallic", 1.0f));
   material->SetRoughnessFactor(j.value("roughness", 1.0f));
   material->SetSpecularFactor(j.value("specular", 1.0f));
+
+  const std::string cull = j.value("cull", "");
+  if (cull == "back") {
+    material->SetCullMode(CullMode::Back);
+  } else if (cull == "front") {
+    material->SetCullMode(CullMode::Front);
+  }  // anything else stays None (backward compatible)
 
   const auto load_texture = [&j](const char *key) -> Ref<Texture> {
     if (j.contains(key) && j[key].is_string() && !j[key].get<std::string>().empty()) {

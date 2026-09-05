@@ -5,6 +5,66 @@
 
 ---
 
+## 2026-09-05 — P3 渲染优化主体完成（无人值守 + 像素级验证）
+
+- **分支**：`refractor`；commit：`76e8471`(stats+运行参数)、`384bdf2`(视锥剔除)、
+  `23c620a`(uniform location 缓存)、`f0c416a`(实例化+mesh 共享+材质内容批处理)、
+  `b8965a2`(像素捕获工具+batch/材质比较修复)、+CullMode（本次收尾）
+- **做了什么**：
+  1. **运行设施**：`--scene/--frames/--api/--hidden/--capture-frame/--capture-out`；
+     `Application::Run` 帧预算与捕获改用**总帧计数**（修复：原先误用每秒重置的
+     FPS 滚动计数，低帧率下永不触发）。
+  2. **渲染统计**：Renderer 帧级 drawcalls/triangles/instanced/culled 计数 +
+     Scene 各 pass 计时（shadow/point/ssao/main/skybox/post），每 120 帧输出
+     一条 `[RenderStats]`（无人值守友好）。
+  3. **CPU 视锥剔除**：Mesh 缓存本地 AABB；每帧一次性预计算渲染项（model+世界
+     AABB）；主 pass/SSAO 按相机视锥剔除（Gribb-Hartmann），阴影 pass 保持全量；
+     方向光阴影体改由世界 AABB 并集拟合（替代逐顶点扫描）。
+  4. **GL uniform location 缓存**：SetUniform 不再每次 glGetUniformLocation
+     （此前 PBR 每 draw ~40 次查询，是大场景主要 CPU 瓶颈）。
+  5. **GPU 实例化**：`IVertexArrayBackend::SetInstanceData`（location 3..6、
+     divisor 1）+ `IRHI::DrawIndexedInstanced`；pbr/shadow/point-shadow/ssao
+     顶点着色器全部改为 per-instance model；四个绘制方法提供 Instanced 变体；
+     Scene 各 pass 按 mesh（阴影/SSAO）或 (mesh+材质内容)（主 pass）批处理。
+  6. **共享网格与材质内容批处理**：`AssetManager::GetMesh(source)` 让同源
+     网格共享一个 GPU 对象；主 pass 分组用**材质内容等价**（全字段 memcmp 风格
+     比较，排序用无指针内容全序）——发现并修复 glm vec4 关系运算在该工具链
+     debug 构建下误判（蓝绿材质被判相等），改用标量逐分量比较。
+  7. **CullFace 状态**：`CullMode {None,Back,Front}` 到 Material/序列化/渲染
+     全链路（`"cull": "back|front"`，缺省 None 向后兼容）；绘制后还原 None
+     以免影响 ImGui/2D。验证发现内置 cube/plane/sphere 绕序本就是外部 CCW
+     （可直接用 Back 剔除）。
+  8. **像素捕获验证管线**：`IRHI::ReadBackBuffer` 输出 PPM；`MENGINE_NO_BATCH=1`
+     让主 pass 逐实体绘制作为对照。
+- **验证（全部无人值守，读 mengine.log + 像素 diff）**：
+  - stress_cull.scene（1600 cube，默认正交相机可见 428）：
+    drawcalls **2028 → 5**（阴影 1 + 主 4 个材质批）、triangles 不变 24336、
+    culled=1172（1172+428=1600 自洽）；debug shadow 1.7→0.16ms、main 8.3→1.3ms；
+    release main≈0.2ms。
+  - **像素级一致**：batch 与 MENGINE_NO_BATCH 逐实体对照，1440000 像素 0 差异
+    （1600 实体场景、第 250 帧 TAA/后处理就绪后）。
+  - CullMode 三态场景（相机置于立方体内部）：Back 剔除后中心=天空、Front 保留；
+    外部视角 Back 画面与 None 一致（外表面 front 正常显示）——剔除方向正确。
+  - 回归：physics_test（物理日志正常、300 帧干净退出）、默认 demo、release 双配置
+    编译通过。
+- **遇到的问题**：
+  1. glm `vec4` 的 `==/!=/<` 在 clang debug 构建对某些值误判（蓝/绿材质被判
+     相等导致错误合批、画面偏色）→ 改为 `memcmp`+标量比较后精确分 4 组
+     （114/102/122/90 = 可见四色数）。
+  2. 帧预算此前用每秒重置的 FPS 计数 → 低帧率场景永不退出（表现为前台运行
+     超时），改用总帧计数修复。
+  3. **git 事故**：一次 `git stash` 被中断（SIGTERM）损坏了 `.git/refs` 与
+     全部子模块 gitdir（HEAD/部分 objects 丢失）。已从 reflog 重建
+     `refs/heads/refractor`；子模块 worktree 源码完好且构建不受影响；把损坏的
+     gitdir 备份至 `.git/_broken_modules_backup/`，worktree 内 `.git` 指针改名为
+     `.git.bak-modules`（git 视子模块为未初始化，status/commit 恢复正常）。
+     ⚠️ 需要用户后续执行 `git submodule update --init`（配网）或手工重建
+     子模块 gitdir 才能恢复子模块版本管理。
+- **下一步**：P3 残余（Editor 渲染统计展示、Pass 链抽象）、P3.5 Vulkan、
+  P3.6 多线程、P4 Editor 面板化、P5 压测（stress 场景+PERFORMANCE.md 已在筹备）。
+
+---
+
 ## 2026-09-05 — P2 进阶：CCD/Sensor/Raycast + physics_test 场景（已无人值守验证）
 
 - **分支**：`refractor`；commit：`60f7d5f`(physics CCD+sensor flags)、`755da48`(physics raycast)、

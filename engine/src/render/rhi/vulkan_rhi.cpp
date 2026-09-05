@@ -342,6 +342,10 @@ void VulkanRHI::RenderImGuiDrawData(ImDrawData *draw_data) const {
 #endif
 }
 
+void VulkanRHI::SetCullMode(CullMode mode) const {
+  (void)mode;  // Not implemented for the CPU-side Vulkan placeholder path.
+}
+
 void VulkanRHI::SetWireframe(bool wireframe) const {
   (void)wireframe;  // Wireframe rasterization is not implemented for the Vulkan path yet.
 }

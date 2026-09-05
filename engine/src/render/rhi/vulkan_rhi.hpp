@@ -32,6 +32,7 @@ class VulkanRHI final : public IRHI {
   bool ReadBackBuffer(int width, int height, std::vector<unsigned char> &out_rgb) const override;
 
   void SetWireframe(bool wireframe) const override;
+  void SetCullMode(CullMode mode) const override;
 
   unsigned int CreateFramebuffer() const override;
 

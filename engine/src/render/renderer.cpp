@@ -1,6 +1,8 @@
 #include "render/renderer.hpp"
 
 #include "core/command.hpp"
+#include <cstdlib>
+
 #include "render/asset_manager.hpp"
 #include "render/material.hpp"
 #include "render/mesh.hpp"
@@ -430,9 +432,11 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
     stats_.draw_calls += 1;
     stats_.instanced_draws += 1;
     stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
+    rhi->SetCullMode(material->GetCullMode());
     rhi->SetWireframe(render_mode_ == RenderMode::Wireframe);
     rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
     rhi->SetWireframe(false);
+    rhi->SetCullMode(CullMode::None);  // restore so UI/2D draws are unaffected
   }
 
   shader->Unbind();
