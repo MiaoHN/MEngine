@@ -54,10 +54,10 @@ Ref<Mesh> Mesh::CreateCube(float size) {
   push_face({1.0f, 0.0f, 0.0f}, {h, -h, -h}, {h, h, -h}, {h, h, h}, {h, -h, h});
   // -X
   push_face({-1.0f, 0.0f, 0.0f}, {-h, -h, h}, {-h, h, h}, {-h, h, -h}, {-h, -h, -h});
-  // +Y (up)
-  push_face({0.0f, 1.0f, 0.0f}, {-h, h, -h}, {h, h, -h}, {h, h, h}, {-h, h, h});
-  // -Y (down)
-  push_face({0.0f, -1.0f, 0.0f}, {-h, -h, h}, {h, -h, h}, {h, -h, -h}, {-h, -h, -h});
+  // +Y (up): outward normal +Y -> triangles wound CCW when viewed from above.
+  push_face({0.0f, 1.0f, 0.0f}, {-h, h, h}, {h, h, h}, {h, h, -h}, {-h, h, -h});
+  // -Y (down): outward normal -Y -> triangles wound CCW when viewed from below.
+  push_face({0.0f, -1.0f, 0.0f}, {-h, -h, -h}, {h, -h, -h}, {h, -h, h}, {-h, -h, h});
   // +Z
   push_face({0.0f, 0.0f, 1.0f}, {-h, -h, h}, {h, -h, h}, {h, h, h}, {-h, h, h});
   // -Z
