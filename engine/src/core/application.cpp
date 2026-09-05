@@ -74,6 +74,7 @@ void Application::Initialize() {
 }
 
 void Application::OnUpdate(float dt) {
+  (void)dt;
   // NOTE: This is a default implementation.
 }
 

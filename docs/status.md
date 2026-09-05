@@ -273,6 +273,27 @@
 - 无运动向量（运动模糊/快速运动可能有鬼影）。
 - TAA 历史纹理尺寸固定为构造时窗口尺寸。
 
+### M5 — 编辑器 3D 化 + 资产工作流 ✅
+
+**日期**：2026-09-05
+
+**新增能力：**
+- **相机统一**：新的 `Camera`（透视 + 正交一体，`scene/camera.hpp`）取代 `Camera2D`/`OrthographicCamera`/`PerspectiveCamera`；`CameraComponent` 作为 ECS 组件挂载相机。
+- **编辑器轨道相机**：`EditorCamera`（`editor/src/editor_camera.hpp`，target/yaw/pitch/distance 模型），右键环绕/中键平移/滚轮缩放。
+- **3D 视口**：`Scene::RenderMeshes` 支持自定义目标 FBO（`target_fbo/target_w/target_h`），编辑器把场景合成到视口纹理；程序化网格着色器（X 红/Z 蓝轴线，随距离淡出）。
+- **实体创建/层级**：Empty/Cube/Plane/Sphere（新增 `Mesh::CreateSphere`）、场景面板选中/删除/复制。
+- **模型导入**：从内容浏览器拖 `.obj`/`.gltf`/`.glb` 到视口，自动取景并落地；OBJ 按文件名约定自动套 diffuse/normal/roughness/ao 贴图。
+- **材质编辑**：Albedo/Normal/Roughness/AO 贴图槽（拖拽 + 右键清除）+ Base Color/Metallic/Roughness/Specular 因子；新增 `Material::specular_factor` 与 shader `specular_intensity`。
+- **光照面板**：方向光 + 点光源列表增删改。
+- **Gizmo**：ImGuizmo 移动/旋转/缩放（`W`/`E`/`R`），`F` 聚焦，`Ctrl+D` 复制。
+- **布局**：默认停靠布局（DockBuilder）+ View 菜单面板显隐 + Reset Layout。
+
+**修复：**
+- 视口 FBO 未解绑导致 ImGui 画进离屏纹理（灰屏/闪烁）。
+- 视口折叠为 1px 帧缓冲（最小尺寸钳制）。
+- god rays 在太阳位于屏幕外时从中心假采样导致棱角条纹（太阳不可见时关闭 god rays）。
+- `sample` 为 GLSL 保留字导致的 god_rays 着色器编译失败。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
@@ -288,14 +309,15 @@
 - [x] M4d：SSAO（屏幕空间环境光遮蔽）
 - [x] M4e：体积光（God Rays）
 - [x] M4f：TAA（时间抗锯齿）
-- [ ] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
+- [x] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
+- [ ] 场景序列化（`LoadScene/SaveScene`）
 - [ ] 补全 Vulkan 资源后端
 
 ## 已知问题 / 技术债
 
 - 当前无背面剔除（`glEnable(GL_CULL_FACE)` 未开启），立方体所有面都绘制；后续开启时需确认面绕序。
-- 光照参数（方向光方向/颜色）目前在 shader 内默认，未暴露为引擎级 Light 抽象。
+- 光照参数（方向光方向/颜色）未抽象为完整 Light 体系（点光/聚光为场景级列表，非 ECS 组件）。
 - `Renderer::DrawMesh` 每帧重复设置全部 uniform，后续可引入 material/UBO 批量上传。
 - `RenderContext` 与 `RenderPass` 重复抽象仍未清理。
-- `Camera2D` / `OrthographicCamera` 重叠，相机体系待统一。
+- OBJ 的 `.mtl` 未解析，贴图靠文件名约定自动套用。
 - 点光阴影逐面全量重绘、无 PCF，后续可做分层渲染/软阴影优化。

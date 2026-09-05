@@ -4,47 +4,52 @@
 
 ## 概览
 
-`Editor` 继承 `Application`，是一个基于 ImGui 的编辑器原型，目标是类似 Blender/UE 的可视化编辑体验（当前为早期雏形）。
+`Editor` 继承 `Application`，是一个基于 ImGui + ImGuizmo 的 3D 场景编辑器，体验向 Blender / UE 靠拢。
 
 ```mermaid
 graph TB
     Editor -->|继承| Application
     Editor --> Scene
     Editor --> FrameBuffer
+    Editor --> EditorCamera
     Editor --> ScriptEngine
-    Editor --> ShaderLibrary
-    Editor --> TextureLibrary
 ```
 
 ## 结构
 
 - `Editor::Initialize()`：
-  1. 创建 `Scene`、编辑器相机（`Camera2D`）、`ScriptEngine`（加载 `res/scripts/test.lua`）。
-  2. 初始化 ImGui（docking 开启）与 ImGui 渲染后端。
-  3. 创建 `FrameBuffer`（离屏渲染到纹理）。
-  4. 设置内容浏览器起始目录，加载目录/文件图标。
-- `Editor::OnUpdate(dt)`：每帧 `BeginImGui()` → 各面板 → `EndImGui()`，并根据 `game_mode_` 驱动场景（编辑/播放）。
+  1. 创建 `Scene`，设置渲染参数（IBL 强度/曝光/Bloom/阴影半径等）。
+  2. 初始化 `EditorCamera`（轨道相机）、`ScriptEngine`（加载 `assets/scripts/test.lua`）。
+  3. 初始化 ImGui（docking）与 ImGui 渲染后端。
+  4. 创建视口 `FrameBuffer`（离屏渲染到纹理）。
+  5. 建立地面网格实体（程序化 grid shader）+ 一个初始立方体。
+  6. 设置内容浏览器起始目录（`assets/`）。
+- `Editor::OnUpdate(dt)`：每帧渲染 3D 场景到视口 FBO → 解绑 FBO → `BeginImGui()` → 各面板 → `EndImGui()`。
 
 ## 面板
 
 | 面板 | 函数 | 说明 |
 | --- | --- | --- |
-| 菜单栏 | `BeginImGui()` | File 菜单（Open 占位） |
-| 内容浏览器 | 同 | 遍历当前目录，缩略图网格 + 拖拽源（`CONTENT_BROWSER_ITEM` payload） |
-| 视口 | `ShowImGuiViewport()` | 将 `FrameBuffer` 纹理作为 ImGui Image 显示；Play/Stop 按钮 |
-| 场景层级 | `ShowImGuiScene()` | 实体列表 |
-| 属性 | `ShowImGuiProperties()` | 编辑选中实体的组件（Tag、Transform、Sprite2D、Camera2D 等） |
-| 日志 | 同 | 读取并显示 `mengine.log` |
+| 菜单栏 | `BeginImGui()` | File（Open 占位）+ View（面板显隐 + Reset Layout） |
+| 内容浏览器 | `ShowImGuiContentBrowser()` | 遍历 `assets/` 目录，图片缩略图 + 拖拽源（`CONTENT_BROWSER_ITEM` payload） |
+| 视口 | `ShowImGuiViewport()` | 显示视口 FBO 纹理；工具栏（Translate/Rotate/Scale + Play/Stop）；接收模型拖入 |
+| 场景层级 | `ShowImGuiScene()` | 实体列表 + Create（Empty/Cube/Plane/Sphere）+ Delete + Duplicate |
+| 属性 | `ShowImGuiProperties()` | 编辑选中实体：Tag/Transform/Mesh（材质贴图槽 + 因子）/Camera |
+| 光照 | `ShowImGuiLighting()` | 方向光 + 点光源列表（增删改） |
+| 日志 | 同 | 显示 `mengine.log`，支持 Clear |
+| 信息 | `ShowImGuiInformation()` | FPS + 编辑器相机参数 |
 
 ## 关键交互
 
-- **内容浏览器**：`std::filesystem::directory_iterator` 遍历目录；双击进入子目录；图标用 `ImGui::ImageButton` 显示。
-- **渲染到纹理**：场景渲染到 `frame_buffer_`，视口用 `ImGui::Image` 显示 `frame_buffer_->GetTextureId()`。
-- **游戏模式**：`GameMode::Edit / Play`，Play 时调用场景运行时更新。
-- **组件编辑**：`DisplayAddComponentEntry<T>()` 通过 `ImGui::Popup` 添加组件（Transform/Sprite2D/Camera2D）。
+- **视口操控**：右键拖动 = 环绕；中键拖动 = 平移；滚轮 = 缩放。
+- **Gizmo**：`W`/`E`/`R` 切换移动/旋转/缩放；`F` 聚焦选中实体；`Ctrl+D` 复制实体。
+- **模型导入**：从内容浏览器拖 `.obj` / `.gltf` / `.glb` 到视口，自动取景并落在网格上；OBJ 自动套用同目录贴图（diffuse/normal/roughness/ao）。
+- **材质编辑**：在 Properties → Mesh 里把图片拖到 Albedo/Normal/Roughness/AO 缩略图槽，右键清除；可调 Base Color/Metallic/Roughness/Specular。
+- **渲染到纹理**：`Scene::RenderMeshes(..., target_fbo=视口FBO, ...)` 合成到视口纹理，`frame_buffer_->Unbind()` 后再交给 ImGui 显示。
 
 ## 当前局限
 
-- 拖拽仅产生 payload，**尚未实现接收端**（拖入场景/资源加载）。
-- `Open` 菜单、场景序列化、属性编辑持久化等均为 TODO。
-- 编辑器相机是 2D 正交相机；3D 化后需升级为透视 + 轨道相机（orbit camera）。
+- 场景序列化（`LoadScene/SaveScene`）未实现。
+- OBJ 的 `.mtl` 未解析（贴图靠文件名约定自动套用）。
+- 模型/场景面板尚无多选、父子层级、撤销/重做。
+- 内容浏览器无面包屑/刷新按钮。

@@ -6,8 +6,9 @@
 
 function(mengine_enable_warnings target)
   if(MSVC)
-    # cl.exe and clang-cl share the MSVC flag syntax.
-    target_compile_options(${target} PRIVATE /W4 /permissive- /Zc:__cplusplus)
+    # cl.exe and clang-cl share the MSVC flag syntax. /utf-8 tells the
+    # compiler the sources are UTF-8 (avoids C4819 for Chinese comments).
+    target_compile_options(${target} PRIVATE /W4 /permissive- /Zc:__cplusplus /utf-8)
   else()
     # GCC and Clang (including AppleClang) share the GCC-style flag syntax.
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)

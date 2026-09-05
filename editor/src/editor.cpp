@@ -218,13 +218,20 @@ void Editor::OnUpdate(float dt) {
 
   if (show_log_) {
     ImGui::Begin("Log");
-    std::ifstream     file("MEngine.log");
+    if (ImGui::Button("Clear")) {
+      std::ofstream(std::string(kLogFileName), std::ios::trunc).close();
+    }
+
+    const std::string log_path(kLogFileName);
+    std::ifstream     file(log_path);
     std::stringstream ss;
     if (file.is_open()) {
       ss << file.rdbuf();
     }
-    std::string log = ss.str();
-    ImGui::Text("%s", log.c_str());
+    const std::string log = ss.str();
+    ImGui::BeginChild("##LogText", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+    ImGui::TextUnformatted(log.c_str());
+    ImGui::EndChild();
     ImGui::End();
   }
 
@@ -600,7 +607,8 @@ void Editor::ShowImGuiProperties() {
         auto draw_map = [&](const char *label, const Ref<Texture> &get, auto &&set) {
           ImGui::BeginGroup();
           if (get) {
-            ImGui::Image(reinterpret_cast<ImTextureID>(get->GetID()), {thumb, thumb}, ImVec2(0, 1), ImVec2(1, 0));
+            ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(get->GetID())), {thumb, thumb}, ImVec2(0, 1),
+                         ImVec2(1, 0));
           } else {
             ImGui::Button("None", {thumb, thumb});
           }
@@ -776,7 +784,8 @@ void Editor::ShowImGuiContentBrowser() {
     }
 
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    ImGui::ImageButton(reinterpret_cast<ImTextureID>(icon->GetID()), {thumbnailSize, thumbnailSize}, {0, 1}, {1, 0});
+    ImGui::ImageButton(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(icon->GetID())), {thumbnailSize, thumbnailSize},
+                       {0, 1}, {1, 0});
 
     if (ImGui::BeginDragDropSource()) {
       std::filesystem::path relativePath(path);

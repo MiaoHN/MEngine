@@ -52,7 +52,7 @@ Corner ParseCorner(const std::string &token) {
   if (fields.size() == 2) {
     corner.t = ToInt(fields[1]);  // v/vt
   } else if (fields.size() >= 3) {
-    corner.t = ToInt(fields[1]);  // v/vt/vn or v//vn (empty middle → 0)
+    corner.t = ToInt(fields[1]);  // v/vt/vn or v//vn (empty middle -> 0)
     corner.n = ToInt(fields[2]);
   }
   return corner;

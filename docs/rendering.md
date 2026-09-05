@@ -2,13 +2,18 @@
 
 路径：`engine/src/render`，RHI 抽象在 `engine/src/render/rhi`。
 
+> 说明：渲染器已从 2D 精灵管线重构为 **Mesh 驱动的 PBR 管线**（阴影/IBL/SSAO/体积光/TAA），
+> 3D 是当前主路径。着色器与资源集中在 `assets/shaders` / `assets/textures` / `assets/models`
+> （由 `AssetManager` + `manifest.json` 管理）；下文部分历史小节中出现的 `res/shaders` 等路径
+> 是重构前的旧布局，仅作历史记录。
+
 ## 层次划分
 
 ```mermaid
 graph TB
     subgraph 高层["高层封装 (面向游戏逻辑)"]
-        RENDERER[Renderer 2D 渲染器]
-        SCENE[Scene::Render]
+        RENDERER[Renderer]
+        SCENE[Scene::RenderMeshes]
     end
 
     subgraph 中间层["渲染资源与组织"]

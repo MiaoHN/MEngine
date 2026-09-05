@@ -49,7 +49,7 @@ class Texture {
 
   std::string GetPath() const { return path_; }
 
-  const unsigned int GetID() const;
+  unsigned int GetID() const;
 
   static Ref<Texture> Create(const std::string &path);
 

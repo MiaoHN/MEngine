@@ -4,27 +4,27 @@
 >
 > 原则：**小步快跑，每阶段可运行、可验证**。必要时允许重构现有结构（已获授权）。
 >
-> **当前进度**：见 [status.md](./status.md)。M1（3D 地基）+ M2a/M2b（OBJ/glTF 导入）+ M3a（PBR 材质）+ M3b（阴影映射）+ M3c（点光源）+ M3d（软阴影/点光阴影/聚光）+ M4a（HDR/Bloom）+ M4b（天空盒/IBL）+ M4c（HDR 环境/预过滤镜面 IBL）+ M4d（SSAO）+ M4e（体积光）+ M4f（TAA）已完成 ✅。
+> **当前进度**：见 [status.md](./status.md)。M1（3D 地基）+ M2a/M2b（OBJ/glTF 导入）+ M3a（PBR 材质）+ M3b（阴影映射）+ M3c（点光源）+ M3d（软阴影/点光阴影/聚光）+ M4a（HDR/Bloom）+ M4b（天空盒/IBL）+ M4c（HDR 环境/预过滤镜面 IBL）+ M4d（SSAO）+ M4e（体积光）+ M4f（TAA）+ M5（编辑器 3D 化 + 资产工作流）已完成 ✅。
 
 ## 现状评估（做 3D 前必须认清）
 
-| 维度 | 现状 | 对 3D 的影响 |
+| 维度 | 现状 | 对后续的影响 |
 | --- | --- | --- |
-| 渲染 | 2D Sprite（四边形 VAO + 默认 shader 硬编码） | 需彻底重构为 Mesh 驱动 |
-| 相机 | 2D 正交（`Camera2D`/`OrthographicCamera`） | 需引入透视相机 + 轨道控制 |
-| 资源 | Texture/Shader/FrameBuffer 有 Backend 抽象 | 可复用，需新增 Mesh/Vertex/Index Buffer Backend |
-| RHI | `IRHI` 抽象已存在，OpenGL 可用，Vulkan 空壳 | 需补全 Vulkan 或先以 OpenGL 为主做 3D |
-| 场景 | ECS（EnTT）+ `Transform`(3D 语义) | 可复用，需新增网格/材质组件 |
-| 编辑器 | ImGui 原型，有内容浏览器/视口 | 需加资产导入、材质编辑、Gizmo（ImGuizmo 已引入） |
+| 渲染 | Mesh 驱动的 PBR 管线（阴影/IBL/SSAO/体积光/TAA） | 后续补多网格/多材质、实例化、间接绘制 |
+| 相机 | 统一 `Camera`（透视 + 正交）+ 编辑器轨道相机 | 可扩展脚本化相机控制 |
+| 资源 | `AssetManager`（manifest 映射）+ Shader/Texture 库 | 可扩展 Mesh 库、模型缩略图 |
+| RHI | `IRHI` 抽象存在，OpenGL 可用，Vulkan 空壳 | 需补全 Vulkan 或先以 OpenGL 为主 |
+| 场景 | ECS（EnTT）+ `Transform`/`MeshComponent`/`CameraComponent` | 需补场景序列化、父子层级 |
+| 编辑器 | 3D 视口 + 轨道相机 + Gizmo + 模型导入 + 材质编辑 | 可补多选、撤销/重做、资产预览 |
 | 序列化 | `LoadScene/SaveScene` 未实现 | 需实现场景/资产序列化 |
 
 ## 需要重构的部分（在 3D 工作前/中完成）
 
-1. **Render 层去 2D 硬编码**：`Renderer` 不再持有写死的四边形 VAO 和默认 shader，改为通用 `DrawMesh(mesh, material, transform)`。
-2. **RHI/Backend 补全**：新增 `IMeshBackend`（或 `IVertexBuffer/IIndexBuffer`）抽象；`Vulkan*Backend` 空壳要么补全、要么先标记为未实现并隔离。
-3. **相机统一**：引入 `Camera`（透视 + 正交）基类，替换 `Camera2D`/`OrthographicCamera` 的重复实现。
-4. **清理冗余**：合并/删除 `RenderContext`（与 `RenderPass` 重复）。
-5. **资源生命周期**：为 Mesh/Texture/Material 建立统一缓存与路径加载约定。
+1. ✅ **Render 层去 2D 硬编码**：`Renderer` 已改为通用 `DrawMesh(mesh, material, transform)`，2D 精灵路径保留但不再是主路径。
+2. ⏳ **RHI/Backend 补全**：`IVertexArrayBackend` 已有 OpenGL 实现；`Vulkan*Backend` 仍是空壳，待补全或标记未实现并隔离。
+3. ✅ **相机统一**：引入统一 `Camera`（透视 + 正交），替换了 `Camera2D`/`OrthographicCamera`/`PerspectiveCamera`。
+4. ⏳ **清理冗余**：`RenderContext`（与 `RenderPass` 重复）仍未合并/删除。
+5. ✅ **资源生命周期**：`AssetManager`（manifest 映射）+ `ShaderLibrary`/`TextureLibrary` 统一缓存与路径加载。
 
 ---
 
@@ -39,12 +39,12 @@ graph LR
     E --> F[阶段5 编辑器集成]
 ```
 
-### 阶段 0 — 地基重构（先做，1 步到位）
+### 阶段 0 — 地基重构（先做，1 步到位）✅ 已完成
 
-- 重构 `Renderer`：新增 `Mesh`、`VertexBuffer`、`IndexBuffer` 及对应 Backend（OpenGL 先实现，Vulkan 留桩）。
-- 引入 `Camera` 基类（透视 + 正交），`Camera2D` 逐步收敛为"正交相机的一种"。
-- 删除/合并 `RenderContext`，统一到 `RenderPass`/`RenderPipeline`。
-- 建立 `MeshLibrary` / `MaterialLibrary` 等资源缓存，与 `ShaderLibrary`/`TextureLibrary` 对齐。
+- ✅ 重构 `Renderer`：新增 `Mesh`、`VertexBuffer`、`IndexBuffer` 及对应 Backend（OpenGL 先实现，Vulkan 留桩）。
+- ✅ 引入统一 `Camera`（透视 + 正交），替换 `Camera2D`/`OrthographicCamera`/`PerspectiveCamera`。
+- ⏳ 删除/合并 `RenderContext`，统一到 `RenderPass`/`RenderPipeline`（未完成）。
+- ✅ 建立 `ShaderLibrary`/`TextureLibrary` 等资源缓存，`AssetManager` 统一资产加载。
 
 ### 阶段 1 — 3D 渲染基础
 
