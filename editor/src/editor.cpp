@@ -470,6 +470,8 @@ default_material_ = CreateDefaultMaterial();
   // an editor-only overlay, hidden while Play mode is simulating.
   grid_material_ = CreateRef<Material>();
   grid_material_->SetShader(AssetManager::Instance().GetShader("grid"));
+  // Editor overlay plane: keep double-sided so it stays visible from below.
+  grid_material_->SetCullMode(CullMode::None);
   grid_mesh_   = Mesh::CreatePlane(500.0f);
   grid_entity_ = active_scene_->CreateEntity("Grid");
   grid_entity_.GetComponent<Tag>().editor_only = true;
@@ -487,6 +489,13 @@ default_material_ = CreateDefaultMaterial();
   current_directory_ = base_directory_;
   directory_icon_    = AssetManager::Instance().GetTexture("icons/DirectoryIcon.png");
   file_icon_         = AssetManager::Instance().GetTexture("icons/FileIcon.png");
+
+  // Optional `--scene <path>`: start the editor already inside a scene (Edit
+  // mode), replacing the default physics demo. Mirrors File -> Open Scene.
+  const std::string &startup_scene = Application::GetStartupScenePath();
+  if (!startup_scene.empty()) {
+    OpenScenePath(startup_scene);
+  }
 
   LOG_INFO("Editor") << "Editor initialized (scene + ImGui + viewport framebuffer)";
 }
