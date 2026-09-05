@@ -59,9 +59,6 @@ class SSAO {
   unsigned int ssao_fbo_     = 0;
   unsigned int ssao_texture_ = 0;
 
-  unsigned int blur_fbo_     = 0;
-  unsigned int blur_texture_ = 0;
-
   unsigned int fullscreen_vao_ = 0;
 
   int width_  = 0;
@@ -72,14 +69,13 @@ class SSAO {
   int ssao_height_ = 0;
   int sample_count_ = 32;
 
-  float radius_ = 0.5f;
+  float radius_ = 0.3f;
   float bias_   = 0.025f;
 
   std::vector<glm::vec3> kernel_;
 
   Ref<Shader> geometry_shader_;
   Ref<Shader> ssao_shader_;
-  Ref<Shader> blur_shader_;
 };
 
 }  // namespace MEngine

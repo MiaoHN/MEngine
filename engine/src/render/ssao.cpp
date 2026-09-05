@@ -71,19 +71,6 @@ SSAO::SSAO(int width, int height) {
   glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssao_texture_, 0);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-  // Blur framebuffer.
-  glGenFramebuffers(1, &blur_fbo_);
-  glGenTextures(1, &blur_texture_);
-  glBindTexture(GL_TEXTURE_2D, blur_texture_);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, ssao_width_, ssao_height_, 0, GL_RED, GL_FLOAT, nullptr);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glBindFramebuffer(GL_FRAMEBUFFER, blur_fbo_);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, blur_texture_, 0);
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
   // 4x4 random rotation vectors tiled across the screen.
   std::uniform_real_distribution<float> random_floats(0.0f, 1.0f);
   std::default_random_engine            generator;
@@ -114,8 +101,7 @@ SSAO::SSAO(int width, int height) {
   glGenVertexArrays(1, &fullscreen_vao_);
 
   geometry_shader_ = AssetManager::Instance().GetShader("ssao_geometry");
-  ssao_shader_     = AssetManager::Instance().GetShader("ssao");
-  blur_shader_     = AssetManager::Instance().GetShader("ssao_blur");
+  ssao_shader_     = AssetManager::Instance().GetShader("ssao2");
 }
 
 SSAO::~SSAO() {
@@ -126,8 +112,6 @@ SSAO::~SSAO() {
   glDeleteTextures(1, &noise_texture_);
   glDeleteFramebuffers(1, &ssao_fbo_);
   glDeleteTextures(1, &ssao_texture_);
-  glDeleteFramebuffers(1, &blur_fbo_);
-  glDeleteTextures(1, &blur_texture_);
   glDeleteVertexArrays(1, &fullscreen_vao_);
 }
 
@@ -157,9 +141,11 @@ void SSAO::EndGeometryPass() const {
 void SSAO::Generate(const glm::mat4 &proj, const glm::mat4 &view) const {
   (void)view;
 
-  // SSAO sampling pass.
+  // SSAO sampling pass. Clear to 1.0 (fully lit) so any pixel the pass does
+  // not cover stays unoccluded instead of turning black.
   glBindFramebuffer(GL_FRAMEBUFFER, ssao_fbo_);
   glViewport(0, 0, ssao_width_, ssao_height_);
+  glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
   ssao_shader_->Bind();
@@ -182,21 +168,12 @@ void SSAO::Generate(const glm::mat4 &proj, const glm::mat4 &view) const {
   ssao_shader_->SetUniform("bias", bias_);
   DrawFullscreenTriangle();
 
-  // Blur pass.
-  glBindFramebuffer(GL_FRAMEBUFFER, blur_fbo_);
-  glClear(GL_COLOR_BUFFER_BIT);
-  blur_shader_->Bind();
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, ssao_texture_);
-  blur_shader_->SetUniform("ssao_input", 0);
-  DrawFullscreenTriangle();
-
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void SSAO::BindTexture(unsigned int slot) const {
   glActiveTexture(GL_TEXTURE0 + slot);
-  glBindTexture(GL_TEXTURE_2D, blur_texture_);
+  glBindTexture(GL_TEXTURE_2D, ssao_texture_);
 }
 
 }  // namespace MEngine

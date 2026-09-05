@@ -16,7 +16,8 @@
     "grid":               ["shaders/grid_vert.glsl", "shaders/grid_frag.glsl"],
     "ssao_geometry":      ["shaders/ssao_geometry_vert.glsl", "shaders/ssao_geometry_frag.glsl"],
     "ssao":               ["shaders/ssao_vert.glsl", "shaders/ssao_frag.glsl"],
-    "ssao_blur":          ["shaders/ssao_vert.glsl", "shaders/ssao_blur_frag.glsl"]
+    "ssao_blur":          ["shaders/ssao_vert.glsl", "shaders/ssao_blur_frag.glsl"],
+    "ssao2":              ["shaders/ssao2_vert.glsl", "shaders/ssao2_frag.glsl"]
   },
   "textures": {
     "hdr_sky": "textures/hdr/kloppenheim_06_puresky_1k.hdr"
