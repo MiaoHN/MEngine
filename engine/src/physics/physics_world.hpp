@@ -19,6 +19,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include "physics/contact_listener.hpp"
 #include "physics/jolt_math.hpp"
 
 namespace MEngine {
@@ -58,6 +59,13 @@ class PhysicsWorld {
 
   void SetGravity(const glm::vec3 &gravity);
 
+  /// @brief Drains the contact add/remove events recorded since the last call.
+  std::vector<ContactEvent> DrainContactEvents() { return contact_listener_.Drain(); }
+
+  /// @brief Clears queued events and the tracked pair set (call when starting
+  /// a fresh simulation).
+  void ResetContacts() { contact_listener_.Reset(); }
+
  private:
   /// @brief Two object layers are enough for now: static (0) and dynamic (1).
   class ObjectLayerPairFilterImpl final : public JPH::ObjectLayerPairFilter {
@@ -93,6 +101,8 @@ class PhysicsWorld {
   ObjectLayerPairFilterImpl         object_layer_pair_filter_;
   BroadPhaseLayerInterfaceImpl      broad_phase_layer_interface_;
   ObjectVsBroadPhaseLayerFilterImpl object_vs_broad_phase_filter_;
+
+  ContactListener contact_listener_;
 
   JPH::PhysicsSystem physics_system_;
 };

@@ -76,28 +76,32 @@ Entity Scene::FindEntityByName(const std::string &name) {
   return Entity();
 }
 
-void Scene::StartSimulation() {
-  if (simulating_) {
-    LOG_WARN("Scene") << "StartSimulation called while already simulating";
+void Scene::RefreshEntityBody(entt::entity handle) {
+  if (!simulating_) return;
+
+  // Invalid handle (entity destroyed / reused): drop its body if any.
+  if (handle == entt::null || !registry_.valid(handle)) {
+    const auto it = body_ids_.find(handle);
+    if (it != body_ids_.end()) {
+      physics_world_->DestroyBody(it->second);
+      body_id_to_entity_.erase(it->second.GetIndexAndSequenceNumber());
+      body_ids_.erase(it);
+    }
     return;
   }
 
-  transform_snapshot_.clear();
-  body_ids_.clear();
+  const bool eligible = registry_.all_of<Transform>(handle) && registry_.all_of<ColliderComponent>(handle) &&
+                        registry_.all_of<RigidBodyComponent>(handle);
+  const auto it  = body_ids_.find(handle);
+  const bool has = it != body_ids_.end();
 
-  for (auto &entity : GetAllEntitiesWith<RigidBodyComponent, Transform>()) {
-    if (!entity.HasComponent<ColliderComponent>()) continue;
-
-    const auto &rigid_body = entity.GetComponent<RigidBodyComponent>();
-    const auto &collider   = entity.GetComponent<ColliderComponent>();
-    const auto &transform  = entity.GetComponent<Transform>();
-
-    // Snapshot the transform so StopSimulation can restore the initial state.
-    transform_snapshot_[entity.GetHandle()] = {transform.translation, transform.rotation, transform.scale};
-
-    const bool      is_dynamic = rigid_body.type == RigidBodyComponent::Type::Dynamic;
-    const glm::vec3 position   = transform.translation + collider.offset;
-    const glm::quat rotation   = glm::quat(glm::radians(transform.rotation));
+  if (eligible && !has) {
+    const auto  &rigid_body = registry_.get<RigidBodyComponent>(handle);
+    const auto  &collider   = registry_.get<ColliderComponent>(handle);
+    const auto  &transform  = registry_.get<Transform>(handle);
+    const bool   is_dynamic = rigid_body.type == RigidBodyComponent::Type::Dynamic;
+    const glm::vec3 position = transform.translation + collider.offset;
+    const glm::quat rotation = glm::quat(glm::radians(transform.rotation));
 
     JPH::BodyID body_id;
     if (collider.shape == ColliderComponent::Shape::Sphere) {
@@ -108,21 +112,110 @@ void Scene::StartSimulation() {
                                               rigid_body.friction, rigid_body.restitution);
     }
     if (body_id.IsInvalid()) {
-      LOG_WARN("Scene") << "Failed to create physics body for '" << entity.GetComponent<Tag>().tag << "'";
-      continue;
+      LOG_WARN("Scene") << "Failed to create physics body for entity " << entt::to_integral(handle);
+      return;
     }
-    body_ids_[entity.GetHandle()] = body_id;
+    body_ids_[handle]                              = body_id;
+    body_id_to_entity_[body_id.GetIndexAndSequenceNumber()] = handle;
+  } else if (!eligible && has) {
+    physics_world_->DestroyBody(it->second);
+    body_id_to_entity_.erase(it->second.GetIndexAndSequenceNumber());
+    body_ids_.erase(it);
+  }
+}
+
+bool Scene::HasPhysicsBody(entt::entity handle) {
+  return simulating_ && body_ids_.count(handle) != 0;
+}
+
+glm::vec3 Scene::GetBodyVelocity(entt::entity handle) {
+  if (!simulating_) return glm::vec3(0.0f);
+  const auto it = body_ids_.find(handle);
+  if (it == body_ids_.end()) return glm::vec3(0.0f);
+  return ToGlm(physics_world_->GetBodyInterface().GetLinearVelocity(it->second));
+}
+
+void Scene::SetBodyVelocity(entt::entity handle, const glm::vec3 &velocity) {
+  if (!simulating_) return;
+  const auto it = body_ids_.find(handle);
+  if (it == body_ids_.end()) return;
+  // Only dynamic bodies may be moved directly.
+  const auto *rigid = registry_.try_get<RigidBodyComponent>(handle);
+  if (!rigid || rigid->type == RigidBodyComponent::Type::Static) return;
+
+  auto &body_interface = physics_world_->GetBodyInterface();
+  body_interface.ActivateBody(it->second);
+  body_interface.SetLinearVelocity(it->second, ToJolt(velocity));
+}
+
+void Scene::ApplyBodyImpulse(entt::entity handle, const glm::vec3 &impulse) {
+  if (!simulating_) return;
+  const auto it = body_ids_.find(handle);
+  if (it == body_ids_.end()) return;
+  const auto *rigid = registry_.try_get<RigidBodyComponent>(handle);
+  if (!rigid || rigid->type == RigidBodyComponent::Type::Static) return;
+
+  auto &body_interface = physics_world_->GetBodyInterface();
+  body_interface.ActivateBody(it->second);
+  body_interface.AddImpulse(it->second, ToJolt(impulse));
+}
+
+void Scene::StartSimulation() {
+  if (simulating_) {
+    LOG_WARN("Scene") << "StartSimulation called while already simulating";
+    return;
   }
 
-  simulating_ = true;
+  transform_snapshot_.clear();
+  body_ids_.clear();
+  body_id_to_entity_.clear();
+  // Drop any queued events / tracked pairs left over from a previous run.
+  physics_world_->ResetContacts();
+  sim_accumulator_ = 0.0f;
+  simulating_      = true;
+
+  // Build bodies for every entity that is currently eligible.
+  SyncSimulationBodies();
+
+  // Snapshot the initial transforms so StopSimulation can restore them.
+  for (auto &[handle, body_id] : body_ids_) {
+    if (auto *transform = registry_.try_get<Transform>(handle)) {
+      transform_snapshot_[handle] = {transform->translation, transform->rotation, transform->scale};
+    }
+  }
   LOG_INFO("Scene") << "Physics simulation started with " << body_ids_.size() << " bodies";
 }
 
 void Scene::StepSimulation(float delta_time) {
   if (!simulating_) return;
 
-  physics_world_->Update(delta_time);
+  // Pick up bodies for entities spawned / reconfigured at runtime.
+  SyncSimulationBodies();
 
+  // Fixed-step loop: physics, collision dispatch and script OnFixedUpdate all
+  // advance at kFixedTimeStep, so a frame with N accumulated steps runs
+  // [step physics -> write back -> collisions -> OnFixedUpdate] N times. This
+  // keeps OnFixedUpdate and OnCollisionEnter/Exit consistent with the physics.
+  constexpr float kMaxFrameDt = 0.25f;  // clamp a hitch so we never spiral
+  constexpr int   kMaxSteps   = 5;
+  sim_accumulator_ += std::min(delta_time, kMaxFrameDt);
+
+  int steps = 0;
+  while (sim_accumulator_ >= kFixedTimeStep && steps < kMaxSteps) {
+    sim_accumulator_ -= kFixedTimeStep;
+
+    physics_world_->Update(kFixedTimeStep);
+    WriteBackTransforms();
+    DispatchContactEvents();
+    script_engine_->FixedStepUpdate(kFixedTimeStep);
+    ++steps;
+  }
+  if (steps >= kMaxSteps) {
+    sim_accumulator_ = 0.0f;  // drop the excess after a hitch
+  }
+}
+
+void Scene::WriteBackTransforms() {
   auto &body_interface = physics_world_->GetBodyInterface();
   for (auto &[handle, body_id] : body_ids_) {
     auto *transform = registry_.try_get<Transform>(handle);
@@ -140,6 +233,73 @@ void Scene::StepSimulation(float delta_time) {
   }
 }
 
+void Scene::DispatchContactEvents() {
+  auto &body_interface = physics_world_->GetBodyInterface();
+
+  for (const auto &event : physics_world_->DrainContactEvents()) {
+    const auto it_a = body_id_to_entity_.find(event.body_a.GetIndexAndSequenceNumber());
+    const auto it_b = body_id_to_entity_.find(event.body_b.GetIndexAndSequenceNumber());
+    if (it_a == body_id_to_entity_.end() || it_b == body_id_to_entity_.end()) continue;
+
+    const entt::entity a = it_a->second;
+    const entt::entity b = it_b->second;
+
+    if (!event.added) {
+      // Exit events carry no contact data (Jolt only gives us the pair).
+      ScriptCollisionInfo empty;
+      script_engine_->DispatchCollision(a, b, empty, false);
+      script_engine_->DispatchCollision(b, a, empty, false);
+      continue;
+    }
+
+    // Orient the data for each receiving script *before* dispatching, so a
+    // handler that mutates/destroys the scene can't invalidate the reads.
+    const glm::vec3 va = ToGlm(body_interface.GetLinearVelocity(event.body_a));
+    const glm::vec3 vb = ToGlm(body_interface.GetLinearVelocity(event.body_b));
+    const glm::vec3 n  = ToGlm(event.normal);  // manifold normal: body_a -> body_b
+
+    // For entity `a` (self = a, other = b): normal from other->self = -n;
+    // relative velocity = velocity(other) - velocity(self) = vb - va.
+    ScriptCollisionInfo for_a;
+    for_a.point             = ToGlm(event.point);
+    for_a.normal            = -n;
+    for_a.relative_velocity = vb - va;
+    for_a.penetration       = event.penetration;
+    script_engine_->DispatchCollision(a, b, for_a, true);
+
+    // For entity `b` (self = b, other = a): normal = +n, rel = va - vb.
+    ScriptCollisionInfo for_b;
+    for_b.point             = for_a.point;
+    for_b.normal            = n;
+    for_b.relative_velocity = va - vb;
+    for_b.penetration       = for_a.penetration;
+    script_engine_->DispatchCollision(b, a, for_b, true);
+  }
+}
+
+void Scene::SyncSimulationBodies() {
+  if (!simulating_) return;
+
+  // Drop bodies whose entities were destroyed at runtime.
+  for (auto it = body_ids_.begin(); it != body_ids_.end();) {
+    if (it->first == entt::null || !registry_.valid(it->first)) {
+      physics_world_->DestroyBody(it->second);
+      body_id_to_entity_.erase(it->second.GetIndexAndSequenceNumber());
+      it = body_ids_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  // Refresh every entity that has (or had) physics-relevant components.
+  for (auto &entity : entities_) {
+    const entt::entity handle = entity.GetHandle();
+    if (registry_.all_of<RigidBodyComponent>(handle) || registry_.all_of<ColliderComponent>(handle)) {
+      RefreshEntityBody(handle);
+    }
+  }
+}
+
 void Scene::StopSimulation() {
   if (!simulating_) return;
 
@@ -147,6 +307,8 @@ void Scene::StopSimulation() {
     physics_world_->DestroyBody(body_id);
   }
   body_ids_.clear();
+  body_id_to_entity_.clear();
+  sim_accumulator_ = 0.0f;
 
   // Restore the transforms captured before the simulation started.
   for (auto &[handle, snapshot] : transform_snapshot_) {

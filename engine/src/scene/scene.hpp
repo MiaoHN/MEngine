@@ -166,6 +166,27 @@ class Scene {
   /// @brief Raw registry access (used by the Lua bindings).
   [[nodiscard]] entt::registry &GetRegistry() { return registry_; }
 
+  // --- Physics helpers for the Lua bindings --------------------------------
+  // All are no-ops unless the scene is simulating and the entity owns a body.
+
+  /// @brief Creates a Jolt body for `handle` if it is eligible (Transform +
+  /// Collider + RigidBody) and does not have one yet; destroys its body when
+  /// it is no longer eligible. Public so scripts can add components and spawn
+  /// colliding entities while a simulation is running.
+  void RefreshEntityBody(entt::entity handle);
+
+  /// @brief True while the entity has a live physics body.
+  [[nodiscard]] bool HasPhysicsBody(entt::entity handle);
+
+  /// @brief Linear velocity of the entity's body (zero when it has none).
+  glm::vec3 GetBodyVelocity(entt::entity handle);
+
+  /// @brief Sets the linear velocity of a dynamic body (wakes it up).
+  void SetBodyVelocity(entt::entity handle, const glm::vec3 &velocity);
+
+  /// @brief Applies an impulse at the body's center of mass (wakes it up).
+  void ApplyBodyImpulse(entt::entity handle, const glm::vec3 &impulse);
+
  private:
   entt::registry registry_;
 
@@ -178,6 +199,10 @@ class Scene {
   Ref<PhysicsWorld> physics_world_;
   bool              simulating_ = false;
 
+  /// @brief Accumulator for the fixed-step simulation (physics + OnFixedUpdate
+  /// + collision dispatch all advance at kFixedTimeStep).
+  float sim_accumulator_ = 0.0f;
+
   struct TransformSnapshot {
     glm::vec3 translation;
     glm::vec3 rotation;
@@ -185,6 +210,17 @@ class Scene {
   };
   std::unordered_map<entt::entity, TransformSnapshot> transform_snapshot_;
   std::unordered_map<entt::entity, JPH::BodyID>       body_ids_;
+  std::unordered_map<uint32_t, entt::entity>          body_id_to_entity_;
+
+  /// @brief Synchronizes Jolt bodies with the RigidBody/Collider components
+  /// (used to pick up entities spawned or re-configured at runtime).
+  void SyncSimulationBodies();
+
+  /// @brief Writes simulated body transforms back to the Transform components.
+  void WriteBackTransforms();
+
+  /// @brief Drains contact events and forwards them to the script engine.
+  void DispatchContactEvents();
 
   Ref<ScriptEngine> script_engine_;
   std::string       main_script_;

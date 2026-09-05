@@ -39,6 +39,7 @@ class Editor : public Application {
   void ShowImGuiRendering();
   void ShowImGuiLog();
   void ShowImGuiInformation();
+  void ShowImGuiScriptEditor();
 
   template <typename T>
   void DisplayAddComponentEntry(const std::string &entryName);
@@ -84,10 +85,34 @@ class Editor : public Application {
   bool show_log_             = true;
   bool show_information_     = true;
   bool show_colliders_       = true;
+  bool show_script_editor_   = true;
 
   ImGuiID dockspace_id_ = 0;
 
   ImFont *mono_font_ = nullptr;
+
+  // --- Script editor state -------------------------------------------------
+  static constexpr size_t kScriptBufferSize = 128 * 1024;
+
+  std::string current_script_path_;  ///< open script, relative to the asset root
+  bool        script_dirty_ = false; ///< buffer differs from the file on disk
+  char        script_code_[kScriptBufferSize] = {};
+  std::string script_pending_path_;  ///< file awaiting the unsaved-changes prompt
+  bool        script_pending_create_ = false;  ///< pending file must be created first
+
+  /// @brief Loads `relative` into the editor buffer (marks it clean).
+  void LoadScriptIntoBuffer(const std::string &relative);
+
+  /// @brief Writes the current buffer to disk and hot-reloads running scripts.
+  /// Returns false when the write fails.
+  bool SaveCurrentScript();
+
+  /// @brief Opens `relative` in the Script Editor, showing an unsaved-changes
+  /// prompt first if the current buffer is dirty.
+  void OpenScriptInEditor(const std::string &relative);
+
+  /// @brief Applies the pending open/create after the user resolves the prompt.
+  void ApplyScriptPending();
 
   Entity CreateEntityWithUniqueName(const std::string &base_name);
   void CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh);

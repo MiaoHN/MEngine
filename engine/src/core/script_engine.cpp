@@ -6,14 +6,14 @@
 
 #include "core/input.hpp"
 #include "render/asset_manager.hpp"
+#include "render/material.hpp"
+#include "render/mesh.hpp"
 #include "scene/component.hpp"
 #include "scene/scene.hpp"
 
 namespace MEngine {
 
 namespace {
-
-constexpr float kFixedStep = 1.0f / 60.0f;
 
 const char *kEntityMeta = "MEngine.Entity";
 
@@ -45,6 +45,18 @@ void PushEntity(lua_State *L, Scene *scene, entt::entity id) {
   ud->scene = scene;
   ud->id    = id;
   luaL_setmetatable(L, kEntityMeta);
+}
+
+/// @brief Sets `table.field = { x, y, z }` (table at the top of the stack).
+void PushVec3Field(lua_State *L, const char *field, const glm::vec3 &v) {
+  lua_newtable(L);
+  lua_pushnumber(L, v.x);
+  lua_rawseti(L, -2, 1);
+  lua_pushnumber(L, v.y);
+  lua_rawseti(L, -2, 2);
+  lua_pushnumber(L, v.z);
+  lua_rawseti(L, -2, 3);
+  lua_setfield(L, -2, field);
 }
 
 int TracebackHandler(lua_State *L) {
@@ -228,6 +240,183 @@ int Entity_GetId(lua_State *L) {
   return 1;
 }
 
+// --- entity component & physics API ----------------------------------------
+
+/// @brief Creates a primitive mesh from a Lua shape name ("cube"/"plane"/"sphere").
+Ref<Mesh> PrimitiveMesh(const std::string &shape) {
+  if (shape == "sphere") return Mesh::CreateSphere();
+  if (shape == "plane") return Mesh::CreatePlane();
+  return Mesh::CreateCube();
+}
+
+/// @brief Default white, matte PBR material for script-created meshes.
+Ref<Material> DefaultScriptMaterial() {
+  auto material = CreateRef<Material>();
+  if (auto shader = AssetManager::Instance().GetShader("pbr")) {
+    material->SetShader(shader);
+  }
+  material->SetBaseColorFactor(glm::vec4(1.0f));
+  material->SetMetallicFactor(0.0f);
+  material->SetRoughnessFactor(0.85f);
+  material->SetSpecularFactor(0.3f);
+  return material;
+}
+
+int Entity_HasComponent(lua_State *L) {
+  EntityUserdata    *ud   = CheckEntity(L, 1);
+  const std::string  name = luaL_checkstring(L, 2);
+  auto              &reg  = ud->scene->GetRegistry();
+  bool               has  = false;
+  if (name == "transform") has = reg.all_of<Transform>(ud->id);
+  else if (name == "mesh") has = reg.all_of<MeshComponent>(ud->id);
+  else if (name == "rigid_body") has = reg.all_of<RigidBodyComponent>(ud->id);
+  else if (name == "collider") has = reg.all_of<ColliderComponent>(ud->id);
+  else if (name == "camera") has = reg.all_of<CameraComponent>(ud->id);
+  else if (name == "lua_script") has = reg.all_of<LuaScriptComponent>(ud->id);
+  lua_pushboolean(L, has);
+  return 1;
+}
+
+int Entity_AddComponent(lua_State *L) {
+  EntityUserdata    *ud  = CheckEntity(L, 1);
+  const std::string  name = luaL_checkstring(L, 2);
+  auto              &reg = ud->scene->GetRegistry();
+  if (!reg.valid(ud->id)) {
+    lua_pushboolean(L, false);
+    return 1;
+  }
+  const bool simulating = ud->scene->IsSimulating();
+
+  if (name == "transform") {
+    if (!reg.all_of<Transform>(ud->id)) reg.emplace<Transform>(ud->id);
+    if (simulating) ud->scene->RefreshEntityBody(ud->id);
+  } else if (name == "mesh") {
+    const std::string shape = luaL_optstring(L, 3, "cube");
+    Ref<Mesh>        mesh   = PrimitiveMesh(shape);
+    Ref<Material>    mat    = DefaultScriptMaterial();
+    if (!reg.all_of<MeshComponent>(ud->id)) {
+      reg.emplace<MeshComponent>(ud->id, mesh, mat);
+    } else {
+      auto &c = reg.get<MeshComponent>(ud->id);
+      c.mesh = mesh;
+      c.material = mat;
+    }
+  } else if (name == "collider") {
+    const std::string shape = luaL_optstring(L, 3, "box");
+    ColliderComponent collider;
+    if (shape == "sphere") {
+      collider.shape         = ColliderComponent::Shape::Sphere;
+      collider.sphere_radius = static_cast<float>(luaL_optnumber(L, 4, 0.5));
+    }
+    if (!reg.all_of<ColliderComponent>(ud->id)) {
+      reg.emplace<ColliderComponent>(ud->id, collider);
+    } else {
+      reg.get<ColliderComponent>(ud->id) = collider;
+    }
+    if (simulating) ud->scene->RefreshEntityBody(ud->id);
+  } else if (name == "rigid_body") {
+    const std::string   type = luaL_optstring(L, 3, "dynamic");
+    RigidBodyComponent rb;
+    rb.type        = (type == "static") ? RigidBodyComponent::Type::Static : RigidBodyComponent::Type::Dynamic;
+    rb.friction    = static_cast<float>(luaL_optnumber(L, 4, 0.5));
+    rb.restitution = static_cast<float>(luaL_optnumber(L, 5, 0.0));
+    if (!reg.all_of<RigidBodyComponent>(ud->id)) {
+      reg.emplace<RigidBodyComponent>(ud->id, rb);
+    } else {
+      reg.get<RigidBodyComponent>(ud->id) = rb;
+    }
+    if (simulating) ud->scene->RefreshEntityBody(ud->id);
+  } else if (name == "camera") {
+    if (!reg.all_of<CameraComponent>(ud->id)) reg.emplace<CameraComponent>(ud->id);
+  } else if (name == "lua_script") {
+    const char *path = luaL_checkstring(L, 3);
+    if (!reg.all_of<LuaScriptComponent>(ud->id)) {
+      reg.emplace<LuaScriptComponent>(ud->id, std::string(path));
+    } else {
+      reg.get<LuaScriptComponent>(ud->id).path = path;
+    }
+  } else {
+    LOG_WARN("Lua") << "add_component: unknown component '" << name << "'";
+  }
+
+  PushEntity(L, ud->scene, ud->id);
+  return 1;
+}
+
+int Entity_RemoveComponent(lua_State *L) {
+  EntityUserdata    *ud   = CheckEntity(L, 1);
+  const std::string  name = luaL_checkstring(L, 2);
+  auto              &reg  = ud->scene->GetRegistry();
+  if (!reg.valid(ud->id)) {
+    lua_pushboolean(L, false);
+    return 1;
+  }
+  const bool simulating = ud->scene->IsSimulating();
+
+  if (name == "transform" && reg.all_of<Transform>(ud->id)) reg.remove<Transform>(ud->id);
+  else if (name == "mesh" && reg.all_of<MeshComponent>(ud->id)) reg.remove<MeshComponent>(ud->id);
+  else if (name == "collider" && reg.all_of<ColliderComponent>(ud->id)) reg.remove<ColliderComponent>(ud->id);
+  else if (name == "rigid_body" && reg.all_of<RigidBodyComponent>(ud->id)) reg.remove<RigidBodyComponent>(ud->id);
+  else if (name == "camera" && reg.all_of<CameraComponent>(ud->id)) reg.remove<CameraComponent>(ud->id);
+  else if (name == "lua_script" && reg.all_of<LuaScriptComponent>(ud->id)) reg.remove<LuaScriptComponent>(ud->id);
+
+  if (simulating && (name == "transform" || name == "collider" || name == "rigid_body")) {
+    ud->scene->RefreshEntityBody(ud->id);
+  }
+
+  PushEntity(L, ud->scene, ud->id);
+  return 1;
+}
+
+int Entity_GetVelocity(lua_State *L) {
+  EntityUserdata *ud = CheckEntity(L, 1);
+  const glm::vec3 v  = ud->scene->GetBodyVelocity(ud->id);
+  lua_pushnumber(L, v.x);
+  lua_pushnumber(L, v.y);
+  lua_pushnumber(L, v.z);
+  return 3;
+}
+
+int Entity_SetVelocity(lua_State *L) {
+  EntityUserdata *ud = CheckEntity(L, 1);
+  const glm::vec3 v(static_cast<float>(luaL_checknumber(L, 2)), static_cast<float>(luaL_checknumber(L, 3)),
+                    static_cast<float>(luaL_checknumber(L, 4)));
+  ud->scene->SetBodyVelocity(ud->id, v);
+  return 0;
+}
+
+int Entity_ApplyImpulse(lua_State *L) {
+  EntityUserdata *ud = CheckEntity(L, 1);
+  const glm::vec3 i(static_cast<float>(luaL_checknumber(L, 2)), static_cast<float>(luaL_checknumber(L, 3)),
+                    static_cast<float>(luaL_checknumber(L, 4)));
+  ud->scene->ApplyBodyImpulse(ud->id, i);
+  return 0;
+}
+
+int Entity_GetColor(lua_State *L) {
+  EntityUserdata *ud = CheckEntity(L, 1);
+  glm::vec4       c(1.0f);
+  if (auto *mc = ud->scene->GetRegistry().try_get<MeshComponent>(ud->id)) {
+    if (mc->material) c = mc->material->GetBaseColorFactor();
+  }
+  lua_pushnumber(L, c.r);
+  lua_pushnumber(L, c.g);
+  lua_pushnumber(L, c.b);
+  lua_pushnumber(L, c.a);
+  return 4;
+}
+
+int Entity_SetColor(lua_State *L) {
+  EntityUserdata *ud = CheckEntity(L, 1);
+  const glm::vec4 c(static_cast<float>(luaL_checknumber(L, 2)), static_cast<float>(luaL_checknumber(L, 3)),
+                    static_cast<float>(luaL_checknumber(L, 4)),
+                    static_cast<float>(luaL_optnumber(L, 5, 1.0)));
+  if (auto *mc = ud->scene->GetRegistry().try_get<MeshComponent>(ud->id)) {
+    if (mc->material) mc->material->SetBaseColorFactor(c);
+  }
+  return 0;
+}
+
 }  // namespace
 
 LuaScriptInstance::LuaScriptInstance(lua_State *L, Scene *scene, entt::entity entity, std::string path)
@@ -323,6 +512,25 @@ void LuaScriptInstance::CallDestroy() {
   CallHook("OnDestroy", 0);
 }
 
+void LuaScriptInstance::CallCollisionEnter(entt::entity other, const ScriptCollisionInfo &info) {
+  if (!valid_) return;
+  PushEntity(L_, scene_, other);
+  // collision = { point = {x,y,z}, normal = {x,y,z}, relative_velocity = {x,y,z}, penetration = n }
+  lua_newtable(L_);
+  PushVec3Field(L_, "point", info.point);
+  PushVec3Field(L_, "normal", info.normal);
+  PushVec3Field(L_, "relative_velocity", info.relative_velocity);
+  lua_pushnumber(L_, info.penetration);
+  lua_setfield(L_, -2, "penetration");
+  CallHook("OnCollisionEnter", 2);
+}
+
+void LuaScriptInstance::CallCollisionExit(entt::entity other) {
+  if (!valid_) return;
+  PushEntity(L_, scene_, other);
+  CallHook("OnCollisionExit", 1);
+}
+
 ScriptEngine::ScriptEngine(Scene *scene) : scene_(scene) {
   L_ = luaL_newstate();
   luaL_openlibs(L_);
@@ -367,6 +575,22 @@ void ScriptEngine::RegisterApi() {
   lua_setfield(L_, -2, "set_scale");
   lua_pushcfunction(L_, Entity_GetId);
   lua_setfield(L_, -2, "get_id");
+  lua_pushcfunction(L_, Entity_HasComponent);
+  lua_setfield(L_, -2, "has_component");
+  lua_pushcfunction(L_, Entity_AddComponent);
+  lua_setfield(L_, -2, "add_component");
+  lua_pushcfunction(L_, Entity_RemoveComponent);
+  lua_setfield(L_, -2, "remove_component");
+  lua_pushcfunction(L_, Entity_GetVelocity);
+  lua_setfield(L_, -2, "get_velocity");
+  lua_pushcfunction(L_, Entity_SetVelocity);
+  lua_setfield(L_, -2, "set_velocity");
+  lua_pushcfunction(L_, Entity_ApplyImpulse);
+  lua_setfield(L_, -2, "apply_impulse");
+  lua_pushcfunction(L_, Entity_GetColor);
+  lua_setfield(L_, -2, "get_color");
+  lua_pushcfunction(L_, Entity_SetColor);
+  lua_setfield(L_, -2, "set_color");
   lua_pop(L_, 1);
 
   // Global `MEngine` table.
@@ -445,16 +669,21 @@ void ScriptEngine::Update(float dt) {
   }
 }
 
-void ScriptEngine::FixedUpdate(float dt) {
-  fixed_accumulator_ += dt;
-  while (fixed_accumulator_ >= kFixedStep) {
-    fixed_accumulator_ -= kFixedStep;
-    for (auto &inst : instances_) {
-      if (inst->IsStarted()) inst->CallFixedUpdate(kFixedStep);
-    }
-    if (main_script_ && main_script_->IsStarted()) {
-      main_script_->CallFixedUpdate(kFixedStep);
-    }
+void ScriptEngine::FixedStepUpdate(float dt) {
+  // dt is always kFixedTimeStep (driven by the Scene's fixed-step accumulator).
+  for (auto &inst : instances_) {
+    if (inst->IsStarted()) inst->CallFixedUpdate(dt);
+  }
+  if (main_script_ && main_script_->IsStarted()) {
+    main_script_->CallFixedUpdate(dt);
+  }
+}
+
+void ScriptEngine::StartAll() {
+  SyncInstances();
+  if (main_script_) main_script_->CallStart();
+  for (auto &inst : instances_) {
+    inst->CallStart();
   }
 }
 
@@ -469,6 +698,22 @@ void ScriptEngine::LoadMainScript(const std::string &path) {
   }
 }
 
+void ScriptEngine::ReloadScript(const std::string &path) {
+  for (auto it = instances_.begin(); it != instances_.end();) {
+    if ((*it)->GetPath() == path) {
+      (*it)->CallDestroy();
+      it = instances_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  failed_paths_.erase(path);
+
+  if (path == main_script_path_) {
+    LoadMainScript(path);
+  }
+}
+
 void ScriptEngine::Clear() {
   for (auto &inst : instances_) {
     inst->CallDestroy();
@@ -478,8 +723,19 @@ void ScriptEngine::Clear() {
     main_script_->CallDestroy();
     main_script_.reset();
   }
-  fixed_accumulator_ = 0.0f;
   failed_paths_.clear();
+}
+
+void ScriptEngine::DispatchCollision(entt::entity entity, entt::entity other, const ScriptCollisionInfo &info,
+                                     bool enter) {
+  for (auto &inst : instances_) {
+    if (inst->GetEntity() != entity || !inst->IsStarted()) continue;
+    if (enter) {
+      inst->CallCollisionEnter(other, info);
+    } else {
+      inst->CallCollisionExit(other);
+    }
+  }
 }
 
 }  // namespace MEngine

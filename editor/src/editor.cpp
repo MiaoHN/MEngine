@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <thread>
 
@@ -99,6 +100,60 @@ bool LoadModelAsset(const std::filesystem::path &path, Ref<Mesh> &mesh, Ref<Mate
 
   return mesh != nullptr;
 }
+
+/// @brief Converts an absolute path to one relative to the asset root (falls
+/// back to the original string when the path lies outside the asset root).
+std::string ToAssetRelativePath(const std::filesystem::path &abs_path) {
+  const std::filesystem::path root = std::filesystem::absolute(AssetManager::Instance().GetAssetRoot());
+  std::error_code             ec;
+  const std::filesystem::path rel = std::filesystem::relative(abs_path, root, ec);
+  return ec ? abs_path.string() : rel.generic_string();
+}
+
+/// @brief Relative paths (e.g. "scripts/spin.lua") of every .lua file under
+/// the asset root's `scripts/` directory.
+std::vector<std::string> ListLuaScriptPaths() {
+  std::vector<std::string> out;
+  const std::filesystem::path scripts_dir =
+      std::filesystem::absolute(AssetManager::Instance().GetAssetRoot()) / "scripts";
+  if (!std::filesystem::exists(scripts_dir)) return out;
+
+  for (const auto &entry : std::filesystem::directory_iterator(scripts_dir)) {
+    if (!entry.is_regular_file() || entry.path().extension() != ".lua") continue;
+    out.push_back(ToAssetRelativePath(entry.path()));
+  }
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
+/// @brief Starter source written when a new script is created in the editor.
+constexpr const char *kLuaScriptTemplate = R"(-- New Lua entity script.
+-- Attach it to an entity (Lua Script component) or use it as the scene main
+-- script. `self` is the owning entity; hooks only run when they are defined.
+
+function OnStart()
+  MEngine.log("attached to: " .. self:get_name())
+end
+
+function OnUpdate(dt)
+  -- dt = seconds since the last frame
+end
+
+function OnFixedUpdate(dt)
+  -- dt = fixed step (1/60 s)
+end
+
+function OnCollisionEnter(other)
+  MEngine.log("collision enter: '" .. self:get_name() .. "' vs '" .. other:get_name() .. "'")
+end
+
+function OnCollisionExit(other)
+  MEngine.log("collision exit: '" .. self:get_name() .. "' vs '" .. other:get_name() .. "'")
+end
+
+function OnDestroy()
+end
+)";
 
 enum class LogLevel { Trace, Debug, Info, Warn, Error, Fatal, Unknown };
 
@@ -360,9 +415,10 @@ void Editor::OnUpdate(float dt) {
   }
 
   // Advance the physics simulation and Lua scripts while in Play mode.
+  // StepSimulation runs physics, collision dispatch and OnFixedUpdate together
+  // on a fixed step; Update drives per-frame OnStart/OnUpdate afterwards.
   if (game_mode_ == GameMode::Play) {
     active_scene_->StepSimulation(dt);
-    active_scene_->GetScriptEngine().FixedUpdate(dt);
     active_scene_->GetScriptEngine().Update(dt);
   }
 
@@ -413,6 +469,7 @@ void Editor::OnUpdate(float dt) {
       ImGui::MenuItem("Rendering", nullptr, &show_rendering_);
       ImGui::MenuItem("Log", nullptr, &show_log_);
       ImGui::MenuItem("Information", nullptr, &show_information_);
+      ImGui::MenuItem("Script Editor", nullptr, &show_script_editor_);
       ImGui::Separator();
       if (ImGui::MenuItem("Reset Layout")) {
         ApplyDefaultLayout(dockspace_id_);
@@ -431,6 +488,8 @@ void Editor::OnUpdate(float dt) {
   if (show_log_) ShowImGuiLog();
 
   if (show_information_) ShowImGuiInformation();
+
+  if (show_script_editor_) ShowImGuiScriptEditor();
 
   // Close the "DockSpace Demo" host window opened in BeginImGui().
   ImGui::End();
@@ -720,6 +779,9 @@ void Editor::ShowImGuiViewport() {
       game_mode_ = GameMode::Play;
       active_scene_->StartSimulation();
       active_scene_->GetScriptEngine().LoadMainScript(active_scene_->GetMainScript());
+      // Start OnStart on every script before the first physics step so
+      // collisions on frame one are delivered to already-started scripts.
+      active_scene_->GetScriptEngine().StartAll();
       SetGridVisible(false);
     } else {
       game_mode_ = GameMode::Edit;
@@ -1067,13 +1129,50 @@ void Editor::ShowImGuiProperties() {
       ImGui::DragFloat("Look Sensitivity", &component.look_sensitivity, 0.01f, 0.0f, 2.0f);
     });
 
-    DrawComponent<LuaScriptComponent>("Lua Script", selected_entity_, [](auto &component) {
+    DrawComponent<LuaScriptComponent>("Lua Script", selected_entity_, [&](auto &component) {
       char buffer[512] = {};
       std::snprintf(buffer, sizeof(buffer), "%s", component.path.c_str());
       if (ImGui::InputText("Path", buffer, sizeof(buffer))) {
         component.path = std::string(buffer);
       }
       ImGui::TextDisabled("Relative to the asset root, e.g. scripts/enemy.lua");
+
+      // Quick picker listing the scripts in assets/scripts/.
+      const char *preview = component.path.empty() ? "<select a script>" : component.path.c_str();
+      ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+      if (ImGui::BeginCombo("##LuaScriptPicker", preview)) {
+        for (const std::string &relative : ListLuaScriptPaths()) {
+          if (ImGui::Selectable(relative.c_str(), relative == component.path)) {
+            component.path = relative;
+          }
+        }
+        ImGui::EndCombo();
+      }
+
+      // Drop a .lua from the Content Browser here to assign it.
+      ImGui::InvisibleButton("##LuaScriptDropZone", ImVec2(ImGui::GetContentRegionAvail().x, 20.0f));
+      if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+          const std::filesystem::path file_path(static_cast<const wchar_t *>(payload->Data));
+          if (file_path.extension() == ".lua") {
+            component.path = ToAssetRelativePath(file_path);
+          }
+        }
+        ImGui::EndDragDropTarget();
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Drop a .lua file from the Content Browser to assign it");
+      }
+
+      if (!component.path.empty()) {
+        if (ImGui::Button("Open in Script Editor")) {
+          OpenScriptInEditor(component.path);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Reload")) {
+          active_scene_->GetScriptEngine().ReloadScript(component.path);
+        }
+      }
     });
   } else {
     ImGui::TextDisabled("Select an entity in the Scene panel to edit its properties.");
@@ -1427,11 +1526,247 @@ void Editor::ShowImGuiContentBrowser() {
       break;
     }
 
+    // Double-click a .lua script to open it in the Script Editor.
+    if (!is_dir && path.extension() == ".lua" && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+      OpenScriptInEditor(ToAssetRelativePath(path));
+    }
+
     ImGui::PopID();
     ++index;
   }
 
   ImGui::EndChild();
+  ImGui::End();
+}
+
+void Editor::LoadScriptIntoBuffer(const std::string &relative) {
+  std::memset(script_code_, 0, sizeof(script_code_));
+  std::ifstream in(AssetManager::Instance().Resolve(relative));
+  if (in) {
+    in.read(script_code_, sizeof(script_code_) - 1);
+  }
+  current_script_path_ = relative;
+  script_dirty_        = false;
+}
+
+bool Editor::SaveCurrentScript() {
+  if (current_script_path_.empty()) return false;
+  if (!script_dirty_) return true;  // nothing to save (avoids pointless reloads)
+
+  std::ofstream out(AssetManager::Instance().Resolve(current_script_path_));
+  if (!out) {
+    LOG_ERROR("Editor") << "Failed to open script for writing: " << current_script_path_;
+    return false;
+  }
+  out << script_code_;
+  script_dirty_ = false;
+  LOG_INFO("Editor") << "Saved script " << current_script_path_;
+
+  // Hot-reload running instances (re-runs OnStart) when in Play mode.
+  active_scene_->GetScriptEngine().ReloadScript(current_script_path_);
+  return true;
+}
+
+void Editor::OpenScriptInEditor(const std::string &relative) {
+  if (relative.empty()) return;
+  show_script_editor_ = true;
+  if (relative == current_script_path_) return;  // already open (dirty or not)
+  if (script_dirty_ && script_pending_path_.empty()) {
+    script_pending_path_   = relative;
+    script_pending_create_ = false;
+    ImGui::OpenPopup("ScriptEditorUnsavedChanges");
+    return;
+  }
+  if (!script_dirty_) {
+    LoadScriptIntoBuffer(relative);
+  }
+}
+
+void Editor::ApplyScriptPending() {
+  if (script_pending_path_.empty()) return;
+  if (script_pending_create_) {
+    const std::filesystem::path resolved = AssetManager::Instance().Resolve(script_pending_path_);
+    const std::filesystem::path dir      = resolved.parent_path();
+    if (!std::filesystem::exists(dir)) {
+      std::filesystem::create_directories(dir);
+    }
+    if (!std::filesystem::exists(resolved)) {
+      std::ofstream out(resolved);
+      if (out) {
+        out << kLuaScriptTemplate;
+        LOG_INFO("Editor") << "Created script " << script_pending_path_;
+      } else {
+        LOG_ERROR("Editor") << "Failed to create script " << script_pending_path_;
+      }
+    }
+  }
+  LoadScriptIntoBuffer(script_pending_path_);
+  script_pending_path_.clear();
+  script_pending_create_ = false;
+}
+
+void Editor::ShowImGuiScriptEditor() {
+  PROFILER_FUNCTION();
+
+  const bool dirty = script_dirty_ && !current_script_path_.empty();
+  ImGui::Begin("Script Editor");
+
+  // Ctrl+S saves the open script while this window (or its text field) has focus.
+  const ImGuiIO &io = ImGui::GetIO();
+  if (dirty && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false) &&
+      ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
+    SaveCurrentScript();
+  }
+
+  // ---- Left: script list ----
+  ImGui::BeginChild("##ScriptList", ImVec2(210.0f, 0.0f), true);
+  if (ImGui::Button("New Script", ImVec2(-1.0f, 0.0f))) {
+    ImGui::OpenPopup("NewScriptName");
+  }
+  if (ImGui::BeginPopup("NewScriptName")) {
+    static char name[128] = "new_script.lua";
+    ImGui::Text("Name (optional .lua extension)");
+    ImGui::SetNextItemWidth(240.0f);
+    ImGui::InputText("##NewScriptNameField", name, sizeof(name));
+    ImGui::TextDisabled("Created in assets/scripts/");
+    const bool create_pressed = ImGui::Button("Create", ImVec2(120.0f, 0.0f));
+    if (create_pressed) {
+      std::string file_name = name;
+      // Trim surrounding whitespace.
+      const auto not_space = [](unsigned char c) { return !std::isspace(c); };
+      const auto first     = std::find_if(file_name.begin(), file_name.end(), not_space);
+      const auto last      = std::find_if(file_name.rbegin(), file_name.rend(), not_space).base();
+      file_name            = (first < last) ? std::string(first, last) : std::string();
+      if (file_name.find_first_of("/\\") != std::string::npos) {
+        LOG_WARN("Editor") << "Script name must not contain path separators";
+      } else if (!file_name.empty()) {
+        if (file_name.rfind(".lua") == std::string::npos) file_name += ".lua";
+        script_pending_path_   = "scripts/" + file_name;
+        script_pending_create_ = true;
+        if (dirty) {
+          ImGui::OpenPopup("ScriptEditorUnsavedChanges");
+        } else {
+          ApplyScriptPending();
+        }
+      }
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+  ImGui::Separator();
+  ImGui::TextDisabled("Scripts (assets/scripts/)");
+  ImGui::Separator();
+
+  const std::vector<std::string> scripts = ListLuaScriptPaths();
+  for (const std::string &relative : scripts) {
+    const std::string file_name = std::filesystem::path(relative).filename().string();
+    const bool        is_open   = relative == current_script_path_;
+    char              label[512];
+    std::snprintf(label, sizeof(label), "%s%s", file_name.c_str(), (is_open && dirty) ? " *" : "");
+    if (ImGui::Selectable(label, is_open)) {
+      OpenScriptInEditor(relative);
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", relative.c_str());
+    }
+  }
+  if (scripts.empty()) {
+    ImGui::TextDisabled("No .lua scripts yet.");
+  }
+  ImGui::EndChild();
+
+  ImGui::SameLine();
+
+  // ---- Right: code editor + actions ----
+  ImGui::BeginChild("##ScriptEditorBody", ImVec2(0.0f, 0.0f), true);
+  if (current_script_path_.empty()) {
+    ImGui::TextWrapped("Select or create a Lua script on the left, or double-click a .lua file in the Content Browser.");
+  } else {
+    // Header row: path, dirty badge, Save / Revert / Attach.
+    ImGui::TextUnformatted(current_script_path_.c_str());
+    if (dirty) {
+      ImGui::SameLine();
+      ImGui::TextColored(ImVec4(0.85f, 0.45f, 0.05f, 1.0f), "* unsaved");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Save")) {
+      SaveCurrentScript();
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("Save and hot-reload in the running scene (Ctrl+S)");
+    }
+    if (dirty) {
+      ImGui::SameLine();
+      if (ImGui::Button("Revert")) {
+        LoadScriptIntoBuffer(current_script_path_);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Discard edits and reload from disk");
+      }
+    }
+
+    const bool can_attach = selected_entity_.GetHandle() != entt::null;
+    if (can_attach) {
+      ImGui::SameLine();
+      if (ImGui::Button("Attach to Selected")) {
+        if (!selected_entity_.HasComponent<LuaScriptComponent>()) {
+          selected_entity_.AddComponent<LuaScriptComponent>(current_script_path_);
+        } else {
+          selected_entity_.GetComponent<LuaScriptComponent>().path = current_script_path_;
+        }
+        LOG_INFO("Editor") << "Attached script " << current_script_path_ << " to entity '"
+                           << selected_entity_.GetComponent<Tag>().tag << "'";
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Add/update the Lua Script component on the entity selected in the Scene panel");
+      }
+    }
+    ImGui::Separator();
+
+    if (mono_font_) {
+      ImGui::PushFont(mono_font_);
+    }
+    const bool edited = ImGui::InputTextMultiline("##ScriptCode", script_code_, kScriptBufferSize, ImVec2(-1.0f, -1.0f),
+                                                  ImGuiInputTextFlags_AllowTabInput);
+    if (edited) {
+      script_dirty_ = true;
+    }
+    if (mono_font_) {
+      ImGui::PopFont();
+    }
+  }
+  ImGui::EndChild();
+
+  // ---- Unsaved-changes prompt (opened from list / New / Content Browser) ----
+  if (ImGui::BeginPopupModal("ScriptEditorUnsavedChanges", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::TextWrapped("Save changes to '%s'?", current_script_path_.c_str());
+    ImGui::Separator();
+    const ImVec2 btn_size(150.0f, 0.0f);
+    bool         resolved = false;
+    if (ImGui::Button("Save", btn_size)) {
+      resolved = SaveCurrentScript();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Don't Save", btn_size)) {
+      resolved = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", btn_size)) {
+      script_pending_path_.clear();
+      script_pending_create_ = false;
+      ImGui::CloseCurrentPopup();
+    }
+    if (resolved) {
+      ApplyScriptPending();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+
   ImGui::End();
 }
 
@@ -1480,61 +1815,84 @@ void Editor::CreateCameraEntity() {
 }
 
 void Editor::CreatePhysicsDemo() {
-  // Ground: a static box. Colliders are world-space (the transform's scale is
-  // intentionally ignored by the physics world), so its half extents match
-  // the visible, scaled box.
+  // Large static floor platform. Colliders are world-space (the transform's
+  // scale is intentionally ignored), so the half extents match the visible box.
   Entity ground = active_scene_->CreateEntity("Ground");
   ground.AddComponent<Transform>(glm::vec3(0.0f, -0.5f, 0.0f));
-  ground.GetComponent<Transform>().scale = glm::vec3(8.0f, 1.0f, 8.0f);
+  ground.GetComponent<Transform>().scale = glm::vec3(20.0f, 1.0f, 20.0f);
   ground.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateRef<Material>(*default_material_));
   ground.AddComponent<RigidBodyComponent>(RigidBodyComponent::Type::Static);
   {
     ColliderComponent collider;
     collider.shape            = ColliderComponent::Shape::Box;
-    collider.box_half_extents = glm::vec3(4.0f, 0.5f, 4.0f);
+    collider.box_half_extents = glm::vec3(10.0f, 0.5f, 10.0f);
     ground.AddComponent<ColliderComponent>(collider);
-  }
-
-  // A stack of dynamic boxes topped with a sphere. Everything is at rest until
-  // Play is pressed and StartSimulation builds the Jolt bodies.
-  for (int i = 0; i < 5; ++i) {
-    Entity box = active_scene_->CreateEntity("Box " + std::to_string(i + 1));
-    const float jitter_x = static_cast<float>((i % 3) - 1) * 0.04f;
-    const float jitter_z = (static_cast<float>(i % 2) - 0.5f) * 0.06f;
-    box.AddComponent<Transform>(glm::vec3(jitter_x, 0.6f + static_cast<float>(i) * 1.05f, jitter_z));
-    box.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateRef<Material>(*default_material_));
-    box.AddComponent<RigidBodyComponent>();
-    box.AddComponent<ColliderComponent>();
-  }
-
-  Entity sphere = active_scene_->CreateEntity("Sphere");
-  const float stack_top = 0.6f + 4.0f * 1.05f + 0.5f;  // top surface of the 5th box
-  sphere.AddComponent<Transform>(glm::vec3(0.0f, stack_top + 0.55f, 0.0f));
-  sphere.AddComponent<MeshComponent>(Mesh::CreateSphere(), CreateRef<Material>(*default_material_));
-  sphere.AddComponent<RigidBodyComponent>();
-  {
-    ColliderComponent collider;
-    collider.shape         = ColliderComponent::Shape::Sphere;
-    collider.sphere_radius = 0.5f;
-    sphere.AddComponent<ColliderComponent>(collider);
   }
 
   // A free-fly player camera for Play mode: WASD/QE move, right-drag looks.
   Entity camera = active_scene_->CreateEntity("Player Camera");
   CameraComponent camera_component;
-  camera_component.camera.position = glm::vec3(8.0f, 5.0f, 8.0f);
-  camera_component.camera.LookAt(glm::vec3(0.0f, 2.0f, 0.0f));
+  camera_component.camera.position = glm::vec3(11.0f, 7.0f, 11.0f);
+  camera_component.camera.LookAt(glm::vec3(0.0f, 1.5f, 0.0f));
   camera_component.primary = true;
   camera.AddComponent<CameraComponent>(camera_component);
   camera.AddComponent<CameraController>();
 
-  // A script-driven cube (no physics) to demonstrate Lua entity scripts.
+  // A script-driven cube (no physics) off to the side, just to keep the plain
+  // LuaScriptComponent demo around.
   Entity spinner = active_scene_->CreateEntity("Spinner");
-  spinner.AddComponent<Transform>(glm::vec3(3.0f, 1.5f, 0.0f));
+  spinner.AddComponent<Transform>(glm::vec3(4.0f, 3.0f, 4.5f));
   spinner.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateRef<Material>(*default_material_));
   spinner.AddComponent<LuaScriptComponent>("scripts/spin.lua");
 
-  LOG_INFO("Editor") << "Physics demo scene created (ground + box stack + sphere + player camera)";
+  // ---- Collision playground (press Play) --------------------------------
+  // main.lua periodically fires "Ball"s (+X, along z = 0) from the left.
+  // Static brick targets sit in the lane: target.lua turns them red as they
+  // take hits and destroys them at 0 HP. The Bouncer (far side, z = -4) hops
+  // on its own and reacts to Space via OnFixedUpdate.
+
+  const struct {
+    float     x;
+    glm::vec3 color;
+  } kTargets[] = {
+      {-3.0f, {0.25f, 0.55f, 0.95f}},
+      {0.0f, {0.25f, 0.78f, 0.42f}},
+      {3.0f, {0.95f, 0.62f, 0.18f}},
+  };
+  for (const auto &t : kTargets) {
+    Entity target = active_scene_->CreateEntity("Target");
+    target.AddComponent<Transform>(glm::vec3(t.x, 0.5f, 0.0f));
+    auto material      = CreateRef<Material>(*default_material_);
+    material->SetBaseColorFactor(glm::vec4(t.color, 1.0f));
+    target.AddComponent<MeshComponent>(Mesh::CreateCube(), material);
+    target.AddComponent<RigidBodyComponent>(RigidBodyComponent::Type::Static);
+    {
+      ColliderComponent collider;
+      collider.shape            = ColliderComponent::Shape::Box;
+      collider.box_half_extents = glm::vec3(0.5f);
+      target.AddComponent<ColliderComponent>(collider);
+    }
+    target.AddComponent<LuaScriptComponent>("scripts/target.lua");
+  }
+
+  // A bouncy dynamic sphere driven entirely by Lua (impulse + collision hooks).
+  Entity bouncer = active_scene_->CreateEntity("Bouncer");
+  bouncer.AddComponent<Transform>(glm::vec3(0.0f, 3.0f, -4.0f));
+  bouncer.AddComponent<MeshComponent>(Mesh::CreateSphere(), CreateRef<Material>(*default_material_));
+  {
+    RigidBodyComponent &rigid = bouncer.AddComponent<RigidBodyComponent>();
+    rigid.friction            = 0.2f;
+    rigid.restitution         = 0.75f;
+  }
+  {
+    ColliderComponent collider;
+    collider.shape         = ColliderComponent::Shape::Sphere;
+    collider.sphere_radius = 0.5f;
+    bouncer.AddComponent<ColliderComponent>(collider);
+  }
+  bouncer.AddComponent<LuaScriptComponent>("scripts/bounce.lua");
+
+  LOG_INFO("Editor") << "Collision playground created (ground + targets + bouncer + camera)";
 }
 
 void Editor::SetGridVisible(bool visible) {
@@ -1665,6 +2023,7 @@ void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
 
   ImGui::DockBuilderDockWindow("Content Browser", dock_bottom);
   ImGui::DockBuilderDockWindow("Log", dock_bottom);
+  ImGui::DockBuilderDockWindow("Script Editor", dock_bottom);
   ImGui::DockBuilderDockWindow("Viewport", dockspace_id);
 
   // Right column: Information on top, Lighting + Rendering below.

@@ -16,6 +16,9 @@ Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   if (!scene_path.empty()) {
     active_scene_->LoadScene(scene_path);
     active_scene_->StartSimulation();
+    // Start scripts before the first physics step so frame-one collisions are
+    // delivered to already-started scripts.
+    active_scene_->GetScriptEngine().StartAll();
     running_loaded_scene_ = true;
     return;
   }
@@ -131,7 +134,6 @@ void Sandbox::OnUpdate(float dt) {
 
   if (running_loaded_scene_) {
     active_scene_->StepSimulation(dt);
-    active_scene_->GetScriptEngine().FixedUpdate(dt);
     active_scene_->GetScriptEngine().Update(dt);
     active_scene_->UpdateCameraControllers(dt, Input::GetMouseDelta(),
                                            Input::IsMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT));

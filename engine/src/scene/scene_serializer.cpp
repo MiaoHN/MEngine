@@ -330,7 +330,13 @@ void Scene::LoadScene(const std::string &path) {
   json root;
   in >> root;
 
-  // Clear the current scene state before rebuilding it from the file.
+  // Clear the current scene state before rebuilding it from the file. The
+  // script engine must be reset too: its instances reference the old entities
+  // and main script (their OnDestroy hooks fire here, before the registry is
+  // wiped). Per-entity instances are re-synced lazily from the new components
+  // on the next StartAll/Update.
+  script_engine_->Clear();
+  main_script_.clear();
   registry_.clear();
   entities_.clear();
   renderer_->ClearPointLights();

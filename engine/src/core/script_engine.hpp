@@ -25,6 +25,20 @@ namespace MEngine {
 
 class Scene;
 
+/// @brief The simulation's fixed physics/script step (seconds).
+inline constexpr float kFixedTimeStep = 1.0f / 60.0f;
+
+/// @brief Rich data delivered to `OnCollisionEnter(other, collision)`.
+/// All vectors are oriented for the receiving script:
+///   - `normal` points from `other` toward the receiving entity (`self`);
+///   - `relative_velocity` is `velocity(other) - velocity(self)`.
+struct ScriptCollisionInfo {
+  glm::vec3 point{0.0f};
+  glm::vec3 normal{0.0f};
+  glm::vec3 relative_velocity{0.0f};
+  float     penetration = 0.0f;
+};
+
 /// @brief One running Lua script bound to an entity (or the scene as a main
 /// script). The script runs in its own environment table with `self` = entity.
 class LuaScriptInstance {
@@ -38,9 +52,12 @@ class LuaScriptInstance {
   void CallUpdate(float dt);
   void CallFixedUpdate(float dt);
   void CallDestroy();
+  void CallCollisionEnter(entt::entity other, const ScriptCollisionInfo &info);
+  void CallCollisionExit(entt::entity other);
 
   [[nodiscard]] entt::entity GetEntity() const { return entity_; }
   [[nodiscard]] bool          IsStarted() const { return started_; }
+  [[nodiscard]] const std::string &GetPath() const { return path_; }
 
  private:
   bool CallHook(const char *name, int nargs);
@@ -67,14 +84,28 @@ class ScriptEngine {
   /// then calls OnStart / OnUpdate.
   void Update(float dt);
 
-  /// @brief Fixed-step update (1/60s accumulator): calls OnFixedUpdate.
-  void FixedUpdate(float dt);
+  /// @brief Runs one fixed step's `OnFixedUpdate` callbacks. Called by the
+  /// Scene's fixed-step accumulator (after each physics step).
+  void FixedStepUpdate(float dt);
+
+  /// @brief Syncs instances and calls OnStart on every attached script (and
+  /// the main script) without running OnUpdate. Call once after building the
+  /// physics bodies so collision events can be delivered to started scripts on
+  /// the very first physics step.
+  void StartAll();
 
   /// @brief Loads the scene-level main script.
   void LoadMainScript(const std::string &path);
 
+  /// @brief Reloads a script file (drops its instances so they re-run OnStart).
+  void ReloadScript(const std::string &path);
+
   /// @brief Destroys all instances (calls OnDestroy) and clears state.
   void Clear();
+
+  /// @brief Calls OnCollisionEnter (with `info`) / OnCollisionExit on the
+  /// script bound to `entity`, passing `other` as the other entity.
+  void DispatchCollision(entt::entity entity, entt::entity other, const ScriptCollisionInfo &info, bool enter);
 
   [[nodiscard]] float      GetElapsedTime() const { return elapsed_time_; }
   [[nodiscard]] float      GetDeltaTime() const { return delta_time_; }
@@ -87,9 +118,8 @@ class ScriptEngine {
   lua_State *L_     = nullptr;
   Scene     *scene_ = nullptr;
 
-  float elapsed_time_      = 0.0f;
-  float delta_time_        = 0.0f;
-  float fixed_accumulator_ = 0.0f;
+  float elapsed_time_ = 0.0f;
+  float delta_time_   = 0.0f;
 
   std::vector<std::unique_ptr<LuaScriptInstance>> instances_;
   std::unique_ptr<LuaScriptInstance>              main_script_;

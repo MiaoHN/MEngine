@@ -43,6 +43,7 @@ PhysicsWorld::PhysicsWorld() {
   physics_system_.Init(kMaxBodies, kNumBodyMutexes, kMaxBodyPairs, kMaxContactConstraints,
                        broad_phase_layer_interface_, object_vs_broad_phase_filter_, object_layer_pair_filter_);
   physics_system_.SetGravity(JPH::Vec3(0.0f, -9.81f, 0.0f));
+  physics_system_.SetContactListener(&contact_listener_);
 
   LOG_INFO("Physics") << "Jolt Physics world initialized";
 }
