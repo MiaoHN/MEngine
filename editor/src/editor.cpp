@@ -311,12 +311,14 @@ void Editor::Initialize() {
 
   default_material_ = CreateDefaultMaterial();
 
-  // Ground grid: a large XZ plane with a procedural grid shader.
-  auto grid_material = CreateRef<Material>();
-  grid_material->SetShader(AssetManager::Instance().GetShader("grid"));
+  // Ground grid: a large XZ plane with a procedural grid shader. The grid is
+  // an editor-only overlay, hidden while Play mode is simulating.
+  grid_material_ = CreateRef<Material>();
+  grid_material_->SetShader(AssetManager::Instance().GetShader("grid"));
+  grid_mesh_   = Mesh::CreatePlane(500.0f);
   grid_entity_ = active_scene_->CreateEntity("Grid");
   grid_entity_.AddComponent<Transform>();
-  grid_entity_.AddComponent<MeshComponent>(Mesh::CreatePlane(500.0f), grid_material);
+  grid_entity_.AddComponent<MeshComponent>(grid_mesh_, grid_material_);
 
   // Physics demo: a static ground box plus a stack of dynamic boxes topped
   // with a sphere. Everything is at rest until Play is pressed.
@@ -705,9 +707,11 @@ void Editor::ShowImGuiViewport() {
     if (game_mode_ == GameMode::Edit) {
       game_mode_ = GameMode::Play;
       active_scene_->StartSimulation();
+      SetGridVisible(false);
     } else {
       game_mode_ = GameMode::Edit;
       active_scene_->StopSimulation();
+      SetGridVisible(true);
     }
   }
   ImGui::EndChild();
@@ -1435,6 +1439,19 @@ void Editor::CreatePhysicsDemo() {
   }
 
   LOG_INFO("Editor") << "Physics demo scene created (ground + box stack + sphere)";
+}
+
+void Editor::SetGridVisible(bool visible) {
+  if (grid_entity_.GetHandle() == entt::null) {
+    return;
+  }
+
+  const bool has_mesh = grid_entity_.HasComponent<MeshComponent>();
+  if (visible && !has_mesh) {
+    grid_entity_.AddComponent<MeshComponent>(grid_mesh_, grid_material_);
+  } else if (!visible && has_mesh) {
+    grid_entity_.RemoveComponent<MeshComponent>();
+  }
 }
 
 void Editor::CreateModelEntity(const std::filesystem::path &path) {

@@ -69,6 +69,8 @@ class Editor : public Application {
   std::unordered_map<std::string, Ref<Texture>> thumbnail_cache_;
 
   Entity        grid_entity_;
+  Ref<Mesh>     grid_mesh_;
+  Ref<Material> grid_material_;
   Ref<Material> default_material_;
 
   std::vector<PointLight> point_lights_;
@@ -99,6 +101,7 @@ class Editor : public Application {
   void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
   void DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
   void DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
+  void SetGridVisible(bool visible);
 };
 
 ::MEngine::Application *CreateApplication();
