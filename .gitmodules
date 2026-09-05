@@ -24,3 +24,6 @@
 [submodule "deps/ImGuizmo"]
 	path = deps/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
+[submodule "deps/spdlog"]
+	path = deps/spdlog
+	url = https://github.com/gabime/spdlog.git
