@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-09-05 — P2 进阶：CCD/Sensor/Raycast + physics_test 场景（已无人值守验证）
+
+- **分支**：`refractor`；commit：`60f7d5f`(physics CCD+sensor flags)、`755da48`(physics raycast)、
+  physics_test 场景+脚本 commit。
+- **做了什么**：
+  1. CCD/Sensor：`RigidBodyComponent` 新增 `continuous_collision`(Jolt LinearCast 防穿透) 与
+     `is_sensor`(触发器，无物理响应但仍产生接触事件)。Body creators 追加两个开关并写入
+     `BodyCreationSettings.mMotionQuality/mIsSensor`；Scene/序列化/Editor(勾选框)/Lua
+     (add_component('rigid_body',type,fric,rest,ccd,sensor)) 全部打通。
+  2. Raycast：`PhysicsWorld::Raycast`(NarrowPhase 最近命中) → `Scene::Raycast` 映射回实体 →
+     Lua `MEngine.raycast(ox,oy,oz,dx,dy,dz[,max])` 返回 (entity, distance)。
+  3. 新增 `assets/scenes/physics_test.scene` + 脚本（physics_test.lua 驱动 + impact.lua +
+     sensor.lua），涵盖胶囊/圆柱/复合体(两盒一球)/Sensor 穿越/射线每帧检测。
+- **验证（无人值守，sandbox --scene + 读 mengine.log）**：日志确认——复合体穿传感器 enter/exit 计数、
+  三种形状落地 impact 速度、每 1s raycast 命中最上层可移动体且距离正确；无穿透/断言。
+- **遇到的问题**：Jolt RayCastResult 需 include CastResult.h；StaticCompoundShapeSettings 是
+  具体类(基类抽象)。
+- **下一步**：P2 剩余可选项(Overlap/ShapeCast/睡眠重力缩放配置可延后)→ P3 渲染优化
+  （批处理/实例化/视锥剔除/CullFace/Pass 链与 Stats）→ P3.5 Vulkan → P3.6 多线程 →
+  P4 Editor 拆分与 Script(Tab+中文+高亮) → P5 压测。
+
+---
+
 ## 2026-09-05 — P1 收尾 + P2 起步（多碰撞盒/复合体）
 
 - **分支**：`refractor`；commit：`6bc53b5`(refactor core: 移出 ImGui context)、`2e5b058`(physics: capsule/cylinder)、`6258bc8`(physics: compound collider group)
