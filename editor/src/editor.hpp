@@ -83,6 +83,7 @@ class Editor : public Application {
   bool show_rendering_       = true;
   bool show_log_             = true;
   bool show_information_     = true;
+  bool show_colliders_       = true;
 
   ImGuiID dockspace_id_ = 0;
 
@@ -92,10 +93,12 @@ class Editor : public Application {
   void CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh);
   void CreateCameraEntity();
   void CreateModelEntity(const std::filesystem::path &path);
+  void CreatePhysicsDemo();
   void DuplicateSelectedEntity();
   void ApplyDefaultLayout(ImGuiID dockspace_id);
   void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
   void DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
+  void DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
 };
 
 ::MEngine::Application *CreateApplication();

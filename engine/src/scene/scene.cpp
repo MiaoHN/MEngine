@@ -1,5 +1,7 @@
 #include "scene/scene.hpp"
 
+#include <glm/gtx/euler_angles.hpp>
+
 #include "render/renderer.hpp"
 #include "scene/component.hpp"
 
@@ -14,9 +16,93 @@ Scene::Scene() {
   default_camera_info_->position        = glm::vec3(0.0f);
 
   renderer_ = CreateRef<Renderer>();
+
+  physics_world_ = CreateRef<PhysicsWorld>();
 }
 
 Scene::~Scene() {}
+
+void Scene::StartSimulation() {
+  if (simulating_) {
+    LOG_WARN("Scene") << "StartSimulation called while already simulating";
+    return;
+  }
+
+  transform_snapshot_.clear();
+  body_ids_.clear();
+
+  for (auto &entity : GetAllEntitiesWith<RigidBodyComponent, Transform>()) {
+    if (!entity.HasComponent<ColliderComponent>()) continue;
+
+    const auto &rigid_body = entity.GetComponent<RigidBodyComponent>();
+    const auto &collider   = entity.GetComponent<ColliderComponent>();
+    const auto &transform  = entity.GetComponent<Transform>();
+
+    // Snapshot the transform so StopSimulation can restore the initial state.
+    transform_snapshot_[entity.GetHandle()] = {transform.translation, transform.rotation, transform.scale};
+
+    const bool      is_dynamic = rigid_body.type == RigidBodyComponent::Type::Dynamic;
+    const glm::vec3 position   = transform.translation + collider.offset;
+    const glm::quat rotation   = glm::quat(glm::radians(transform.rotation));
+
+    JPH::BodyID body_id;
+    if (collider.shape == ColliderComponent::Shape::Sphere) {
+      body_id = physics_world_->CreateSphereBody(position, rotation, collider.sphere_radius, is_dynamic,
+                                                 rigid_body.friction, rigid_body.restitution);
+    } else {
+      body_id = physics_world_->CreateBoxBody(position, rotation, collider.box_half_extents, is_dynamic,
+                                              rigid_body.friction, rigid_body.restitution);
+    }
+    body_ids_[entity.GetHandle()] = body_id;
+  }
+
+  simulating_ = true;
+  LOG_INFO("Scene") << "Physics simulation started with " << body_ids_.size() << " bodies";
+}
+
+void Scene::StepSimulation(float delta_time) {
+  if (!simulating_) return;
+
+  physics_world_->Update(delta_time);
+
+  auto &body_interface = physics_world_->GetBodyInterface();
+  for (auto &[handle, body_id] : body_ids_) {
+    auto *transform = registry_.try_get<Transform>(handle);
+    if (transform == nullptr) continue;
+
+    // Bodies are placed at translation + collider.offset, so undo the offset
+    // when writing the simulated position back.
+    glm::vec3 offset{0.0f};
+    if (auto *collider = registry_.try_get<ColliderComponent>(handle)) {
+      offset = collider->offset;
+    }
+
+    transform->translation = ToGlm(body_interface.GetPosition(body_id)) - offset;
+    transform->rotation    = glm::degrees(glm::eulerAngles(ToGlm(body_interface.GetRotation(body_id))));
+  }
+}
+
+void Scene::StopSimulation() {
+  if (!simulating_) return;
+
+  for (auto &[handle, body_id] : body_ids_) {
+    physics_world_->DestroyBody(body_id);
+  }
+  body_ids_.clear();
+
+  // Restore the transforms captured before the simulation started.
+  for (auto &[handle, snapshot] : transform_snapshot_) {
+    if (auto *transform = registry_.try_get<Transform>(handle)) {
+      transform->translation = snapshot.translation;
+      transform->rotation    = snapshot.rotation;
+      transform->scale       = snapshot.scale;
+    }
+  }
+  transform_snapshot_.clear();
+
+  simulating_ = false;
+  LOG_INFO("Scene") << "Physics simulation stopped and initial transforms restored";
+}
 
 void Scene::LoadScene(const std::string &path) {
   (void)path;

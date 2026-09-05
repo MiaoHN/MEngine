@@ -318,10 +318,9 @@ void Editor::Initialize() {
   grid_entity_.AddComponent<Transform>();
   grid_entity_.AddComponent<MeshComponent>(Mesh::CreatePlane(500.0f), grid_material);
 
-  // Starter cube so the viewport is never empty.
-  Entity cube = active_scene_->CreateEntity("Cube");
-  cube.AddComponent<Transform>(glm::vec3(0.0f, 0.5f, 0.0f));
-  cube.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateDefaultMaterial());
+  // Physics demo: a static ground box plus a stack of dynamic boxes topped
+  // with a sphere. Everything is at rest until Play is pressed.
+  CreatePhysicsDemo();
 
   base_directory_    = std::filesystem::absolute(AssetManager::Instance().GetAssetRoot());
   current_directory_ = base_directory_;
@@ -333,7 +332,6 @@ void Editor::Initialize() {
 
 void Editor::OnUpdate(float dt) {
   PROFILER_FUNCTION();
-  (void)dt;
 
   if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
     glfwSetWindowShouldClose(window_, true);
@@ -350,6 +348,12 @@ void Editor::OnUpdate(float dt) {
   active_scene_->ClearPointLights();
   for (const auto &light : point_lights_) {
     active_scene_->AddPointLight(light);
+  }
+
+  // Advance the physics simulation while in Play mode (the physics world
+  // writes body transforms back into the matching Transform components).
+  if (game_mode_ == GameMode::Play) {
+    active_scene_->StepSimulation(dt);
   }
 
   // Render the 3D scene into the viewport framebuffer (Edit = editor camera,
@@ -698,7 +702,13 @@ void Editor::ShowImGuiViewport() {
   ImGui::SameLine();
   const char *play_label = game_mode_ == GameMode::Edit ? "Play" : "Stop";
   if (ImGui::Button(play_label)) {
-    game_mode_ = game_mode_ == GameMode::Edit ? GameMode::Play : GameMode::Edit;
+    if (game_mode_ == GameMode::Edit) {
+      game_mode_ = GameMode::Play;
+      active_scene_->StartSimulation();
+    } else {
+      game_mode_ = GameMode::Edit;
+      active_scene_->StopSimulation();
+    }
   }
   ImGui::EndChild();
 
@@ -772,6 +782,9 @@ void Editor::ShowImGuiViewport() {
   if (game_mode_ == GameMode::Edit) {
     ShowGizmo(image_pos, image_area);
     DrawCameraGizmos(image_pos, image_area);
+    if (show_colliders_) {
+      DrawColliderGizmos(image_pos, image_area);
+    }
   }
 
   ImGui::End();
@@ -798,6 +811,8 @@ void Editor::ShowImGuiProperties() {
       DisplayAddComponentEntry<Transform>("Transform");
       DisplayAddComponentEntry<MeshComponent>("Mesh");
       DisplayAddComponentEntry<CameraComponent>("Camera");
+      DisplayAddComponentEntry<RigidBodyComponent>("Rigid Body");
+      DisplayAddComponentEntry<ColliderComponent>("Collider");
 
       ImGui::EndPopup();
     }
@@ -951,6 +966,30 @@ void Editor::ShowImGuiProperties() {
       ImGui::DragFloat("Near", &component.camera.near_plane, 0.01f, 0.001f, 1000.0f);
       ImGui::DragFloat("Far", &component.camera.far_plane, 1.0f, 0.1f, 10000.0f);
     });
+
+    DrawComponent<RigidBodyComponent>("Rigid Body", selected_entity_, [](auto &component) {
+      const char *types[] = {"Static", "Dynamic"};
+      int         current = component.type == RigidBodyComponent::Type::Static ? 0 : 1;
+      if (ImGui::Combo("Type", &current, types, 2)) {
+        component.type = current == 0 ? RigidBodyComponent::Type::Static : RigidBodyComponent::Type::Dynamic;
+      }
+      ImGui::SliderFloat("Friction", &component.friction, 0.0f, 1.0f);
+      ImGui::SliderFloat("Restitution", &component.restitution, 0.0f, 1.0f);
+    });
+
+    DrawComponent<ColliderComponent>("Collider", selected_entity_, [](auto &component) {
+      const char *shapes[] = {"Box", "Sphere"};
+      int         current  = component.shape == ColliderComponent::Shape::Box ? 0 : 1;
+      if (ImGui::Combo("Shape", &current, shapes, 2)) {
+        component.shape = current == 0 ? ColliderComponent::Shape::Box : ColliderComponent::Shape::Sphere;
+      }
+      if (component.shape == ColliderComponent::Shape::Sphere) {
+        ImGui::DragFloat("Radius", &component.sphere_radius, 0.01f, 0.01f, 100.0f);
+      } else {
+        DrawVec3Control("Half Extents", component.box_half_extents, 1.0f);
+      }
+      DrawVec3Control("Offset", component.offset, 1.0f);
+    });
   } else {
     ImGui::TextDisabled("Select an entity in the Scene panel to edit its properties.");
   }
@@ -1007,6 +1046,8 @@ void Editor::ShowImGuiRendering() {
   if (ImGui::Combo("Render Mode", &render_mode, items, 3)) {
     active_scene_->SetRenderMode(static_cast<RenderMode>(render_mode));
   }
+
+  ImGui::Checkbox("Show Colliders", &show_colliders_);
 
   bool bloom = active_scene_->IsBloomEnabled();
   if (ImGui::Checkbox("HDR (Bloom)", &bloom)) {
@@ -1353,6 +1394,49 @@ void Editor::CreateCameraEntity() {
   LOG_DEBUG("Editor") << "Created camera '" << entity.GetComponent<Tag>().tag << "'";
 }
 
+void Editor::CreatePhysicsDemo() {
+  // Ground: a static box. Colliders are world-space (the transform's scale is
+  // intentionally ignored by the physics world), so its half extents match
+  // the visible, scaled box.
+  Entity ground = active_scene_->CreateEntity("Ground");
+  ground.AddComponent<Transform>(glm::vec3(0.0f, -0.5f, 0.0f));
+  ground.GetComponent<Transform>().scale = glm::vec3(8.0f, 1.0f, 8.0f);
+  ground.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateRef<Material>(*default_material_));
+  ground.AddComponent<RigidBodyComponent>(RigidBodyComponent::Type::Static);
+  {
+    ColliderComponent collider;
+    collider.shape            = ColliderComponent::Shape::Box;
+    collider.box_half_extents = glm::vec3(4.0f, 0.5f, 4.0f);
+    ground.AddComponent<ColliderComponent>(collider);
+  }
+
+  // A stack of dynamic boxes topped with a sphere. Everything is at rest until
+  // Play is pressed and StartSimulation builds the Jolt bodies.
+  for (int i = 0; i < 5; ++i) {
+    Entity box = active_scene_->CreateEntity("Box " + std::to_string(i + 1));
+    const float jitter_x = static_cast<float>((i % 3) - 1) * 0.04f;
+    const float jitter_z = (static_cast<float>(i % 2) - 0.5f) * 0.06f;
+    box.AddComponent<Transform>(glm::vec3(jitter_x, 0.6f + static_cast<float>(i) * 1.05f, jitter_z));
+    box.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateRef<Material>(*default_material_));
+    box.AddComponent<RigidBodyComponent>();
+    box.AddComponent<ColliderComponent>();
+  }
+
+  Entity sphere = active_scene_->CreateEntity("Sphere");
+  const float stack_top = 0.6f + 4.0f * 1.05f + 0.5f;  // top surface of the 5th box
+  sphere.AddComponent<Transform>(glm::vec3(0.0f, stack_top + 0.55f, 0.0f));
+  sphere.AddComponent<MeshComponent>(Mesh::CreateSphere(), CreateRef<Material>(*default_material_));
+  sphere.AddComponent<RigidBodyComponent>();
+  {
+    ColliderComponent collider;
+    collider.shape         = ColliderComponent::Shape::Sphere;
+    collider.sphere_radius = 0.5f;
+    sphere.AddComponent<ColliderComponent>(collider);
+  }
+
+  LOG_INFO("Editor") << "Physics demo scene created (ground + box stack + sphere)";
+}
+
 void Editor::CreateModelEntity(const std::filesystem::path &path) {
   LOG_INFO("Editor") << "Importing model: " << path.filename().string();
 
@@ -1563,6 +1647,80 @@ void Editor::DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size)
                               {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
     for (const auto &edge : edges) {
       draw_line(box[edge[0]], box[edge[1]], color);
+    }
+  }
+}
+
+void Editor::DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_size) {
+  if (image_size.x <= 0.0f || image_size.y <= 0.0f) {
+    return;
+  }
+
+  ImDrawList      *draw_list = ImGui::GetWindowDrawList();
+  const glm::mat4 view_proj = editor_camera_.GetProjectionMatrix() * editor_camera_.GetViewMatrix();
+
+  const auto world_to_screen = [&](const glm::vec3 &world) -> glm::vec2 {
+    const glm::vec4 clip = view_proj * glm::vec4(world, 1.0f);
+    if (clip.w <= 0.0f) {
+      return glm::vec2(std::numeric_limits<float>::max(), 0.0f);
+    }
+    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    return glm::vec2(image_pos.x + (ndc.x * 0.5f + 0.5f) * image_size.x,
+                     image_pos.y + (0.5f - ndc.y * 0.5f) * image_size.y);
+  };
+
+  const auto draw_line = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color, float thickness = 1.5f) {
+    const glm::vec2 s0 = world_to_screen(a);
+    const glm::vec2 s1 = world_to_screen(b);
+    if (s0.x == std::numeric_limits<float>::max() || s1.x == std::numeric_limits<float>::max()) {
+      return;
+    }
+    draw_list->AddLine(ImVec2(s0.x, s0.y), ImVec2(s1.x, s1.y), color, thickness);
+  };
+
+  const ImU32 color = IM_COL32(240, 160, 60, 255);
+
+  for (auto &entity : active_scene_->GetAllEntitiesWith<ColliderComponent, Transform>()) {
+    const auto     &collider  = entity.GetComponent<ColliderComponent>();
+    const auto     &transform = entity.GetComponent<Transform>();
+    const glm::vec3 center    = transform.translation + collider.offset;
+    const glm::quat rotation  = glm::quat(glm::radians(transform.rotation));
+
+    if (collider.shape == ColliderComponent::Shape::Sphere) {
+      const float radius = collider.sphere_radius;
+      constexpr int segments = 48;
+      constexpr float two_pi = 6.28318530718f;
+      for (int axis = 0; axis < 3; ++axis) {
+        for (int i = 0; i < segments; ++i) {
+          const float a0 = two_pi * static_cast<float>(i) / static_cast<float>(segments);
+          const float a1 = two_pi * static_cast<float>(i + 1) / static_cast<float>(segments);
+          glm::vec3   p0(0.0f);
+          glm::vec3   p1(0.0f);
+          if (axis == 0) {
+            p0 = glm::vec3(0.0f, glm::cos(a0), glm::sin(a0));
+            p1 = glm::vec3(0.0f, glm::cos(a1), glm::sin(a1));
+          } else if (axis == 1) {
+            p0 = glm::vec3(glm::cos(a0), 0.0f, glm::sin(a0));
+            p1 = glm::vec3(glm::cos(a1), 0.0f, glm::sin(a1));
+          } else {
+            p0 = glm::vec3(glm::cos(a0), glm::sin(a0), 0.0f);
+            p1 = glm::vec3(glm::cos(a1), glm::sin(a1), 0.0f);
+          }
+          draw_line(center + rotation * (p0 * radius), center + rotation * (p1 * radius), color);
+        }
+      }
+    } else {
+      const glm::vec3 he = collider.box_half_extents;
+      glm::vec3       corners[8];
+      for (int i = 0; i < 8; ++i) {
+        const glm::vec3 local((i & 1) ? he.x : -he.x, (i & 2) ? he.y : -he.y, (i & 4) ? he.z : -he.z);
+        corners[i] = center + rotation * local;
+      }
+      const int edges[12][2] = {{0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
+                                {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+      for (const auto &edge : edges) {
+        draw_line(corners[edge[0]], corners[edge[1]], color);
+      }
     }
   }
 }

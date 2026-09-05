@@ -34,6 +34,10 @@ set(SOURCE_SCENE
   src/scene/scene.cpp
 )
 
+set(SOURCE_PHYSICS
+  src/physics/physics_world.cpp
+)
+
 set(SOURCE_UTILS
   src/utils/profiler.cpp
 )
@@ -42,6 +46,7 @@ add_library(engine
   ${SOURCE_CORE}
   ${SOURCE_RENDER}
   ${SOURCE_SCENE}
+  ${SOURCE_PHYSICS}
   ${SOURCE_UTILS}
   ${PROJECT_SOURCE_DIR}/deps/glad/src/glad.c
 )
@@ -79,6 +84,7 @@ target_link_libraries(engine
   lua
   imgui
   ImGuizmo
+  Jolt
   Threads::Threads
 )
 

@@ -13,10 +13,15 @@
 
 #include <entt/entt.hpp>
 #include <memory>
+#include <unordered_map>
 #include <vector>
+
+#include <Jolt/Jolt.h>
+#include <Jolt/Physics/Body/BodyID.h>
 
 #include "core/common.hpp"
 #include "core/logger.hpp"
+#include "physics/physics_world.hpp"
 #include "render/light.hpp"
 #include "scene/camera.hpp"
 #include "scene/component.hpp"
@@ -126,6 +131,21 @@ class Scene {
   void SetRenderMode(RenderMode mode);
   [[nodiscard]] RenderMode GetRenderMode() const;
 
+  /// @brief Builds Jolt bodies from RigidBody/Collider components and
+  /// snapshots their transforms so StopSimulation can restore them.
+  void StartSimulation();
+
+  /// @brief Steps the physics world and writes body transforms back to the
+  /// matching Transform components.
+  void StepSimulation(float delta_time);
+
+  /// @brief Destroys all physics bodies and restores the initial transforms.
+  void StopSimulation();
+
+  [[nodiscard]] bool IsSimulating() const { return simulating_; }
+
+  [[nodiscard]] PhysicsWorld &GetPhysicsWorld() { return *physics_world_; }
+
  private:
   entt::registry registry_;
 
@@ -134,6 +154,17 @@ class Scene {
   Ref<Camera> default_camera_info_;
 
   Ref<Renderer> renderer_;
+
+  Ref<PhysicsWorld> physics_world_;
+  bool              simulating_ = false;
+
+  struct TransformSnapshot {
+    glm::vec3 translation;
+    glm::vec3 rotation;
+    glm::vec3 scale;
+  };
+  std::unordered_map<entt::entity, TransformSnapshot> transform_snapshot_;
+  std::unordered_map<entt::entity, JPH::BodyID>       body_ids_;
 };
 
 }  // namespace MEngine

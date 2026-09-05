@@ -24,3 +24,6 @@
 [submodule "deps/ImGuizmo"]
 	path = deps/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
+[submodule "deps/jolt"]
+	path = deps/jolt
+	url = https://github.com/jrouwe/JoltPhysics.git

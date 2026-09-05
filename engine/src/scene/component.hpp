@@ -74,6 +74,31 @@ struct MeshComponent {
       : mesh(std::move(mesh)), material(std::move(material)) {}
 };
 
+/// @brief Attaches a rigid body to an entity (requires a ColliderComponent).
+struct RigidBodyComponent {
+  enum class Type { Static, Dynamic };
+
+  Type  type        = Type::Dynamic;
+  float friction    = 0.5f;
+  float restitution = 0.0f;
+
+  RigidBodyComponent() = default;
+  explicit RigidBodyComponent(Type type) : type(type) {}
+};
+
+/// @brief Collision shape used by the physics world. The shape is world-space
+/// (the transform's scale is intentionally ignored).
+struct ColliderComponent {
+  enum class Shape { Box, Sphere };
+
+  Shape     shape             = Shape::Box;
+  glm::vec3 box_half_extents{0.5f, 0.5f, 0.5f};
+  float     sphere_radius     = 0.5f;
+  glm::vec3 offset{0.0f, 0.0f, 0.0f};
+
+  ColliderComponent() = default;
+};
+
 struct Sprite2D {
   glm::vec3 position;
   glm::vec3 scale;
