@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-09-06 — Timeline 对齐引擎习惯：动画时长(Length) + 标尺/可拖关键帧（修 playhead 仍锁 0）
+
+- **用户反馈**：playhead/timebar“一直都是 0 改不动”，希望像 Godot/UE/Unity：能**设置动画时长**再调整。
+- **根因（真正修好）**：上一版把 playhead 钳到 `max(duration,…)`，但 `SetAnimationTime` 仍按“关键帧最晚时间”钳制；只有一个 t=0 键时 duration=0 → 一拖 playhead 就被 `SetAnimationTime` 拉回 0。所以 timebar 看起来永远 0。
+- **引擎改动**：Scene 增加**独立动画时长** `anim_length_`（默认 1s）：`SetAnimationLength/GetAnimationLength`；`SetAnimationTime` 钳到 [0, anim_length_]（与关键帧无关，随时可移）；`AdvanceAnimation` 按 anim_length_ 回绕/停表；时长与 loop 一起**持久化** `root["animation"]={"loop","length"}`（旧文件无 length → 载入回退 max(duration,1)）。`GetAnimationDuration` 保留为“内容最后键”仅作信息。
+- **编辑器 UI 重写（Timeline）**：顶部 Play/Pause/Stop/Loop/Auto-Key + **Length(时长) 输入** + 可输入 playhead；下方画 **Godot/Unity 式关键帧图**：时间标尺（秒刻度）+ **T/R/S 三条轨道**——标尺/轨道上点击拖动 = 移 playhead，轨道上的**菱形关键帧可左右拖动改时间**（自动夹在相邻键之间保持有序），点击菱形选中后在 inspector 改 time/xyz、Delete；顶部 Key T/R/S 在当前 playhead 记录当前位姿；Add-key 用统一 `put_key`，不再误建空组件。Selection 用 (channel,time) 每帧解析索引，避免编辑期指针悬垂。
+- **验证**：debug/release 全链零警告；`tools/run_smoke.py` ALL PASS（图表面板需在编辑器手动确认交互：拖菱形改时间、标尺拖 playhead、改 Length 后播放时长变化）。
+
+---
+
 ## 2026-09-06 — Editor Timeline：可移动 playhead + Auto-Key（修复“第二个关键帧又落在 t=0 覆盖第一个”）
 
 - **用户反馈**：建了第一个关键帧后移动物体，再按 Key，第二个关键帧仍落在 t=0 把第一个覆盖了（并疑惑“牵扯到碰撞箱，真实引擎怎么处理”）。
