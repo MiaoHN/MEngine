@@ -2,6 +2,11 @@
 
 #include "core/common.hpp"
 
+// ImDrawData (from imgui.h) is only ever used behind a pointer in this
+// interface; concrete backends include <imgui_impl_*.h> (which pull in imgui.h)
+// themselves. A forward declaration keeps core/render independent of imgui.
+struct ImDrawData;
+
 namespace MEngine {
 
 enum class GraphicsAPI { OpenGL, Vulkan };

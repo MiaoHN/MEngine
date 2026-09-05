@@ -1,3 +1,6 @@
+#include <imgui.h>
+#include <imgui_internal.h>
+
 #include "editor.hpp"
 
 #include <algorithm>

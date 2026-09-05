@@ -1,3 +1,5 @@
+#include <imgui.h>
+
 #include "core/application.hpp"
 #include "core/logger.hpp"
 #include "render/asset_manager.hpp"
