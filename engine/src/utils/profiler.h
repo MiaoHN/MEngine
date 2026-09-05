@@ -1,13 +1,14 @@
 #pragma once
 
+// Lightweight RAII micro-profiler that emits Chrome `chrome://tracing`
+// ("traceEvents") JSON. PROFILER_ENABLED must be 1 to actually record; when it
+// is 0 the scope macros expand to nothing and the profiler writes no files.
+//
+// NOTE: this header must stay self-contained (it is pulled in by core code).
+
 #include <chrono>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <memory>
-#include <mutex>
-#include <vector>
+#include <cstdint>
+#include <string>
 
 #define PROFILER_ENABLED 0
 
@@ -21,67 +22,61 @@
 
 namespace MEngine {
 
-class Profiler;
+namespace detail {
+/// @brief Stable id of the current thread / process (used for the
+/// chrome://tracing "tid" / "pid" columns). Defined in profiler.cpp so the
+/// header never needs <thread> or platform headers.
+uint64_t CurrentThreadId();
+uint64_t CurrentProcessId();
+}  // namespace detail
 
+/// @brief One measured scope: name + duration (us) + start time (us) + ids.
 class ProfileResult {
  public:
-  ProfileResult(const char *name, long long duration, uint64_t tid, uint64_t pid, uint64_t ts)
-      : name_(name), duration_(duration), tid_(tid), pid_(pid), ts_(ts) {}
+  ProfileResult(std::string name, long long duration, uint64_t tid, uint64_t pid, uint64_t ts)
+      : name_(std::move(name)), duration_(duration), tid_(tid), pid_(pid), ts_(ts) {}
 
-  const char *GetName() const { return name_; }
+  const char *GetName() const { return name_.c_str(); }
   long long   GetDuration() const { return duration_; }
   uint64_t    GetThreadId() const { return tid_; }
   uint64_t    GetProcessId() const { return pid_; }
   uint64_t    GetStartTime() const { return ts_; }
 
  private:
-  const char *name_;      // @brief name of the profile
-  long long   duration_;  // @brief duration in microseconds
-  uint64_t    tid_;       // @brief thread ID
-  uint64_t    pid_;       // @brief process ID
-  uint64_t    ts_;        // @brief start time in microseconds
+  std::string name_;       // name of the profile (owned copy)
+  long long   duration_;   // duration in microseconds
+  uint64_t    tid_;        // thread ID
+  uint64_t    pid_;        // process ID
+  uint64_t    ts_;         // start time in microseconds (epoch)
 };
 
+/// @brief Routes profile results to the trace writer (no-op unless
+/// PROFILER_ENABLED). Thread-safe.
 class ProfilerCollector {
  public:
-  ProfilerCollector();
-  ~ProfilerCollector();
-
-  /**
-   * @brief Collects profiling data.
-   * @note Only called in Profiler destructor.
-   *
-   * @param profile_result The profiling result to collect.
-   */
   static void Collect(const ProfileResult &profile_result);
-
- private:
-  std::mutex                mutex_;
-  std::vector<std::string>  profile_data_;
-  std::unique_ptr<Profiler> global_profiler_;
-  std::ofstream             output_file_;
 };
 
+/// @brief RAII scope timer. On destruction it reports its measured slice.
 class Profiler {
  public:
-  Profiler(const char *name) : name_(name) { start_time_ = std::chrono::high_resolution_clock::now(); }
-  Profiler(const std::string &name) : name_(name.c_str()) { start_time_ = std::chrono::high_resolution_clock::now(); }
+  explicit Profiler(const char *name) : name_(name), start_time_(StartClock::now()) {}
+  explicit Profiler(const std::string &name) : name_(name), start_time_(StartClock::now()) {}
 
   ~Profiler() { ProfilerCollector::Collect(Dump()); }
 
-  // for chrome://tracing
   ProfileResult Dump() const {
-    auto     end_time = std::chrono::high_resolution_clock::now();
-    auto     duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time_).count();
-    uint64_t tid      = std::hash<std::thread::id>{}(std::this_thread::get_id());
-    uint64_t pid      = std::hash<std::thread::id>{}(std::this_thread::get_id());
-    uint64_t ts       = std::chrono::duration_cast<std::chrono::microseconds>(start_time_.time_since_epoch()).count();
-    return ProfileResult(name_, duration, tid, pid, ts);
+    const auto end      = StartClock::now();
+    const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start_time_).count();
+    const auto start    = std::chrono::duration_cast<std::chrono::microseconds>(start_time_.time_since_epoch()).count();
+    return ProfileResult(name_, duration, detail::CurrentThreadId(), detail::CurrentProcessId(), start);
   }
 
  private:
-  const char                                    *name_;
-  std::chrono::high_resolution_clock::time_point start_time_;
+  using StartClock = std::chrono::high_resolution_clock;
+
+  std::string                     name_;
+  StartClock::time_point          start_time_;
 };
 
 }  // namespace MEngine
