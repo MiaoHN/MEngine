@@ -56,8 +56,6 @@ class Editor : public Application {
 
   std::shared_ptr<FrameBuffer> frame_buffer_;
 
-  std::shared_ptr<ScriptEngine> script_engine_;
-
   EditorCamera editor_camera_;
 
   std::filesystem::path base_directory_;

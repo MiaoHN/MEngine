@@ -61,9 +61,20 @@ Scene::Scene() {
   renderer_ = CreateRef<Renderer>();
 
   physics_world_ = CreateRef<PhysicsWorld>();
+
+  script_engine_ = CreateRef<ScriptEngine>(this);
 }
 
 Scene::~Scene() {}
+
+Entity Scene::FindEntityByName(const std::string &name) {
+  for (auto &entity : entities_) {
+    if (entity.HasComponent<Tag>() && entity.GetComponent<Tag>().tag == name) {
+      return entity;
+    }
+  }
+  return Entity();
+}
 
 void Scene::StartSimulation() {
   if (simulating_) {

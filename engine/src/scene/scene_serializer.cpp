@@ -237,6 +237,10 @@ void Scene::SaveScene(const std::string &path) {
     root["render"]       = j;
   }
 
+  if (!main_script_.empty()) {
+    root["main_script"] = main_script_;
+  }
+
   // Entities.
   {
     json entity_array = json::array();
@@ -296,6 +300,10 @@ void Scene::SaveScene(const std::string &path) {
         j["move_speed"]        = component.move_speed;
         j["look_sensitivity"]  = component.look_sensitivity;
         e["camera_controller"] = j;
+      }
+
+      if (entity.HasComponent<LuaScriptComponent>()) {
+        e["lua_script"] = entity.GetComponent<LuaScriptComponent>().path;
       }
 
       entity_array.push_back(e);
@@ -435,7 +443,17 @@ void Scene::LoadScene(const std::string &path) {
         component.look_sensitivity = j.value("look_sensitivity", 0.15f);
         entity.AddComponent<CameraController>(component);
       }
+
+      if (e.contains("lua_script") && e["lua_script"].is_string()) {
+        entity.AddComponent<LuaScriptComponent>(e["lua_script"].get<std::string>());
+      }
     }
+  }
+
+  // Scene main script (loaded after the entities it may reference).
+  main_script_ = root.value("main_script", "");
+  if (!main_script_.empty()) {
+    script_engine_->LoadMainScript(main_script_);
   }
 
   LOG_INFO("Scene") << "Loaded scene from " << path << " (" << entities_.size() << " entities)";

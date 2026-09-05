@@ -263,9 +263,6 @@ void Editor::Initialize() {
   active_scene_->SetShadowPcfRadius(4.0f);
   active_scene_->SetGodRaysStrength(0.06f);
 
-  script_engine_ = std::make_shared<ScriptEngine>();
-  script_engine_->LoadScript(AssetManager::Instance().Resolve("scripts/test.lua"));
-
   // ImGUI setup
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
@@ -331,6 +328,9 @@ void Editor::Initialize() {
   // with a sphere. Everything is at rest until Play is pressed.
   CreatePhysicsDemo();
 
+  // Scene-level Lua main script (optional GameManager).
+  active_scene_->SetMainScript("scripts/main.lua");
+
   base_directory_    = std::filesystem::absolute(AssetManager::Instance().GetAssetRoot());
   current_directory_ = base_directory_;
   directory_icon_    = AssetManager::Instance().GetTexture("icons/DirectoryIcon.png");
@@ -359,10 +359,11 @@ void Editor::OnUpdate(float dt) {
     active_scene_->AddPointLight(light);
   }
 
-  // Advance the physics simulation while in Play mode (the physics world
-  // writes body transforms back into the matching Transform components).
+  // Advance the physics simulation and Lua scripts while in Play mode.
   if (game_mode_ == GameMode::Play) {
     active_scene_->StepSimulation(dt);
+    active_scene_->GetScriptEngine().FixedUpdate(dt);
+    active_scene_->GetScriptEngine().Update(dt);
   }
 
   // Render the 3D scene into the viewport framebuffer (Edit = editor camera,
@@ -630,6 +631,15 @@ void Editor::ShowImGuiScene() {
   PROFILER_FUNCTION();
   ImGui::Begin("Scene");
 
+  // Scene-level main Lua script (optional GameManager-style script).
+  {
+    char main_script[512] = {};
+    std::snprintf(main_script, sizeof(main_script), "%s", active_scene_->GetMainScript().c_str());
+    if (ImGui::InputText("Main Script", main_script, sizeof(main_script))) {
+      active_scene_->SetMainScript(std::string(main_script));
+    }
+  }
+
   if (ImGui::Button("Create")) {
     ImGui::OpenPopup("CreateEntity");
   }
@@ -709,10 +719,12 @@ void Editor::ShowImGuiViewport() {
     if (game_mode_ == GameMode::Edit) {
       game_mode_ = GameMode::Play;
       active_scene_->StartSimulation();
+      active_scene_->GetScriptEngine().LoadMainScript(active_scene_->GetMainScript());
       SetGridVisible(false);
     } else {
       game_mode_ = GameMode::Edit;
       active_scene_->StopSimulation();
+      active_scene_->GetScriptEngine().Clear();
       SetGridVisible(true);
     }
   }
@@ -869,6 +881,7 @@ void Editor::ShowImGuiProperties() {
       DisplayAddComponentEntry<MeshComponent>("Mesh");
       DisplayAddComponentEntry<CameraComponent>("Camera");
       DisplayAddComponentEntry<CameraController>("Camera Controller");
+      DisplayAddComponentEntry<LuaScriptComponent>("Lua Script");
       DisplayAddComponentEntry<RigidBodyComponent>("Rigid Body");
       DisplayAddComponentEntry<ColliderComponent>("Collider");
 
@@ -1052,6 +1065,15 @@ void Editor::ShowImGuiProperties() {
     DrawComponent<CameraController>("Camera Controller", selected_entity_, [](auto &component) {
       ImGui::DragFloat("Move Speed", &component.move_speed, 0.1f, 0.0f, 100.0f);
       ImGui::DragFloat("Look Sensitivity", &component.look_sensitivity, 0.01f, 0.0f, 2.0f);
+    });
+
+    DrawComponent<LuaScriptComponent>("Lua Script", selected_entity_, [](auto &component) {
+      char buffer[512] = {};
+      std::snprintf(buffer, sizeof(buffer), "%s", component.path.c_str());
+      if (ImGui::InputText("Path", buffer, sizeof(buffer))) {
+        component.path = std::string(buffer);
+      }
+      ImGui::TextDisabled("Relative to the asset root, e.g. scripts/enemy.lua");
     });
   } else {
     ImGui::TextDisabled("Select an entity in the Scene panel to edit its properties.");
@@ -1505,6 +1527,12 @@ void Editor::CreatePhysicsDemo() {
   camera_component.primary = true;
   camera.AddComponent<CameraComponent>(camera_component);
   camera.AddComponent<CameraController>();
+
+  // A script-driven cube (no physics) to demonstrate Lua entity scripts.
+  Entity spinner = active_scene_->CreateEntity("Spinner");
+  spinner.AddComponent<Transform>(glm::vec3(3.0f, 1.5f, 0.0f));
+  spinner.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateRef<Material>(*default_material_));
+  spinner.AddComponent<LuaScriptComponent>("scripts/spin.lua");
 
   LOG_INFO("Editor") << "Physics demo scene created (ground + box stack + sphere + player camera)";
 }

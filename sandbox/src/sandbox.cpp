@@ -131,6 +131,8 @@ void Sandbox::OnUpdate(float dt) {
 
   if (running_loaded_scene_) {
     active_scene_->StepSimulation(dt);
+    active_scene_->GetScriptEngine().FixedUpdate(dt);
+    active_scene_->GetScriptEngine().Update(dt);
     active_scene_->UpdateCameraControllers(dt, Input::GetMouseDelta(),
                                            Input::IsMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT));
     if (active_scene_->HasPrimaryCamera()) {

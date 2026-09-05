@@ -110,6 +110,15 @@ struct ColliderComponent {
   ColliderComponent() = default;
 };
 
+/// @brief Attaches a Lua script to an entity. The script runs with `self` =
+/// this entity and may define OnStart/OnUpdate/OnFixedUpdate/OnDestroy hooks.
+struct LuaScriptComponent {
+  std::string path;
+
+  LuaScriptComponent() = default;
+  explicit LuaScriptComponent(std::string path) : path(std::move(path)) {}
+};
+
 struct Sprite2D {
   glm::vec3 position;
   glm::vec3 scale;

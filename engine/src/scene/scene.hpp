@@ -21,6 +21,7 @@
 
 #include "core/common.hpp"
 #include "core/logger.hpp"
+#include "core/script_engine.hpp"
 #include "physics/physics_world.hpp"
 #include "render/light.hpp"
 #include "scene/camera.hpp"
@@ -152,6 +153,19 @@ class Scene {
   /// mode only.
   void UpdateCameraControllers(float delta_time, const glm::vec2 &mouse_delta, bool look_active);
 
+  /// @brief The scene's Lua scripting engine (per-entity scripts + main script).
+  [[nodiscard]] ScriptEngine &GetScriptEngine() { return *script_engine_; }
+
+  /// @brief Optional scene-level Lua main script path (e.g. "scripts/main.lua").
+  void SetMainScript(const std::string &path) { main_script_ = path; }
+  [[nodiscard]] const std::string &GetMainScript() const { return main_script_; }
+
+  /// @brief Finds an entity by tag name (returns a null entity when absent).
+  [[nodiscard]] Entity FindEntityByName(const std::string &name);
+
+  /// @brief Raw registry access (used by the Lua bindings).
+  [[nodiscard]] entt::registry &GetRegistry() { return registry_; }
+
  private:
   entt::registry registry_;
 
@@ -171,6 +185,9 @@ class Scene {
   };
   std::unordered_map<entt::entity, TransformSnapshot> transform_snapshot_;
   std::unordered_map<entt::entity, JPH::BodyID>       body_ids_;
+
+  Ref<ScriptEngine> script_engine_;
+  std::string       main_script_;
 };
 
 }  // namespace MEngine
