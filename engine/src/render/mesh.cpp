@@ -64,7 +64,9 @@ Ref<Mesh> Mesh::CreateCube(float size) {
     indices.push_back(base + 0);
   }
 
-  return Create(vertices, indices);
+  Ref<Mesh> mesh = Create(vertices, indices);
+  mesh->source_  = "cube";
+  return mesh;
 }
 
 Ref<Mesh> Mesh::CreatePlane(float size) {
@@ -78,7 +80,9 @@ Ref<Mesh> Mesh::CreatePlane(float size) {
   };
   const std::vector<unsigned int> indices = {0, 1, 2, 2, 3, 0};
 
-  return Create(vertices, indices);
+  Ref<Mesh> mesh = Create(vertices, indices);
+  mesh->source_  = "plane";
+  return mesh;
 }
 
 Ref<Mesh> Mesh::CreateSphere(float radius, int segments) {
@@ -123,7 +127,9 @@ Ref<Mesh> Mesh::CreateSphere(float radius, int segments) {
     }
   }
 
-  return Create(vertices, indices);
+  Ref<Mesh> mesh = Create(vertices, indices);
+  mesh->source_  = "sphere";
+  return mesh;
 }
 
 void MeshLibrary::Add(const std::string &name, const Ref<Mesh> &mesh) {

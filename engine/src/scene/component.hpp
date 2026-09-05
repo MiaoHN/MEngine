@@ -26,6 +26,7 @@ namespace MEngine {
 
 struct Tag {
   std::string tag;
+  bool        editor_only = false;
 
   Tag(std::string tag) : tag(tag) {}
   Tag() = default;

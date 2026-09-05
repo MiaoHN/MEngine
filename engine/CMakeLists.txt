@@ -32,6 +32,7 @@ set(SOURCE_RENDER
 
 set(SOURCE_SCENE
   src/scene/scene.cpp
+  src/scene/scene_serializer.cpp
 )
 
 set(SOURCE_PHYSICS

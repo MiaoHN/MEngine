@@ -108,16 +108,6 @@ void Scene::StopSimulation() {
   LOG_INFO("Scene") << "Physics simulation stopped and initial transforms restored";
 }
 
-void Scene::LoadScene(const std::string &path) {
-  (void)path;
-  LOG_WARN("Scene") << "LoadScene is not implemented yet: " << path;
-}
-
-void Scene::SaveScene(const std::string &path) {
-  (void)path;
-  LOG_WARN("Scene") << "SaveScene is not implemented yet: " << path;
-}
-
 void Scene::OnUpdateEditor(const Camera &camera) { Render(camera); }
 
 void Scene::OnUpdateSimulation(float dt, const Camera &camera) {

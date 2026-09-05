@@ -33,6 +33,11 @@ class Mesh {
 
   static Ref<Mesh> Create(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices);
 
+  /// @brief Source description used by scene serialization: "cube", "plane"
+  /// or "sphere" for built-in primitives, or a model file path.
+  void SetSource(const std::string &source) { source_ = source; }
+  [[nodiscard]] const std::string &GetSource() const { return source_; }
+
   /// @brief Unit cube with per-face normals and UVs, centered at origin.
   static Ref<Mesh> CreateCube(float size = 1.0f);
 
@@ -48,6 +53,8 @@ class Mesh {
   std::vector<Vertex>         vertices_;
   std::vector<unsigned int>   indices_;
   int                         index_count_ = 0;
+
+  std::string source_;
 };
 
 /// @brief Name-based mesh cache (mirrors ShaderLibrary / TextureLibrary).
