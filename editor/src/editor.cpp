@@ -311,7 +311,7 @@ Editor::~Editor() {
 void Editor::Initialize() {
   PROFILER_FUNCTION();
 
-  active_scene_ = std::make_shared<Scene>();
+active_scene_ = std::make_shared<Scene>();
 
   // Tune lighting to match the sandbox's validated look: lower IBL ambient so
   // meshes don't read as self-emissive, softer shadows, and gentler bloom.
@@ -347,7 +347,7 @@ void Editor::Initialize() {
   }
   mono_font_ = io.Fonts->AddFontFromFileTTF("res/fonts/Cousine-Regular.ttf", 15.0f * dpi_scale, &font_cfg);
 
-  SetupImGuiStyle();
+SetupImGuiStyle();
 
   if (rhi_ && !rhi_->InitializeImGuiBackend(window_)) {
     LOG_FATAL("Editor") << "Failed to initialize ImGui backend for selected RHI";
@@ -370,7 +370,7 @@ void Editor::Initialize() {
   editor_camera_.Reset();
   editor_camera_.aspect = static_cast<float>(fb_width) / static_cast<float>(std::max(1, fb_height));
 
-  default_material_ = CreateDefaultMaterial();
+default_material_ = CreateDefaultMaterial();
 
   // Ground grid: a large XZ plane with a procedural grid shader. The grid is
   // an editor-only overlay, hidden while Play mode is simulating.
@@ -1465,6 +1465,22 @@ void Editor::ShowImGuiInformation() {
   PROFILER_FUNCTION();
   ImGui::Begin("Information");
   ImGui::Text("FPS: %d", GetFPS());
+
+  // Live render statistics (draw calls / triangles / culling / pass times).
+  ImGui::Separator();
+  ImGui::TextUnformatted("Render Stats");
+  if (active_scene_) {
+    const auto &stats = active_scene_->GetRenderStats();
+    ImGui::Text("Draw calls:   %llu", static_cast<unsigned long long>(stats.draw_calls));
+    ImGui::Text("Instanced:    %llu", static_cast<unsigned long long>(stats.instanced_draws));
+    ImGui::Text("Triangles:    %llu", static_cast<unsigned long long>(stats.triangles));
+    ImGui::Text("Culled:       %llu", static_cast<unsigned long long>(stats.culled_entities));
+    float pass_ms[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    active_scene_->GetLastPassTimes(pass_ms);
+    ImGui::Text("Shadow/Point/SSAO/Main/Post: %.2f / %.2f / %.2f / %.2f / %.2f ms", pass_ms[0], pass_ms[1],
+                pass_ms[2], pass_ms[3], pass_ms[5]);
+  }
+  ImGui::Separator();
 
   ImGui::Text("Editor Camera");
   DrawVec3Control("Target", editor_camera_.target);

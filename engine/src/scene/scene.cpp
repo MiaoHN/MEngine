@@ -921,6 +921,8 @@ void Scene::GetLastPassTimes(float out_times[6]) const {
   }
 }
 
+const RenderStats &Scene::GetRenderStats() const { return renderer_->GetFrameStats(); }
+
 void Scene::SetRenderMode(RenderMode mode) { renderer_->SetRenderMode(mode); }
 
 RenderMode Scene::GetRenderMode() const { return renderer_->GetRenderMode(); }

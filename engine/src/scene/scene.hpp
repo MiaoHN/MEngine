@@ -24,6 +24,7 @@
 #include "core/script_engine.hpp"
 #include "physics/physics_world.hpp"
 #include "render/light.hpp"
+#include "render/renderer.hpp"
 #include "scene/camera.hpp"
 #include "scene/component.hpp"
 #include "scene/entity.hpp"
@@ -163,6 +164,9 @@ class Scene {
   /// @brief Fills `out` with the per-pass timings of the last frame
   /// (shadow / point shadows / ssao / main / skybox / post), in milliseconds.
   void GetLastPassTimes(float out_times[6]) const;
+
+  /// @brief Per-frame render counters of the last rendered frame.
+  [[nodiscard]] const RenderStats &GetRenderStats() const;
 
   /// @brief Finds an entity by tag name (returns a null entity when absent).
   [[nodiscard]] Entity FindEntityByName(const std::string &name);
