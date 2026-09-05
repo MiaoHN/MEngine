@@ -36,6 +36,7 @@ class Editor : public Application {
   void ShowImGuiViewport();
   void ShowImGuiProperties();
   void ShowImGuiLighting();
+  void ShowImGuiLog();
   void ShowImGuiInformation();
 
   template <typename T>

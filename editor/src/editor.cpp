@@ -1,6 +1,7 @@
 #include "editor.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <limits>
 
@@ -60,6 +61,56 @@ void AutoAssignObjTextures(const Ref<Material> &material, const std::filesystem:
   if (auto t = find_texture({"ao.jpg", "ao.png", "occlusion.jpg", "occlusion.png"})) {
     material->SetAOMap(t);
   }
+}
+
+enum class LogLevel { Trace, Debug, Info, Warn, Error, Fatal, Unknown };
+
+/// @brief Extracts the `[LEVEL]` token from a log line ("[time] [INFO] [name] msg").
+LogLevel ParseLogLevel(const std::string &line) {
+  const size_t first = line.find('[');
+  if (first == std::string::npos) return LogLevel::Unknown;
+  const size_t second = line.find('[', first + 1);
+  if (second == std::string::npos) return LogLevel::Unknown;
+  const size_t end = line.find(']', second);
+  if (end == std::string::npos) return LogLevel::Unknown;
+
+  const std::string level = line.substr(second + 1, end - second - 1);
+  if (level == "TRACE") return LogLevel::Trace;
+  if (level == "DEBUG") return LogLevel::Debug;
+  if (level == "INFO") return LogLevel::Info;
+  if (level == "WARN") return LogLevel::Warn;
+  if (level == "ERROR") return LogLevel::Error;
+  if (level == "FATAL") return LogLevel::Fatal;
+  return LogLevel::Unknown;
+}
+
+ImVec4 LogLevelColor(LogLevel level) {
+  switch (level) {
+    case LogLevel::Trace:
+      return {0.55f, 0.55f, 0.55f, 1.0f};
+    case LogLevel::Debug:
+      return {0.45f, 0.75f, 1.00f, 1.0f};
+    case LogLevel::Info:
+      return {0.92f, 0.92f, 0.92f, 1.0f};
+    case LogLevel::Warn:
+      return {1.00f, 0.85f, 0.25f, 1.0f};
+    case LogLevel::Error:
+      return {1.00f, 0.45f, 0.45f, 1.0f};
+    case LogLevel::Fatal:
+      return {1.00f, 0.25f, 0.25f, 1.0f};
+    default:
+      return {0.80f, 0.80f, 0.80f, 1.0f};
+  }
+}
+
+bool ContainsIgnoreCase(const std::string &haystack, const std::string &needle) {
+  if (needle.empty()) return true;
+  const auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(),
+                              [](char a, char b) {
+                                return std::tolower(static_cast<unsigned char>(a)) ==
+                                       std::tolower(static_cast<unsigned char>(b));
+                              });
+  return it != haystack.end();
 }
 
 }  // namespace
@@ -215,25 +266,7 @@ void Editor::OnUpdate(float dt) {
   if (show_scene_) ShowImGuiScene();
   if (show_properties_) ShowImGuiProperties();
   if (show_lighting_) ShowImGuiLighting();
-
-  if (show_log_) {
-    ImGui::Begin("Log");
-    if (ImGui::Button("Clear")) {
-      std::ofstream(std::string(kLogFileName), std::ios::trunc).close();
-    }
-
-    const std::string log_path(kLogFileName);
-    std::ifstream     file(log_path);
-    std::stringstream ss;
-    if (file.is_open()) {
-      ss << file.rdbuf();
-    }
-    const std::string log = ss.str();
-    ImGui::BeginChild("##LogText", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
-    ImGui::TextUnformatted(log.c_str());
-    ImGui::EndChild();
-    ImGui::End();
-  }
+  if (show_log_) ShowImGuiLog();
 
   if (show_information_) ShowImGuiInformation();
 
@@ -724,6 +757,108 @@ void Editor::ShowImGuiLighting() {
     }
   }
 
+  ImGui::End();
+}
+
+void Editor::ShowImGuiLog() {
+  PROFILER_FUNCTION();
+
+  // State persists across frames.
+  static char                    search[128] = {};
+  static bool                    auto_scroll = true;
+  static bool                    show_trace  = false;
+  static bool                    show_debug  = false;
+  static bool                    show_info   = true;
+  static bool                    show_warn   = true;
+  static bool                    show_error  = true;
+  static bool                    show_fatal  = true;
+  static std::vector<std::string> lines;
+  static std::uintmax_t           cached_size = 0;
+
+  ImGui::Begin("Log");
+
+  // Toolbar: Clear | Auto-scroll | Search.
+  if (ImGui::Button("Clear")) {
+    std::ofstream(std::string(kLogFileName), std::ios::trunc).close();
+    lines.clear();
+    cached_size = 0;
+  }
+  ImGui::SameLine();
+  ImGui::Checkbox("Auto-scroll", &auto_scroll);
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(220.0f);
+  ImGui::InputTextWithHint("##LogSearch", "Search...", search, sizeof(search));
+
+  // Level filter toggles (colored buttons).
+  struct LevelToggle {
+    const char *name;
+    bool       *flag;
+    ImVec4      color;
+  };
+  static const LevelToggle toggles[] = {
+      {"TRACE", &show_trace, {0.55f, 0.55f, 0.55f, 1.0f}},
+      {"DEBUG", &show_debug, {0.45f, 0.75f, 1.00f, 1.0f}},
+      {"INFO", &show_info, {0.92f, 0.92f, 0.92f, 1.0f}},
+      {"WARN", &show_warn, {1.00f, 0.85f, 0.25f, 1.0f}},
+      {"ERROR", &show_error, {1.00f, 0.45f, 0.45f, 1.0f}},
+      {"FATAL", &show_fatal, {1.00f, 0.25f, 0.25f, 1.0f}},
+  };
+  for (const auto &toggle : toggles) {
+    const ImVec4 c = *toggle.flag ? toggle.color : ImVec4(0.22f, 0.22f, 0.24f, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, c);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, c);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, c);
+    if (ImGui::SmallButton(toggle.name)) {
+      *toggle.flag = !*toggle.flag;
+    }
+    ImGui::PopStyleColor(3);
+    ImGui::SameLine();
+  }
+  ImGui::NewLine();
+
+  ImGui::Separator();
+
+  // Reload the file only when its size changed (or after Clear).
+  const std::string    log_path(kLogFileName);
+  const std::uintmax_t size = std::filesystem::exists(log_path) ? std::filesystem::file_size(log_path) : 0;
+  if (size != cached_size) {
+    cached_size = size;
+    lines.clear();
+    std::ifstream file(log_path);
+    std::string   line;
+    while (std::getline(file, line)) {
+      lines.push_back(line);
+    }
+  }
+
+  const bool auto_scroll_this_frame = auto_scroll;
+  ImGui::BeginChild("##LogText", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+  const bool at_bottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY();
+
+  for (const std::string &line : lines) {
+    const LogLevel level = ParseLogLevel(line);
+    const bool     level_ok =
+        (level == LogLevel::Trace && show_trace) || (level == LogLevel::Debug && show_debug) ||
+        (level == LogLevel::Info && show_info) || (level == LogLevel::Warn && show_warn) ||
+        (level == LogLevel::Error && show_error) || (level == LogLevel::Fatal && show_fatal) ||
+        (level == LogLevel::Unknown);
+    if (!level_ok) {
+      continue;
+    }
+    if (search[0] != '\0' && !ContainsIgnoreCase(line, search)) {
+      continue;
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, LogLevelColor(level));
+    ImGui::TextUnformatted(line.c_str());
+    ImGui::PopStyleColor();
+  }
+
+  if (auto_scroll_this_frame && at_bottom) {
+    ImGui::SetScrollHereY(1.0f);
+  }
+
+  ImGui::EndChild();
   ImGui::End();
 }
 
