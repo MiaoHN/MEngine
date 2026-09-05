@@ -35,6 +35,8 @@ class Sandbox : public Application {
  private:
   std::shared_ptr<Scene> active_scene_;
 
+  bool running_loaded_scene_ = false;
+
   Entity        model_;
   Ref<Mesh>     model_mesh_;
   Ref<Material> model_material_;

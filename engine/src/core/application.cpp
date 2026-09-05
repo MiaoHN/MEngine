@@ -7,6 +7,8 @@ namespace MEngine {
 
 static Application *s_app;
 
+std::string Application::startup_scene_path_;
+
 Application *Application::GetInstance() { return s_app; }
 
 Application::Application(GraphicsAPI api) : graphics_api_(api) {

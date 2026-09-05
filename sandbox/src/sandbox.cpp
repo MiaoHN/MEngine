@@ -10,6 +10,15 @@
 Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
   active_scene_ = std::make_shared<Scene>();
 
+  // Standalone play: load a scene saved by the editor instead of the demo.
+  const std::string &scene_path = Application::GetStartupScenePath();
+  if (!scene_path.empty()) {
+    active_scene_->LoadScene(scene_path);
+    active_scene_->StartSimulation();
+    running_loaded_scene_ = true;
+    return;
+  }
+
   pbr_shader_ = AssetManager::Instance().GetShader("pbr");
 
   // Imported glTF model with a PBR material (metallic-roughness workflow).
@@ -118,6 +127,16 @@ void Sandbox::Initialize() {}
 
 void Sandbox::OnUpdate(float dt) {
   PROFILER_FUNCTION();
+
+  if (running_loaded_scene_) {
+    active_scene_->StepSimulation(dt);
+    if (active_scene_->HasPrimaryCamera()) {
+      active_scene_->RenderFromPrimaryCamera();
+    } else {
+      active_scene_->RenderMeshes(camera_.GetViewMatrix(), camera_.GetProjectionMatrix(), camera_.GetPosition());
+    }
+    return;
+  }
 
   if (model_.HasComponent<Transform>()) {
     auto &transform = model_.GetComponent<Transform>();

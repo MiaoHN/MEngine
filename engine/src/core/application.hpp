@@ -67,6 +67,11 @@ class Application {
 
   static Application *GetInstance();
 
+  /// @brief Scene path parsed from the command line (`--scene <path>`); used by
+  /// standalone apps (e.g. the sandbox) to load a scene at startup.
+  static void SetStartupScenePath(const std::string &path) { startup_scene_path_ = path; }
+  [[nodiscard]] static const std::string &GetStartupScenePath() { return startup_scene_path_; }
+
  protected:
   /**
    * @brief scene_ is a unique pointer to the Scene class.
@@ -95,6 +100,8 @@ class Application {
   Ref<IRHI> rhi_;
 
   GraphicsAPI graphics_api_;
+
+  static std::string startup_scene_path_;
 };
 
 }  // namespace MEngine
