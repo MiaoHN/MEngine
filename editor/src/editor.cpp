@@ -8,8 +8,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <thread>
+
+#include <glm/gtx/matrix_decompose.hpp>
 
 #include "render/asset_manager.hpp"
 #include "render/model_loader.hpp"
@@ -565,7 +568,7 @@ void Editor::OnUpdate(float dt) {
     if (!editor_camera_.IsFlyMode() && ImGui::IsKeyPressed(ImGuiKey_R)) gizmo_operation_ = ImGuizmo::SCALE;
     if (ImGui::IsKeyPressed(ImGuiKey_F) && selected_entity_.GetHandle() != entt::null &&
         selected_entity_.HasComponent<Transform>()) {
-      editor_camera_.target = selected_entity_.GetComponent<Transform>().translation;
+      editor_camera_.target = active_scene_->GetWorldPosition(selected_entity_.GetHandle());
     }
     if (ImGui::IsKeyPressed(ImGuiKey_D) && ImGui::GetIO().KeyCtrl) {
       DuplicateSelectedEntity();
@@ -885,21 +888,139 @@ void Editor::ShowImGuiScene() {
   ImGui::InputTextWithHint("##SceneSearch", "Search...", search, sizeof(search));
   ImGui::Separator();
 
-  for (auto &entity : active_scene_->GetAllEntities()) {
+  const bool filtering = search[0] != '\0';
+
+  // Draws one scene-hierarchy node (label + drag/drop + context menu) and then
+  // its children. Only called for root nodes from the loop below; recursion
+  // handles everything underneath.
+  std::function<void(entt::entity)> draw_node = [&](entt::entity handle) {
+    Entity entity(handle, &active_scene_->GetRegistry());
+    if (entity.GetHandle() == entt::null || !active_scene_->GetRegistry().valid(handle)) {
+      return;
+    }
     if (entity == grid_entity_) {
-      continue;
+      return;
     }
 
     const std::string &tag = entity.GetComponent<Tag>().tag;
-    if (search[0] != '\0' && !ContainsIgnoreCase(tag, search)) {
-      continue;
+    const bool         has_children = active_scene_->HasChildren(handle);
+    const std::string  label = tag + "##" + std::to_string(entt::to_integral(handle));
+
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick |
+                               ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen;
+    if (!has_children) {
+      flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+    }
+    if (entity == selected_entity_) {
+      flags |= ImGuiTreeNodeFlags_Selected;
     }
 
-    const ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen |
-                                     (entity == selected_entity_ ? ImGuiTreeNodeFlags_Selected : 0);
-    ImGui::TreeNodeEx(tag.c_str(), flags);
+    const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
     if (ImGui::IsItemClicked()) {
       selected_entity_ = entity;
+    }
+
+    // --- Right-click: create child / duplicate / delete / unparent ----------
+    if (ImGui::BeginPopupContextItem(label.c_str())) {
+      if (ImGui::MenuItem("Create Child##Empty")) CreateChildPrimitive("Child", nullptr);
+      if (ImGui::MenuItem("Create Child Cube")) CreateChildPrimitive("Cube", AssetManager::Instance().GetMesh("cube"));
+      if (ImGui::MenuItem("Create Child Plane")) {
+        CreateChildPrimitive("Plane", AssetManager::Instance().GetMesh("plane"));
+      }
+      if (ImGui::MenuItem("Create Child Sphere")) {
+        CreateChildPrimitive("Sphere", AssetManager::Instance().GetMesh("sphere"));
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Duplicate")) {
+        selected_entity_ = entity;
+        DuplicateSelectedEntity();
+      }
+      if (ImGui::MenuItem("Delete")) {
+        selected_entity_ = entity;
+        active_scene_->DestroyEntity(selected_entity_);
+        selected_entity_ = Entity();
+      }
+      if (active_scene_->GetParent(handle) != entt::null) {
+        ImGui::Separator();
+        if (ImGui::MenuItem("Unparent")) {
+          active_scene_->SetParent(handle, entt::null);
+        }
+      }
+      ImGui::EndPopup();
+    }
+
+    // --- Drag source: reparent this entity by dropping it onto another ------
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+      ImGui::SetDragDropPayload("SCENE_ENTITY", &handle, sizeof(handle));
+      ImGui::TextUnformatted(("Parent '" + tag + "' onto...").c_str());
+      ImGui::EndDragDropSource();
+    }
+
+    // --- Drop target: make the dragged entity a child of this one -----------
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("SCENE_ENTITY")) {
+        if (payload->Data != nullptr) {
+          const entt::entity dragged = *static_cast<const entt::entity *>(payload->Data);
+          if (dragged != handle && active_scene_->GetRegistry().valid(dragged)) {
+            active_scene_->SetParent(dragged, handle);
+          }
+        }
+      }
+      ImGui::EndDragDropTarget();
+    }
+
+    if (open && has_children) {
+      for (const entt::entity child : active_scene_->GetChildren(handle)) {
+        draw_node(child);
+      }
+      ImGui::TreePop();
+    }
+  };
+
+  if (!filtering) {
+    // Roots first (entities without a parent), then their subtrees recursively.
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (entity == grid_entity_) {
+        continue;
+      }
+      if (active_scene_->GetParent(entity.GetHandle()) != entt::null) {
+        continue;  // rendered by its parent
+      }
+      draw_node(entity.GetHandle());
+    }
+
+    // A catch-all drop zone under the tree: dropping an entity here detaches it
+    // back to the root level.
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    ImGui::Separator();
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("SCENE_ENTITY")) {
+        if (payload->Data != nullptr) {
+          const entt::entity dragged = *static_cast<const entt::entity *>(payload->Data);
+          if (active_scene_->GetRegistry().valid(dragged)) {
+            active_scene_->SetParent(dragged, entt::null);
+          }
+        }
+      }
+      ImGui::EndDragDropTarget();
+    }
+    ImGui::TextDisabled("Drag an entity onto another to parent it.");
+  } else {
+    // While searching, show a flat list of matches (any depth).
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (entity == grid_entity_) {
+        continue;
+      }
+      const std::string &tag = entity.GetComponent<Tag>().tag;
+      if (!ContainsIgnoreCase(tag, search)) {
+        continue;
+      }
+      const ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen |
+                                       (entity == selected_entity_ ? ImGuiTreeNodeFlags_Selected : 0);
+      ImGui::TreeNodeEx(tag.c_str(), flags);
+      if (ImGui::IsItemClicked()) {
+        selected_entity_ = entity;
+      }
     }
   }
 
@@ -2047,6 +2168,28 @@ void Editor::CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh) {
   LOG_DEBUG("Editor") << "Created primitive '" << entity.GetComponent<Tag>().tag << "'";
 }
 
+Entity Editor::CreateChildPrimitive(const std::string &name, const Ref<Mesh> &mesh) {
+  const bool     has_parent = selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_;
+  Entity         entity     = CreateEntityWithUniqueName(name);
+  entity.AddComponent<Transform>();
+
+  if (mesh) {
+    entity.AddComponent<MeshComponent>(mesh, CreateRef<Material>(*default_material_));
+    // Sit the child just above the parent's local origin so it is visible
+    // (world placement follows the parent once reparented).
+    entity.GetComponent<Transform>().translation.y = 1.0f;
+  }
+
+  std::string parent_name = "root";
+  if (has_parent) {
+    parent_name = active_scene_->GetRegistry().get<Tag>(selected_entity_.GetHandle()).tag;
+    active_scene_->SetParent(entity.GetHandle(), selected_entity_.GetHandle());
+  }
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created child '" << entity.GetComponent<Tag>().tag << "' under '" << parent_name << "'";
+  return entity;
+}
+
 void Editor::CreateCameraEntity() {
   Entity entity = CreateEntityWithUniqueName("Camera");
 
@@ -2275,6 +2418,14 @@ void Editor::RunSceneFileSelftest(const std::string &path) {
     return grid_entity_.GetHandle() != entt::null &&
            active_scene_->GetRegistry().valid(grid_entity_.GetHandle());
   };
+  // Number of parent->child links in the scene (hierarchy regression check).
+  const auto link_count = [&]() {
+    size_t n = 0;
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (active_scene_->GetParent(entity.GetHandle()) != entt::null) ++n;
+    }
+    return n;
+  };
 
   bool ok = true;
   const auto check = [&](bool cond, const char *what) {
@@ -2295,6 +2446,7 @@ void Editor::RunSceneFileSelftest(const std::string &path) {
   OpenScenePath(path);
   check(!current_scene_path_.empty() && current_scene_path_ == path, "OpenScenePath records the scene path");
   const size_t opened_content = content_count();
+  const size_t opened_links   = link_count();
   check(opened_content > 0, "OpenSceneFile loaded content entities");
 
   // 3. Save + reopen round-trip must reproduce the same content count.
@@ -2305,6 +2457,7 @@ void Editor::RunSceneFileSelftest(const std::string &path) {
   NewScene();
   OpenScenePath(tmp_path);
   check(content_count() == opened_content, "Save/reopen round-trip preserves content count");
+  check(link_count() == opened_links, "Save/reopen round-trip preserves parent-child links");
   std::error_code ec;
   std::filesystem::remove(tmp_path, ec);
 
@@ -2361,6 +2514,19 @@ void Editor::DuplicateSelectedEntity() {
   }
 
   Entity source = selected_entity_;
+  Entity duplicate =
+      DuplicateEntitySubtree(source, active_scene_->GetParent(source.GetHandle()));
+  if (duplicate.GetHandle() != entt::null) {
+    selected_entity_ = duplicate;
+  }
+  LOG_DEBUG("Editor") << "Duplicated entity '" << source.GetComponent<Tag>().tag << "' -> '"
+                      << (duplicate.GetHandle() != entt::null ? duplicate.GetComponent<Tag>().tag : "?") << "'";
+}
+
+Entity Editor::DuplicateEntitySubtree(Entity source, entt::entity parent_copy) {
+  if (source.GetHandle() == entt::null || !active_scene_->GetRegistry().valid(source.GetHandle())) {
+    return Entity();
+  }
 
   Entity duplicate = CreateEntityWithUniqueName(source.GetComponent<Tag>().tag + " (Copy)");
   if (source.HasComponent<Transform>()) {
@@ -2374,9 +2540,15 @@ void Editor::DuplicateSelectedEntity() {
     duplicate.AddComponent<CameraComponent>(source.GetComponent<CameraComponent>());
   }
 
-  selected_entity_ = duplicate;
-  LOG_DEBUG("Editor") << "Duplicated entity '" << source.GetComponent<Tag>().tag << "' -> '"
-                      << duplicate.GetComponent<Tag>().tag << "'";
+  if (parent_copy != entt::null) {
+    active_scene_->SetParent(duplicate.GetHandle(), parent_copy);
+  }
+
+  // Recursively duplicate children so the whole subtree stays a valid tree.
+  for (const entt::entity child : active_scene_->GetChildren(source.GetHandle())) {
+    DuplicateEntitySubtree(Entity(child, &active_scene_->GetRegistry()), duplicate.GetHandle());
+  }
+  return duplicate;
 }
 
 void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
@@ -2426,8 +2598,10 @@ void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {
     return;
   }
 
-  auto     &transform = selected_entity_.GetComponent<Transform>();
-  glm::mat4 model     = transform.GetTransform();
+  // Manipulate the entity's world transform so the gizmo appears at its true
+  // world location even when it is a child; the result is written back as a
+  // local TRS (relative to the parent) by SetLocalTransformFromWorld.
+  glm::mat4 model = active_scene_->GetWorldTransform(selected_entity_.GetHandle());
 
   ImGuizmo::SetDrawlist();
   ImGuizmo::SetRect(image_pos.x, image_pos.y, image_size.x, image_size.y);
@@ -2436,14 +2610,7 @@ void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {
                        glm::value_ptr(model));
 
   if (ImGuizmo::IsUsing()) {
-    glm::vec3 translation;
-    glm::vec3 rotation;
-    glm::vec3 scale;
-    ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model), glm::value_ptr(translation), glm::value_ptr(rotation),
-                                          glm::value_ptr(scale));
-    transform.translation = translation;
-    transform.rotation    = rotation;  // degrees (matches Transform's convention)
-    transform.scale       = scale;
+    active_scene_->SetLocalTransformFromWorld(selected_entity_.GetHandle(), model);
   }
 }
 
@@ -2569,10 +2736,18 @@ void Editor::DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_siz
   const ImU32 color = IM_COL32(240, 160, 60, 255);
 
   for (auto &entity : active_scene_->GetAllEntitiesWith<ColliderComponent, Transform>()) {
-    const auto     &collider  = entity.GetComponent<ColliderComponent>();
-    const auto     &transform = entity.GetComponent<Transform>();
-    const glm::vec3 center    = transform.translation + collider.offset;
-    const glm::quat rotation  = glm::quat(glm::radians(transform.rotation));
+    const auto &collider = entity.GetComponent<ColliderComponent>();
+
+    // Colliders are authored in world space; use the hierarchy-composed world
+    // transform so gizmos follow the entity when it is a child.
+    const glm::mat4 world = active_scene_->GetWorldTransform(entity.GetHandle());
+    glm::vec3       center;
+    glm::vec3       scale;
+    glm::quat       rotation;
+    glm::vec3       skew;
+    glm::vec4       perspective;
+    glm::decompose(world, scale, rotation, center, skew, perspective);
+    center += collider.offset;
 
     if (collider.shape == ColliderComponent::Shape::Sphere) {
       const float radius = collider.sphere_radius;

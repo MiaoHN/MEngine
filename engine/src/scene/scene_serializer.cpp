@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <unordered_map>
 
 #include <json.hpp>
 
@@ -181,13 +182,30 @@ void CameraFromJson(const json &j, Camera &camera) {
   camera.rotation        = Vec3FromJson(j.value("rotation", json()));
 }
 
+/// @brief Content (non-editor-only) entities in scene-creation order. The order
+/// is stable across Save / snapshot / Load, so a document can reference an
+/// entity by its index in the saved `entities` array.
+std::vector<Entity> ContentEntities(Scene &scene) {
+  std::vector<Entity> content;
+  for (auto &entity : scene.GetAllEntities()) {
+    const auto *tag = entity.HasComponent<Tag>() ? &entity.GetComponent<Tag>() : nullptr;
+    if (tag && tag->editor_only) continue;
+    content.push_back(entity);
+  }
+  return content;
+}
+
 /// @brief Serializes a single content entity to its JSON form. Used both by
-/// SaveScene and by the Play-mode snapshot.
-json EntityToJson(Entity &entity) {
+/// SaveScene and by the Play-mode snapshot. `parent_index` is the index of the
+/// entity's parent inside the same `entities` array (-1 = root-level, omitted).
+json EntityToJson(Entity &entity, int parent_index = -1) {
   const auto &tag = entity.GetComponent<Tag>();
 
   json e;
   e["tag"] = tag.tag;
+  if (parent_index >= 0) {
+    e["parent"] = parent_index;
+  }
 
   if (entity.HasComponent<Transform>()) {
     const auto &t = entity.GetComponent<Transform>();
@@ -301,7 +319,7 @@ json EntityToJson(Entity &entity) {
 }
 
 /// @brief Creates an entity in `scene` from its serialized JSON form.
-void LoadEntityFromJson(Scene &scene, const json &e) {
+Entity LoadEntityFromJson(Scene &scene, const json &e) {
   Entity entity = scene.CreateEntity(e.value("tag", "Unnamed Entity"));
 
   if (e.contains("transform")) {
@@ -403,6 +421,38 @@ void LoadEntityFromJson(Scene &scene, const json &e) {
   if (e.contains("lua_script") && e["lua_script"].is_string()) {
     entity.AddComponent<LuaScriptComponent>(e["lua_script"].get<std::string>());
   }
+
+  return entity;
+}
+
+/// @brief Creates every entity from a serialized `entities` array. Parenting is
+/// resolved in a second pass (by document index) so a child may appear before
+/// its parent in the file. Scenes without a `parent` field stay root-level,
+/// keeping old files fully backward compatible.
+void LoadEntitiesFromJson(Scene &scene, const json &array) {
+  if (!array.is_array()) return;
+
+  std::vector<entt::entity> created;
+  created.reserve(array.size());
+  for (const auto &e : array) {
+    if (!e.is_object()) {
+      created.push_back(entt::null);
+      continue;
+    }
+    created.push_back(LoadEntityFromJson(scene, e).GetHandle());
+  }
+
+  for (size_t i = 0; i < array.size() && i < created.size(); ++i) {
+    const auto &e = array[i];
+    if (!e.is_object() || created[i] == entt::null || !e.contains("parent") ||
+        !e["parent"].is_number_integer()) {
+      continue;
+    }
+    const int parent_index = e["parent"].get<int>();
+    if (parent_index >= 0 && static_cast<size_t>(parent_index) < created.size()) {
+      scene.SetParent(created[i], created[parent_index]);
+    }
+  }
 }
 
 }  // namespace
@@ -472,13 +522,27 @@ void Scene::SaveScene(const std::string &path) {
     root["main_script"] = main_script_;
   }
 
-  // Entities.
+  // Entities. The array is written in creation order; each entity may carry an
+  // optional "parent" index into this same array (see EntityToJson).
   {
+    std::vector<Entity>        content  = ContentEntities(*this);
+    std::unordered_map<entt::entity, int> index_of;
+    index_of.reserve(content.size());
+    for (size_t i = 0; i < content.size(); ++i) {
+      index_of[content[i].GetHandle()] = static_cast<int>(i);
+    }
+
     json entity_array = json::array();
-    for (auto &entity : entities_) {
-      const auto &tag = entity.GetComponent<Tag>();
-      if (tag.editor_only) continue;
-      entity_array.push_back(EntityToJson(entity));
+    for (auto &entity : content) {
+      int parent_index = -1;
+      const entt::entity parent = GetParent(entity.GetHandle());
+      if (parent != entt::null) {
+        const auto it = index_of.find(parent);
+        if (it != index_of.end()) {
+          parent_index = it->second;
+        }
+      }
+      entity_array.push_back(EntityToJson(entity, parent_index));
     }
     root["entities"] = entity_array;
   }
@@ -565,11 +629,7 @@ void Scene::LoadScene(const std::string &path) {
   }
 
   // Entities.
-  if (root.contains("entities") && root["entities"].is_array()) {
-    for (const auto &e : root["entities"]) {
-      LoadEntityFromJson(*this, e);
-    }
-  }
+  LoadEntitiesFromJson(*this, root.value("entities", json()));
 
   // Scene main script (loaded after the entities it may reference).
   main_script_ = root.value("main_script", "");
@@ -581,11 +641,24 @@ void Scene::LoadScene(const std::string &path) {
 }
 
 void Scene::CapturePlaySnapshot() {
+  std::vector<Entity>        content  = ContentEntities(*this);
+  std::unordered_map<entt::entity, int> index_of;
+  index_of.reserve(content.size());
+  for (size_t i = 0; i < content.size(); ++i) {
+    index_of[content[i].GetHandle()] = static_cast<int>(i);
+  }
+
   json entity_array = json::array();
-  for (auto &entity : entities_) {
-    const auto &tag = entity.GetComponent<Tag>();
-    if (tag.editor_only) continue;
-    entity_array.push_back(EntityToJson(entity));
+  for (auto &entity : content) {
+    int parent_index = -1;
+    const entt::entity parent = GetParent(entity.GetHandle());
+    if (parent != entt::null) {
+      const auto it = index_of.find(parent);
+      if (it != index_of.end()) {
+        parent_index = it->second;
+      }
+    }
+    entity_array.push_back(EntityToJson(entity, parent_index));
   }
   play_snapshot_ = entity_array.dump();
   LOG_DEBUG("Scene") << "Captured play snapshot (" << entity_array.size() << " entities)";
@@ -609,11 +682,7 @@ void Scene::RestorePlaySnapshot() {
   RemoveContentEntities();
 
   const size_t restored = entity_array.is_array() ? entity_array.size() : 0;
-  if (entity_array.is_array()) {
-    for (const auto &e : entity_array) {
-      LoadEntityFromJson(*this, e);
-    }
-  }
+  LoadEntitiesFromJson(*this, entity_array);
 
   LOG_INFO("Scene") << "Restored play snapshot (" << restored << " content entities)";
   play_snapshot_.clear();
@@ -716,11 +785,7 @@ bool Scene::OpenSceneFile(const std::string &path) {
   }
 
   // Entities.
-  if (root.contains("entities") && root["entities"].is_array()) {
-    for (const auto &e : root["entities"]) {
-      LoadEntityFromJson(*this, e);
-    }
-  }
+  LoadEntitiesFromJson(*this, root.value("entities", json()));
 
   main_script_ = root.value("main_script", "");
   LOG_INFO("Scene") << "Opened scene file " << path << " (" << entities_.size() << " entities)";

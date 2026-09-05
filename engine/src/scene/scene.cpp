@@ -7,6 +7,7 @@
 #include <limits>
 
 #include <glm/gtx/euler_angles.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 
 #include "core/input.hpp"
 #include "render/renderer.hpp"
@@ -195,6 +196,170 @@ Entity Scene::FindEntityByName(const std::string &name) {
   return Entity();
 }
 
+// --- Scene hierarchy (parent / child) -------------------------------------
+
+void Scene::CollectSubtree(entt::entity handle, std::vector<entt::entity> &out) const {
+  for (const entt::entity child : GetChildren(handle)) {
+    CollectSubtree(child, out);
+  }
+  out.push_back(handle);
+}
+
+void Scene::DestroyEntity(Entity entity) {
+  if (!registry_.valid(entity.GetHandle())) {
+    return;  // already destroyed (e.g. a descendant removed by another call)
+  }
+
+  std::string name = "entity";
+  if (auto *tag = registry_.try_get<Tag>(entity.GetHandle())) {
+    name = tag->tag;
+  }
+
+  // Collect the whole subtree (children first) so no descendant outlives its
+  // parent and no dangling RelationshipComponent is left behind.
+  std::vector<entt::entity> to_destroy;
+  CollectSubtree(entity.GetHandle(), to_destroy);
+
+  for (const entt::entity handle : to_destroy) {
+    registry_.destroy(handle);
+  }
+
+  entities_.erase(std::remove_if(entities_.begin(), entities_.end(),
+                                 [&to_destroy](const Entity &e) {
+                                   return std::find(to_destroy.begin(), to_destroy.end(), e.GetHandle()) !=
+                                          to_destroy.end();
+                                 }),
+                  entities_.end());
+
+  if (to_destroy.size() > 1) {
+    LOG_DEBUG("Scene") << "Destroyed entity '" << name << "' (+" << (to_destroy.size() - 1) << " children)";
+  } else {
+    LOG_DEBUG("Scene") << "Destroyed entity '" << name << "'";
+  }
+}
+
+entt::entity Scene::GetParent(entt::entity entity) const {
+  if (!registry_.valid(entity)) {
+    return entt::null;
+  }
+  if (const auto *rel = registry_.try_get<RelationshipComponent>(entity)) {
+    return rel->parent;
+  }
+  return entt::null;
+}
+
+bool Scene::SetParent(entt::entity child, entt::entity parent) {
+  if (!registry_.valid(child) || child == parent) {
+    return false;
+  }
+  // Cannot make an entity a child of itself or of one of its own descendants.
+  if (parent != entt::null && IsDescendantOf(parent, child)) {
+    LOG_WARN("Scene") << "Rejected reparent: would create a cycle";
+    return false;
+  }
+  if (parent == entt::null) {
+    if (registry_.try_get<RelationshipComponent>(child) != nullptr) {
+      registry_.remove<RelationshipComponent>(child);
+    }
+    return true;
+  }
+  if (!registry_.valid(parent)) {
+    return false;
+  }
+  auto &rel = registry_.get_or_emplace<RelationshipComponent>(child);
+  rel.parent = parent;
+  return true;
+}
+
+std::vector<entt::entity> Scene::GetChildren(entt::entity entity) const {
+  std::vector<entt::entity> children;
+  for (const auto &e : entities_) {
+    const entt::entity handle = e.GetHandle();
+    const auto        *rel    = registry_.try_get<RelationshipComponent>(handle);
+    if (rel && rel->parent == entity && registry_.valid(handle)) {
+      children.push_back(handle);
+    }
+  }
+  return children;
+}
+
+bool Scene::HasChildren(entt::entity entity) const {
+  for (const auto &e : entities_) {
+    const auto *rel = registry_.try_get<RelationshipComponent>(e.GetHandle());
+    if (rel && rel->parent == entity) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Scene::IsDescendantOf(entt::entity entity, entt::entity ancestor) const {
+  entt::entity current = GetParent(entity);
+  while (current != entt::null) {
+    if (current == ancestor) {
+      return true;
+    }
+    current = GetParent(current);
+  }
+  return false;
+}
+
+glm::mat4 Scene::GetWorldTransform(entt::entity entity) const {
+  // Collect the chain from the entity up to its root ancestor.
+  std::vector<entt::entity> chain;
+  entt::entity              current = entity;
+  while (current != entt::null && registry_.valid(current)) {
+    chain.push_back(current);
+    const auto *rel = registry_.try_get<RelationshipComponent>(current);
+    current         = rel ? rel->parent : entt::null;
+    if (!chain.empty() && std::find(chain.begin(), chain.end(), current) != chain.end()) {
+      break;  // defensive: never loop on a corrupted cycle
+    }
+  }
+
+  // world = rootMatrix * ... * parentMatrix * localMatrix
+  glm::mat4 world(1.0f);
+  for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+    const auto *t = registry_.try_get<Transform>(*it);
+    world         = world * (t ? t->GetTransform() : glm::mat4(1.0f));
+  }
+  return world;
+}
+
+glm::vec3 Scene::GetWorldPosition(entt::entity entity) const {
+  if (const auto *t = registry_.try_get<Transform>(entity)) {
+    if (GetParent(entity) == entt::null) {
+      return t->translation;  // fast path for the common root-level case
+    }
+  }
+  return glm::vec3(GetWorldTransform(entity) * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+}
+
+void Scene::SetLocalTransformFromWorld(entt::entity entity, const glm::mat4 &world) {
+  auto *transform = registry_.try_get<Transform>(entity);
+  if (transform == nullptr) {
+    return;
+  }
+
+  // local = inverse(parentWorld) * world
+  glm::mat4 local = world;
+  const entt::entity parent = GetParent(entity);
+  if (parent != entt::null) {
+    local = glm::inverse(GetWorldTransform(parent)) * world;
+  }
+
+  glm::vec3 translation;
+  glm::vec3 scale;
+  glm::quat rotation;
+  glm::vec3 skew;
+  glm::vec4 perspective;
+  if (glm::decompose(local, scale, rotation, translation, skew, perspective)) {
+    transform->translation = translation;
+    transform->rotation    = glm::degrees(glm::eulerAngles(rotation));
+    transform->scale       = scale;
+  }
+}
+
 void Scene::RefreshEntityBody(entt::entity handle) {
   if (!simulating_) return;
 
@@ -221,7 +386,22 @@ void Scene::RefreshEntityBody(entt::entity handle) {
     const auto &rigid_body = registry_.get<RigidBodyComponent>(handle);
     const auto &transform  = registry_.get<Transform>(handle);
     const bool  is_dynamic = rigid_body.type == RigidBodyComponent::Type::Dynamic;
-    const glm::quat rotation = glm::quat(glm::radians(transform.rotation));
+    glm::vec3   body_pos   = transform.translation;
+    glm::quat   body_rot   = glm::quat(glm::radians(transform.rotation));
+
+    // A parented entity's Transform is local; physics lives in world space, so
+    // create the body at the entity's hierarchy-composed world transform.
+    // Root-level entities keep the historical path (position + local rotation).
+    if (GetParent(handle) != entt::null) {
+      const glm::mat4 world = GetWorldTransform(handle);
+      glm::vec3       scale;
+      glm::vec3       skew;
+      glm::vec4       perspective;
+      glm::quat       rotation;
+      if (glm::decompose(world, scale, rotation, body_pos, skew, perspective)) {
+        body_rot = rotation;
+      }
+    }
 
     // Translate component shapes into physics shape descriptions.
     const auto primary_to_desc = [](const ColliderComponent &c) {
@@ -257,30 +437,30 @@ void Scene::RefreshEntityBody(entt::entity handle) {
 
     JPH::BodyID body_id;
     if (has_primary && !has_group) {
-      // Legacy single-collider path (keeps body at translation + primary offset).
+      // Legacy single-collider path (keeps body at world position + primary offset).
       const auto &collider  = registry_.get<ColliderComponent>(handle);
-      const glm::vec3 position = transform.translation + collider.offset;
+      const glm::vec3 position = body_pos + collider.offset;
       switch (collider.shape) {
         case ColliderComponent::Shape::Sphere:
-          body_id = physics_world_->CreateSphereBody(position, rotation, collider.sphere_radius, is_dynamic,
+          body_id = physics_world_->CreateSphereBody(position, body_rot, collider.sphere_radius, is_dynamic,
                                                      rigid_body.friction, rigid_body.restitution,
                                                      rigid_body.is_sensor, rigid_body.continuous_collision);
           break;
         case ColliderComponent::Shape::Capsule:
-          body_id = physics_world_->CreateCapsuleBody(position, rotation, collider.capsule_half_height,
+          body_id = physics_world_->CreateCapsuleBody(position, body_rot, collider.capsule_half_height,
                                                       collider.capsule_radius, is_dynamic, rigid_body.friction,
                                                       rigid_body.restitution, rigid_body.is_sensor,
                                                       rigid_body.continuous_collision);
           break;
         case ColliderComponent::Shape::Cylinder:
-          body_id = physics_world_->CreateCylinderBody(position, rotation, collider.cylinder_half_height,
+          body_id = physics_world_->CreateCylinderBody(position, body_rot, collider.cylinder_half_height,
                                                        collider.cylinder_radius, is_dynamic, rigid_body.friction,
                                                        rigid_body.restitution, rigid_body.is_sensor,
                                                        rigid_body.continuous_collision);
           break;
         case ColliderComponent::Shape::Box:
         default:
-          body_id = physics_world_->CreateBoxBody(position, rotation, collider.box_half_extents, is_dynamic,
+          body_id = physics_world_->CreateBoxBody(position, body_rot, collider.box_half_extents, is_dynamic,
                                                   rigid_body.friction, rigid_body.restitution, rigid_body.is_sensor,
                                                   rigid_body.continuous_collision);
           break;
@@ -295,7 +475,7 @@ void Scene::RefreshEntityBody(entt::entity handle) {
       for (const auto &s : group->shapes) {
         shapes.push_back(data_to_desc(s));
       }
-      body_id = physics_world_->CreateBody(transform.translation, rotation, is_dynamic, rigid_body.friction,
+      body_id = physics_world_->CreateBody(body_pos, body_rot, is_dynamic, rigid_body.friction,
                                            rigid_body.restitution, shapes, rigid_body.is_sensor,
                                            rigid_body.continuous_collision);
     }
@@ -416,7 +596,7 @@ void Scene::WriteBackTransforms() {
     auto *transform = registry_.try_get<Transform>(handle);
     if (transform == nullptr) continue;
 
-    // Legacy single collider: body is placed at translation + collider.offset,
+    // Legacy single collider: body is placed at world position + collider.offset,
     // so undo the offset when writing back. Compound bodies (ColliderGroup)
     // keep shape offsets inside the body, so their centre is the translation.
     glm::vec3 offset{0.0f};
@@ -427,8 +607,33 @@ void Scene::WriteBackTransforms() {
       }
     }
 
-    transform->translation = ToGlm(body_interface.GetPosition(body_id)) - offset;
-    transform->rotation    = glm::degrees(glm::eulerAngles(ToGlm(body_interface.GetRotation(body_id))));
+    const glm::vec3 body_position = ToGlm(body_interface.GetPosition(body_id)) - offset;
+    const glm::quat body_rotation = ToGlm(body_interface.GetRotation(body_id));
+
+    if (GetParent(handle) == entt::null) {
+      // Root-level entity: the Transform IS the world transform.
+      transform->translation = body_position;
+      transform->rotation    = glm::degrees(glm::eulerAngles(body_rotation));
+      continue;
+    }
+
+    // Parented entity: the Transform is local. Convert the simulated world pose
+    // back into the parent's frame (local = inverse(parentWorld) * bodyWorld).
+    // The entity's authored scale is preserved — physics bodies are
+    // scale-independent and only track translation + rotation.
+    const glm::mat4 world =
+        glm::translate(glm::mat4(1.0f), body_position) * glm::toMat4(body_rotation);
+    const glm::mat4 local = glm::inverse(GetWorldTransform(GetParent(handle))) * world;
+
+    glm::vec3 translation;
+    glm::vec3 scale;
+    glm::vec3 skew;
+    glm::vec4 perspective;
+    glm::quat rotation;
+    if (glm::decompose(local, scale, rotation, translation, skew, perspective)) {
+      transform->translation = translation;
+      transform->rotation    = glm::degrees(glm::eulerAngles(rotation));
+    }
   }
 }
 
@@ -664,8 +869,9 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     item.handle   = entity.GetHandle();
     item.mesh     = component.mesh;
     item.material = component.material;
-    item.model    = entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform()
-                                                     : glm::mat4(1.0f);
+    // Compose through the parent chain so children follow their ancestors.
+    item.model = entity.HasComponent<Transform>() ? GetWorldTransform(entity.GetHandle())
+                                                  : glm::mat4(1.0f);
     glm::vec3 local_min;
     glm::vec3 local_max;
     if (component.mesh && component.mesh->GetLocalBounds(local_min, local_max)) {

@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <entt/entt.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -70,6 +71,18 @@ struct Transform {
 
     return glm::translate(glm::mat4(1.0f), translation) * rotation_matrix * glm::scale(glm::mat4(1.0f), scale);
   }
+};
+
+/// @brief Parent link in the scene hierarchy. Entities WITHOUT this component
+/// are root-level. An entity's `Transform` is relative to its parent's, so the
+/// world transform of an entity is `parentWorld * localTransform` composed up
+/// the chain. Parent/child relationships form a tree; cycles are rejected by
+/// Scene::SetParent.
+struct RelationshipComponent {
+  entt::entity parent = entt::null;
+
+  RelationshipComponent() = default;
+  explicit RelationshipComponent(entt::entity parent) : parent(parent) {}
 };
 
 /**

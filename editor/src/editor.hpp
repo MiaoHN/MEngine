@@ -116,10 +116,16 @@ class Editor : public Application {
 
   Entity CreateEntityWithUniqueName(const std::string &base_name);
   void CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh);
+  /// @brief Creates a primitive (or empty entity) parented under the current
+  /// selection and selects it. Creates at root when nothing is selected.
+  Entity CreateChildPrimitive(const std::string &name, const Ref<Mesh> &mesh);
   void CreateCameraEntity();
   void CreateModelEntity(const std::filesystem::path &path);
   void CreatePhysicsDemo();
   void DuplicateSelectedEntity();
+  /// @brief Deep-copies `source` and its whole child subtree. The copy is
+  /// parented under `parent_copy` (entt::null = root) when `source` had one.
+  Entity DuplicateEntitySubtree(Entity source, entt::entity parent_copy);
   void ApplyDefaultLayout(ImGuiID dockspace_id);
   void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
   void DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);

@@ -47,18 +47,39 @@ class Scene {
     return entity;
   }
 
-  void DestroyEntity(Entity entity) {
-    const std::string name = entity.GetComponent<Tag>().tag;
-    registry_.destroy(entity.GetHandle());
+  /// @brief Destroys an entity and, recursively, its whole child subtree
+  /// (children first, so no dangling RelationshipComponent is left behind).
+  void DestroyEntity(Entity entity);
 
-    for (auto it = entities_.begin(); it != entities_.end(); ++it) {
-      if (*it == entity) {
-        entities_.erase(it);
-        break;
-      }
-    }
-    LOG_DEBUG("Scene") << "Destroyed entity '" << name << "'";
-  }
+  /// @brief Parents `child` under `parent`. Passing `entt::null` detaches the
+  /// child to the root. Rejects making an entity a child of itself or of one
+  /// of its own descendants (would form a cycle). Returns false when invalid.
+  bool SetParent(entt::entity child, entt::entity parent);
+
+  /// @brief Parent handle of `entity` (`entt::null` when root-level).
+  [[nodiscard]] entt::entity GetParent(entt::entity entity) const;
+
+  /// @brief True when `entity` has at least one direct child.
+  [[nodiscard]] bool HasChildren(entt::entity entity) const;
+
+  /// @brief Direct children of `entity`, in creation order (empty when none).
+  [[nodiscard]] std::vector<entt::entity> GetChildren(entt::entity entity) const;
+
+  /// @brief True when `entity` is `ancestor` or lies somewhere below it.
+  [[nodiscard]] bool IsDescendantOf(entt::entity entity, entt::entity ancestor) const;
+
+  /// @brief World (hierarchy-composed) transform of `entity`. Equals the
+  /// entity's local Transform when it is root-level or has no Transform.
+  [[nodiscard]] glm::mat4 GetWorldTransform(entt::entity entity) const;
+
+  /// @brief World-space position of the entity's Transform (origin when the
+  /// entity has no Transform).
+  [[nodiscard]] glm::vec3 GetWorldPosition(entt::entity entity) const;
+
+  /// @brief Rewrites the entity's local TRS so that it lands at the given
+  /// world transform (used by the editor gizmo on children and by reparenting
+  /// that must keep a world pose stable). No-op without a Transform.
+  void SetLocalTransformFromWorld(entt::entity entity, const glm::mat4 &world);
 
   template <typename... Components>
   auto GetAllEntitiesWith() {
@@ -243,6 +264,10 @@ class Scene {
   /// @brief Replaces every content entity with the captured snapshot, leaving
   /// editor-only entities (e.g. the grid) untouched.
   void RestorePlaySnapshot();
+
+  /// @brief Appends `handle` and every descendant to `out` in post-order
+  /// (children before their parent).
+  void CollectSubtree(entt::entity handle, std::vector<entt::entity> &out) const;
 
   /// @brief Stops the simulation (destroys bodies) if running.
   void StopSimulationIfRunning();
