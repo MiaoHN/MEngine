@@ -20,6 +20,7 @@ uniform vec4  base_color_factor = vec4(1.0);
 uniform float metallic_factor   = 1.0;
 uniform float roughness_factor  = 1.0;
 uniform float specular_intensity = 1.0;
+uniform int   u_render_mode      = 0;  // 0 = lit PBR, 1 = unlit albedo
 
 uniform vec3 view_pos;
 uniform vec3 light_dir   = normalize(vec3(-0.3, -1.0, -0.4));
@@ -130,7 +131,7 @@ float PointShadowCalculation(int light_index, vec3 light_pos, vec3 N, vec3 L) {
 }
 
 vec3 PointLightContribution(vec3 light_pos, vec3 light_color, float intensity, float radius, vec3 N, vec3 V,
-                            vec3 albedo, float metallic, float roughness, vec3 F0) {
+                            vec3 albedo, float metallic, float roughness, float specular_intensity, vec3 F0) {
   vec3  L        = light_pos - FragPos;
   float distance = length(L);
   L             = normalize(L);
@@ -152,12 +153,12 @@ vec3 PointLightContribution(vec3 light_pos, vec3 light_color, float intensity, f
 
   float NdotL    = max(dot(N, L), 0.0);
   vec3  radiance = light_color * intensity * attenuation;
-  return (kD * albedo / PI + specular) * radiance * NdotL;
+  return (kD * albedo / PI + specular * specular_intensity) * radiance * NdotL;
 }
 
 vec3 SpotLightContribution(vec3 light_pos, vec3 light_dir, vec3 light_color, float intensity, float range,
                            float cutoff, float outer_cutoff, vec3 N, vec3 V, vec3 albedo, float metallic,
-                           float roughness, vec3 F0) {
+                           float roughness, float specular_intensity, vec3 F0) {
   vec3  L        = light_pos - FragPos;
   float distance = length(L);
   L             = normalize(L);
@@ -183,12 +184,17 @@ vec3 SpotLightContribution(vec3 light_pos, vec3 light_dir, vec3 light_color, flo
 
   float NdotL    = max(dot(N, L), 0.0);
   vec3  radiance = light_color * intensity * attenuation * intensity_spot;
-  return (kD * albedo / PI + specular) * radiance * NdotL;
+  return (kD * albedo / PI + specular * specular_intensity) * radiance * NdotL;
 }
 
 void main() {
   vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, TexCoord).rgb : vec3(1.0);
   albedo *= base_color_factor.rgb;
+
+  if (u_render_mode == 1) {  // Unlit: flat albedo (debug view).
+    FragColor = vec4(albedo, 1.0);
+    return;
+  }
 
   float metallic  = metallic_factor;
   float roughness = roughness_factor;
@@ -249,7 +255,7 @@ void main() {
   for (int i = 0; i < point_light_count && i < MAX_POINT_LIGHTS; ++i) {
     vec3 contribution = PointLightContribution(point_light_positions[i], point_light_colors[i],
                                                point_light_intensities[i], point_light_radii[i], N, V, albedo,
-                                               metallic, roughness, F0);
+                                               metallic, roughness, specular_intensity, F0);
     if (point_light_has_shadow[i] == 1) {
       vec3 L_pl = normalize(point_light_positions[i] - FragPos);
       contribution *= PointShadowCalculation(i, point_light_positions[i], N, L_pl);
@@ -259,7 +265,8 @@ void main() {
   for (int i = 0; i < spot_light_count && i < MAX_SPOT_LIGHTS; ++i) {
     color += SpotLightContribution(spot_light_positions[i], spot_light_directions[i], spot_light_colors[i],
                                    spot_light_intensities[i], spot_light_ranges[i], spot_light_cutoffs[i],
-                                   spot_light_outer_cutoffs[i], N, V, albedo, metallic, roughness, F0);
+                                   spot_light_outer_cutoffs[i], N, V, albedo, metallic, roughness,
+                                   specular_intensity, F0);
   }
   // HDR linear output; tone mapping + gamma happen in the post-process pass.
   FragColor = vec4(color, 1.0);

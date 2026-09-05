@@ -43,8 +43,15 @@ class PostProcessing {
   void SetBloomStrength(float strength) { bloom_strength_ = strength; }
   void SetBloomThreshold(float threshold) { bloom_threshold_ = threshold; }
   void SetGodRaysStrength(float strength) { god_rays_strength_ = strength; }
+  void SetBloomEnabled(bool enabled) { bloom_enabled_ = enabled; }
   void SetTAAEnabled(bool enabled) { taa_enabled_ = enabled; }
-  [[nodiscard]] bool IsTAAEnabled() const { return taa_enabled_; }
+
+  [[nodiscard]] float GetExposure() const { return exposure_; }
+  [[nodiscard]] float GetBloomStrength() const { return bloom_strength_; }
+  [[nodiscard]] float GetBloomThreshold() const { return bloom_threshold_; }
+  [[nodiscard]] float GetGodRaysStrength() const { return god_rays_strength_; }
+  [[nodiscard]] bool  IsBloomEnabled() const { return bloom_enabled_; }
+  [[nodiscard]] bool  IsTAAEnabled() const { return taa_enabled_; }
 
  private:
   void DrawFullscreenTriangle() const;
@@ -81,6 +88,7 @@ class PostProcessing {
   float bloom_strength_  = 0.02f;
   float bloom_threshold_ = 1.0f;
   float god_rays_strength_ = 0.05f;
+  bool  bloom_enabled_   = true;
 
   unsigned int fullscreen_vao_ = 0;
 

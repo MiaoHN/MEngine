@@ -173,45 +173,48 @@ void PostProcessing::Render(const glm::vec2 &light_screen_pos, unsigned int targ
                             int target_height, float god_rays_scale) const {
   const unsigned int scene_color = GetSceneColorTexture();
 
-  // 1. God rays: radial blur of the scene from the light source (half res).
-  glBindFramebuffer(GL_FRAMEBUFFER, god_rays_fbo_);
-  glViewport(0, 0, bloom_width_, bloom_height_);
-  glClear(GL_COLOR_BUFFER_BIT);
-  god_rays_shader_->Bind();
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, scene_color);
-  god_rays_shader_->SetUniform("scene", 0);
-  god_rays_shader_->SetUniform("light_pos", light_screen_pos);
-  DrawFullscreenTriangle();
-
-  // 2. Brightness pass: scene -> bright (half res).
-  glBindFramebuffer(GL_FRAMEBUFFER, bright_fbo_);
-  glViewport(0, 0, bloom_width_, bloom_height_);
-  glClear(GL_COLOR_BUFFER_BIT);
-  brightness_shader_->Bind();
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, scene_color);
-  brightness_shader_->SetUniform("scene", 0);
-  brightness_shader_->SetUniform("threshold", bloom_threshold_);
-  DrawFullscreenTriangle();
-
-  // 3. Gaussian blur ping-pong.
-  unsigned int src = bright_texture_;
-  for (int i = 0; i < blur_passes_; ++i) {
-    const bool         horizontal = (i % 2) == 0;
-    const unsigned int blur_target = horizontal ? blur_fbo_[0] : blur_fbo_[1];
-
-    glBindFramebuffer(GL_FRAMEBUFFER, blur_target);
+  unsigned int bloom_src = bright_texture_;
+  if (bloom_enabled_) {
+    // 1. God rays: radial blur of the scene from the light source (half res).
+    glBindFramebuffer(GL_FRAMEBUFFER, god_rays_fbo_);
     glViewport(0, 0, bloom_width_, bloom_height_);
-    blur_shader_->Bind();
+    glClear(GL_COLOR_BUFFER_BIT);
+    god_rays_shader_->Bind();
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, src);
-    blur_shader_->SetUniform("image", 0);
-    blur_shader_->SetUniform("horizontal", horizontal ? 1 : 0);
-    blur_shader_->SetUniform("texel_size", horizontal ? 1.0f / bloom_width_ : 1.0f / bloom_height_);
+    glBindTexture(GL_TEXTURE_2D, scene_color);
+    god_rays_shader_->SetUniform("scene", 0);
+    god_rays_shader_->SetUniform("light_pos", light_screen_pos);
     DrawFullscreenTriangle();
 
-    src = horizontal ? blur_texture_[0] : blur_texture_[1];
+    // 2. Brightness pass: scene -> bright (half res).
+    glBindFramebuffer(GL_FRAMEBUFFER, bright_fbo_);
+    glViewport(0, 0, bloom_width_, bloom_height_);
+    glClear(GL_COLOR_BUFFER_BIT);
+    brightness_shader_->Bind();
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, scene_color);
+    brightness_shader_->SetUniform("scene", 0);
+    brightness_shader_->SetUniform("threshold", bloom_threshold_);
+    DrawFullscreenTriangle();
+
+    // 3. Gaussian blur ping-pong.
+    bloom_src = bright_texture_;
+    for (int i = 0; i < blur_passes_; ++i) {
+      const bool         horizontal = (i % 2) == 0;
+      const unsigned int blur_target = horizontal ? blur_fbo_[0] : blur_fbo_[1];
+
+      glBindFramebuffer(GL_FRAMEBUFFER, blur_target);
+      glViewport(0, 0, bloom_width_, bloom_height_);
+      blur_shader_->Bind();
+      glActiveTexture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, bloom_src);
+      blur_shader_->SetUniform("image", 0);
+      blur_shader_->SetUniform("horizontal", horizontal ? 1 : 0);
+      blur_shader_->SetUniform("texel_size", horizontal ? 1.0f / bloom_width_ : 1.0f / bloom_height_);
+      DrawFullscreenTriangle();
+
+      bloom_src = horizontal ? blur_texture_[0] : blur_texture_[1];
+    }
   }
 
   // 4. Composite to the target framebuffer.
@@ -224,15 +227,15 @@ void PostProcessing::Render(const glm::vec2 &light_screen_pos, unsigned int targ
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, scene_color);
   glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D, src);
+  glBindTexture(GL_TEXTURE_2D, bloom_enabled_ ? bloom_src : scene_color);
   glActiveTexture(GL_TEXTURE2);
-  glBindTexture(GL_TEXTURE_2D, god_rays_texture_);
+  glBindTexture(GL_TEXTURE_2D, bloom_enabled_ ? god_rays_texture_ : scene_color);
   composite_shader_->SetUniform("scene", 0);
   composite_shader_->SetUniform("bloom", 1);
   composite_shader_->SetUniform("god_rays", 2);
   composite_shader_->SetUniform("exposure", exposure_);
-  composite_shader_->SetUniform("bloom_strength", bloom_strength_);
-  composite_shader_->SetUniform("god_rays_strength", god_rays_strength_ * god_rays_scale);
+  composite_shader_->SetUniform("bloom_strength", bloom_enabled_ ? bloom_strength_ : 0.0f);
+  composite_shader_->SetUniform("god_rays_strength", bloom_enabled_ ? god_rays_strength_ * god_rays_scale : 0.0f);
   DrawFullscreenTriangle();
   composite_shader_->Unbind();
 }

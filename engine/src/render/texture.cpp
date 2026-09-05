@@ -111,6 +111,7 @@ void TextureLibrary::Add(const Ref<Texture> &texture) {
 Ref<Texture> TextureLibrary::Load(const std::string &name, const std::string &path) {
   auto texture = CreateRef<Texture>(name, path);
   Add(texture);
+  LOG_DEBUG("TextureLibrary") << "Loaded texture '" << name << "'";
   return texture;
 }
 

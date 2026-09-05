@@ -25,6 +25,7 @@
 namespace MEngine {
 
 class Renderer;
+enum class RenderMode;
 
 class Scene {
  public:
@@ -35,11 +36,12 @@ class Scene {
     Entity entity = Entity(registry_.create(), &registry_);
     entity.AddComponent<Tag>(name);
     entities_.push_back(entity);
+    LOG_DEBUG("Scene") << "Created entity '" << name << "'";
     return entity;
   }
 
   void DestroyEntity(Entity entity) {
-    // TODO
+    const std::string name = entity.GetComponent<Tag>().tag;
     registry_.destroy(entity.GetHandle());
 
     for (auto it = entities_.begin(); it != entities_.end(); ++it) {
@@ -48,6 +50,7 @@ class Scene {
         break;
       }
     }
+    LOG_DEBUG("Scene") << "Destroyed entity '" << name << "'";
   }
 
   template <typename... Components>
@@ -82,6 +85,14 @@ class Scene {
   void RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos,
                     unsigned int target_fbo = 0, int target_width = 0, int target_height = 0);
 
+  /// @brief Renders the 3D scene from the primary camera (falling back to the
+  /// default camera when none is marked primary) into `target_fbo`. Used by
+  /// the editor's Play mode.
+  void RenderFromPrimaryCamera(unsigned int target_fbo = 0, int target_width = 0, int target_height = 0);
+
+  /// @brief Returns true when at least one entity has a primary camera.
+  [[nodiscard]] bool HasPrimaryCamera();
+
   void AddPointLight(const PointLight &light);
   void ClearPointLights();
 
@@ -100,6 +111,20 @@ class Scene {
   void SetGodRaysStrength(float strength);
   void SetSSAOEnabled(bool enabled);
   void SetTAAEnabled(bool enabled);
+  void SetBloomEnabled(bool enabled);
+
+  [[nodiscard]] bool       IsSSAOEnabled() const;
+  [[nodiscard]] bool       IsTAAEnabled() const;
+  [[nodiscard]] bool       IsBloomEnabled() const;
+  [[nodiscard]] float      GetExposure() const;
+  [[nodiscard]] float      GetBloomStrength() const;
+  [[nodiscard]] float      GetBloomThreshold() const;
+  [[nodiscard]] float      GetShadowPcfRadius() const;
+  [[nodiscard]] float      GetIblIntensity() const;
+  [[nodiscard]] float      GetGodRaysStrength() const;
+
+  void SetRenderMode(RenderMode mode);
+  [[nodiscard]] RenderMode GetRenderMode() const;
 
  private:
   entt::registry registry_;

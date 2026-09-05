@@ -53,11 +53,11 @@ std::string CurrentTimeStr() {
   return oss.str();
 }
 
-// A single append-mode stream kept open for the process lifetime, so each log
-// line does not reopen the file.
+// A single stream kept open for the process lifetime. Opened with truncation
+// so each run starts with a fresh, empty log file.
 std::ofstream &LogFile() {
   if (!g_log_file.is_open()) {
-    g_log_file.open(std::string(kLogFileName), std::ios::app);
+    g_log_file.open(std::string(kLogFileName), std::ios::trunc);
   }
   return g_log_file;
 }

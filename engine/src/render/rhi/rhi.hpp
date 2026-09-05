@@ -30,6 +30,9 @@ class IRHI {
 
   virtual void DrawIndexedTriangles(int index_count) const = 0;
 
+  /// @brief Toggles wireframe rasterization for subsequent draw calls.
+  virtual void SetWireframe(bool wireframe) const = 0;
+
   virtual unsigned int CreateFramebuffer() const = 0;
 
   virtual void DestroyFramebuffer(unsigned int framebuffer) const = 0;

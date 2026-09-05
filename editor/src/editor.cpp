@@ -63,6 +63,37 @@ void AutoAssignObjTextures(const Ref<Material> &material, const std::filesystem:
   }
 }
 
+/// @brief Loads a model asset into `mesh`/`material`. OBJ assets get their
+/// sibling textures auto-assigned; glTF assets use their own PBR material.
+/// Returns false if the file could not be loaded.
+bool LoadModelAsset(const std::filesystem::path &path, Ref<Mesh> &mesh, Ref<Material> &material) {
+  const std::string ext = path.extension().string();
+
+  // Default to a matte, white, non-metallic material so textured assets
+  // (multiplied by white) and bare meshes alike read correctly.
+  material = CreateRef<Material>();
+  material->SetShader(AssetManager::Instance().GetShader("pbr"));
+  material->SetBaseColorFactor(glm::vec4(1.0f));
+  material->SetMetallicFactor(0.0f);
+  material->SetRoughnessFactor(1.0f);
+  material->SetSpecularFactor(0.3f);  // fabric: keep reflections low
+
+  if (ext == ".obj") {
+    mesh = ModelLoader::LoadObj(path.string());
+    if (mesh) {
+      AutoAssignObjTextures(material, path);
+    }
+  } else if (ext == ".gltf" || ext == ".glb") {
+    mesh = ModelLoader::LoadGltf(path.string());
+    if (auto mat = ModelLoader::LoadGltfMaterial(path.string())) {
+      mat->SetShader(AssetManager::Instance().GetShader("pbr"));
+      material = mat;
+    }
+  }
+
+  return mesh != nullptr;
+}
+
 enum class LogLevel { Trace, Debug, Info, Warn, Error, Fatal, Unknown };
 
 /// @brief Extracts the `[LEVEL]` token from a log line ("[time] [INFO] [name] msg").
@@ -87,30 +118,117 @@ LogLevel ParseLogLevel(const std::string &line) {
 ImVec4 LogLevelColor(LogLevel level) {
   switch (level) {
     case LogLevel::Trace:
-      return {0.55f, 0.55f, 0.55f, 1.0f};
+      return {0.52f, 0.54f, 0.57f, 1.0f};
     case LogLevel::Debug:
-      return {0.45f, 0.75f, 1.00f, 1.0f};
+      return {0.10f, 0.45f, 0.78f, 1.0f};
     case LogLevel::Info:
-      return {0.92f, 0.92f, 0.92f, 1.0f};
+      return {0.16f, 0.18f, 0.22f, 1.0f};
     case LogLevel::Warn:
-      return {1.00f, 0.85f, 0.25f, 1.0f};
+      return {0.80f, 0.55f, 0.05f, 1.0f};
     case LogLevel::Error:
-      return {1.00f, 0.45f, 0.45f, 1.0f};
+      return {0.80f, 0.15f, 0.15f, 1.0f};
     case LogLevel::Fatal:
-      return {1.00f, 0.25f, 0.25f, 1.0f};
+      return {0.65f, 0.05f, 0.05f, 1.0f};
     default:
-      return {0.80f, 0.80f, 0.80f, 1.0f};
+      return {0.30f, 0.32f, 0.36f, 1.0f};
   }
 }
 
 bool ContainsIgnoreCase(const std::string &haystack, const std::string &needle) {
   if (needle.empty()) return true;
-  const auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(),
-                              [](char a, char b) {
-                                return std::tolower(static_cast<unsigned char>(a)) ==
-                                       std::tolower(static_cast<unsigned char>(b));
-                              });
+  const auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), [](char a, char b) {
+    return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+  });
   return it != haystack.end();
+}
+
+/// @brief Applies a polished light theme to the ImGui style.
+void SetupImGuiStyle() {
+  ImGui::StyleColorsLight();
+
+  ImGuiStyle &style = ImGui::GetStyle();
+
+  // Sharp, flat shapes (no rounded corners).
+  style.WindowRounding    = 0.0f;
+  style.ChildRounding     = 0.0f;
+  style.FrameRounding     = 0.0f;
+  style.PopupRounding     = 0.0f;
+  style.ScrollbarRounding = 0.0f;
+  style.GrabRounding      = 0.0f;
+  style.TabRounding       = 0.0f;
+
+  // Left-aligned titles read more like a native/modern editor.
+  style.WindowTitleAlign = ImVec2(0.0f, 0.5f);
+
+  // Comfortable, less cramped spacing.
+  style.WindowPadding    = ImVec2(10.0f, 10.0f);
+  style.FramePadding     = ImVec2(6.0f, 4.0f);
+  style.ItemSpacing      = ImVec2(8.0f, 5.0f);
+  style.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
+  style.CellPadding      = ImVec2(6.0f, 4.0f);
+  style.IndentSpacing    = 22.0f;
+  style.ScrollbarSize    = 14.0f;
+  style.GrabMinSize      = 10.0f;
+
+  // Subtle borders give widgets definition without being harsh.
+  style.WindowBorderSize = 1.0f;
+  style.ChildBorderSize  = 1.0f;
+  style.FrameBorderSize  = 1.0f;
+  style.PopupBorderSize  = 1.0f;
+  style.TabBorderSize    = 1.0f;
+
+  // Calmer blue-gray accent palette on top of the light base.
+  ImVec4 *colors                      = style.Colors;
+  colors[ImGuiCol_WindowBg]           = ImVec4(0.96f, 0.96f, 0.97f, 1.00f);
+  colors[ImGuiCol_ChildBg]            = ImVec4(0.93f, 0.93f, 0.95f, 1.00f);
+  colors[ImGuiCol_PopupBg]            = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
+  colors[ImGuiCol_Text]               = ImVec4(0.15f, 0.17f, 0.20f, 1.00f);
+  colors[ImGuiCol_TextDisabled]       = ImVec4(0.55f, 0.57f, 0.62f, 1.00f);
+  colors[ImGuiCol_FrameBg]            = ImVec4(0.86f, 0.87f, 0.90f, 1.00f);
+  colors[ImGuiCol_FrameBgHovered]     = ImVec4(0.80f, 0.82f, 0.86f, 1.00f);
+  colors[ImGuiCol_FrameBgActive]      = ImVec4(0.74f, 0.77f, 0.83f, 1.00f);
+  colors[ImGuiCol_TitleBg]            = ImVec4(0.90f, 0.91f, 0.94f, 1.00f);
+  colors[ImGuiCol_TitleBgActive]      = ImVec4(0.70f, 0.78f, 0.92f, 1.00f);
+  colors[ImGuiCol_TitleBgCollapsed]   = ImVec4(0.90f, 0.91f, 0.94f, 1.00f);
+  colors[ImGuiCol_MenuBarBg]          = ImVec4(0.93f, 0.94f, 0.96f, 1.00f);
+  colors[ImGuiCol_Header]             = ImVec4(0.83f, 0.86f, 0.91f, 0.80f);
+  colors[ImGuiCol_HeaderHovered]      = ImVec4(0.76f, 0.80f, 0.87f, 0.80f);
+  colors[ImGuiCol_HeaderActive]       = ImVec4(0.68f, 0.74f, 0.83f, 1.00f);
+  colors[ImGuiCol_Button]             = ImVec4(0.82f, 0.84f, 0.89f, 1.00f);
+  colors[ImGuiCol_ButtonHovered]      = ImVec4(0.73f, 0.77f, 0.84f, 1.00f);
+  colors[ImGuiCol_ButtonActive]       = ImVec4(0.63f, 0.68f, 0.78f, 1.00f);
+  colors[ImGuiCol_CheckMark]          = ImVec4(0.16f, 0.35f, 0.62f, 1.00f);
+  colors[ImGuiCol_SliderGrab]         = ImVec4(0.40f, 0.52f, 0.72f, 1.00f);
+  colors[ImGuiCol_SliderGrabActive]   = ImVec4(0.26f, 0.40f, 0.62f, 1.00f);
+  colors[ImGuiCol_Separator]          = ImVec4(0.60f, 0.62f, 0.67f, 0.50f);
+  colors[ImGuiCol_SeparatorHovered]   = ImVec4(0.40f, 0.50f, 0.66f, 0.80f);
+  colors[ImGuiCol_SeparatorActive]    = ImVec4(0.30f, 0.42f, 0.60f, 1.00f);
+  colors[ImGuiCol_Tab]                = ImVec4(0.86f, 0.88f, 0.92f, 1.00f);
+  colors[ImGuiCol_TabHovered]         = ImVec4(0.73f, 0.77f, 0.84f, 1.00f);
+  colors[ImGuiCol_TabActive]          = ImVec4(0.62f, 0.70f, 0.86f, 1.00f);
+  colors[ImGuiCol_TabUnfocused]       = ImVec4(0.88f, 0.89f, 0.92f, 1.00f);
+  colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.73f, 0.77f, 0.85f, 1.00f);
+  colors[ImGuiCol_DockingPreview]     = ImVec4(0.30f, 0.50f, 0.78f, 0.70f);
+}
+
+/// @brief Draws a crisp amber folder icon with the draw list (clearly visible
+/// on the light theme, unlike the old near-white folder texture).
+void DrawFolderIcon(ImDrawList *draw, const ImVec2 &min, const ImVec2 &max) {
+  const ImU32 body  = ImGui::GetColorU32(ImVec4(0.96f, 0.78f, 0.30f, 1.00f));
+  const ImU32 tab   = ImGui::GetColorU32(ImVec4(0.86f, 0.60f, 0.12f, 1.00f));
+  const float w     = max.x - min.x;
+  const float h     = max.y - min.y;
+  const float pad_x = w * 0.06f;
+  const float tab_h = h * 0.10f;
+  const float tab_w = w * 0.42f;
+
+  const ImVec2 tab_min(min.x + pad_x, min.y);
+  const ImVec2 tab_max(tab_min.x + tab_w, tab_min.y + tab_h);
+  draw->AddRectFilled(tab_min, tab_max, tab);
+
+  const ImVec2 body_min(min.x + pad_x, min.y + tab_h);
+  const ImVec2 body_max(max.x - pad_x, max.y - h * 0.04f);
+  draw->AddRectFilled(body_min, body_max, body);
 }
 
 }  // namespace
@@ -146,10 +264,29 @@ void Editor::Initialize() {
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGuiIO &io = ImGui::GetIO();
-  (void)io;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-  ImGui::StyleColorsDark();
+  // DPI-aware font sizing so the UI stays crisp on high-DPI displays.
+  int window_w = 0;
+  int window_h = 0;
+  glfwGetWindowSize(window_, &window_w, &window_h);
+  int fb_w = 0;
+  int fb_h = 0;
+  glfwGetFramebufferSize(window_, &fb_w, &fb_h);
+  float dpi_scale = (window_w > 0 && fb_w > 0) ? static_cast<float>(fb_w) / static_cast<float>(window_w) : 1.0f;
+  if (dpi_scale < 1.0f || dpi_scale > 4.0f) dpi_scale = 1.0f;
+
+  // Modern sans-serif for the UI, monospace for the Log panel.
+  ImFontConfig font_cfg{};
+  font_cfg.OversampleH = 3;
+  font_cfg.OversampleV = 3;
+  io.Fonts->Clear();
+  if (!io.Fonts->AddFontFromFileTTF("res/fonts/Roboto-Medium.ttf", 17.0f * dpi_scale, &font_cfg)) {
+    io.Fonts->AddFontDefault();
+  }
+  mono_font_ = io.Fonts->AddFontFromFileTTF("res/fonts/Cousine-Regular.ttf", 15.0f * dpi_scale, &font_cfg);
+
+  SetupImGuiStyle();
 
   if (rhi_ && !rhi_->InitializeImGuiBackend(window_)) {
     LOG_FATAL("Editor") << "Failed to initialize ImGui backend for selected RHI";
@@ -159,7 +296,7 @@ void Editor::Initialize() {
   // Viewport framebuffer: match the window framebuffer on startup; it is
   // resized to the viewport image area afterwards.
   frame_buffer_ = std::make_shared<FrameBuffer>();
-  int fb_width = 0;
+  int fb_width  = 0;
   int fb_height = 0;
   glfwGetFramebufferSize(window_, &fb_width, &fb_height);
   if (fb_width > 0 && fb_height > 0) {
@@ -190,6 +327,8 @@ void Editor::Initialize() {
   current_directory_ = base_directory_;
   directory_icon_    = AssetManager::Instance().GetTexture("icons/DirectoryIcon.png");
   file_icon_         = AssetManager::Instance().GetTexture("icons/FileIcon.png");
+
+  LOG_INFO("Editor") << "Editor initialized (scene + ImGui + viewport framebuffer)";
 }
 
 void Editor::OnUpdate(float dt) {
@@ -201,6 +340,7 @@ void Editor::OnUpdate(float dt) {
   }
 
   if (viewport_resized_) {
+    LOG_TRACE("Editor") << "Viewport resized to " << viewport_width_ << "x" << viewport_height_;
     frame_buffer_->Resize(viewport_width_, viewport_height_);
     frame_buffer_->CheckStatus();
     viewport_resized_ = false;
@@ -212,11 +352,17 @@ void Editor::OnUpdate(float dt) {
     active_scene_->AddPointLight(light);
   }
 
-  // Render the 3D scene into the viewport framebuffer.
+  // Render the 3D scene into the viewport framebuffer (Edit = editor camera,
+  // Play = the scene's primary camera, falling back to the editor camera when
+  // no primary camera has been placed).
   editor_camera_.aspect = static_cast<float>(viewport_width_) / static_cast<float>(std::max(1, viewport_height_));
-  active_scene_->RenderMeshes(editor_camera_.GetViewMatrix(), editor_camera_.GetProjectionMatrix(),
-                              editor_camera_.GetPosition(), frame_buffer_->GetFrameBufferId(), viewport_width_,
-                              viewport_height_);
+  if (game_mode_ == GameMode::Play && active_scene_->HasPrimaryCamera()) {
+    active_scene_->RenderFromPrimaryCamera(frame_buffer_->GetFrameBufferId(), viewport_width_, viewport_height_);
+  } else {
+    active_scene_->RenderMeshes(editor_camera_.GetViewMatrix(), editor_camera_.GetProjectionMatrix(),
+                                editor_camera_.GetPosition(), frame_buffer_->GetFrameBufferId(), viewport_width_,
+                                viewport_height_);
+  }
 
   // The scene composite leaves the viewport framebuffer bound; unbind it so
   // ImGui draws to the window instead of into the offscreen texture.
@@ -226,9 +372,9 @@ void Editor::OnUpdate(float dt) {
 
   // Editor shortcuts (ignored while typing in a text field).
   if (!ImGui::GetIO().WantTextInput) {
-    if (ImGui::IsKeyPressed(ImGuiKey_W)) gizmo_operation_ = ImGuizmo::TRANSLATE;
-    if (ImGui::IsKeyPressed(ImGuiKey_E)) gizmo_operation_ = ImGuizmo::ROTATE;
-    if (ImGui::IsKeyPressed(ImGuiKey_R)) gizmo_operation_ = ImGuizmo::SCALE;
+    if (!editor_camera_.IsFlyMode() && ImGui::IsKeyPressed(ImGuiKey_W)) gizmo_operation_ = ImGuizmo::TRANSLATE;
+    if (!editor_camera_.IsFlyMode() && ImGui::IsKeyPressed(ImGuiKey_E)) gizmo_operation_ = ImGuizmo::ROTATE;
+    if (!editor_camera_.IsFlyMode() && ImGui::IsKeyPressed(ImGuiKey_R)) gizmo_operation_ = ImGuizmo::SCALE;
     if (ImGui::IsKeyPressed(ImGuiKey_F) && selected_entity_.GetHandle() != entt::null &&
         selected_entity_.HasComponent<Transform>()) {
       editor_camera_.target = selected_entity_.GetComponent<Transform>().translation;
@@ -250,6 +396,7 @@ void Editor::OnUpdate(float dt) {
       ImGui::MenuItem("Viewport", nullptr, &show_viewport_);
       ImGui::MenuItem("Properties", nullptr, &show_properties_);
       ImGui::MenuItem("Lighting", nullptr, &show_lighting_);
+      ImGui::MenuItem("Rendering", nullptr, &show_rendering_);
       ImGui::MenuItem("Log", nullptr, &show_log_);
       ImGui::MenuItem("Information", nullptr, &show_information_);
       ImGui::Separator();
@@ -266,6 +413,7 @@ void Editor::OnUpdate(float dt) {
   if (show_scene_) ShowImGuiScene();
   if (show_properties_) ShowImGuiProperties();
   if (show_lighting_) ShowImGuiLighting();
+  if (show_rendering_) ShowImGuiRendering();
   if (show_log_) ShowImGuiLog();
 
   if (show_information_) ShowImGuiInformation();
@@ -478,24 +626,34 @@ void Editor::ShowImGuiScene() {
     if (ImGui::MenuItem("Cube")) CreatePrimitive("Cube", Mesh::CreateCube());
     if (ImGui::MenuItem("Plane")) CreatePrimitive("Plane", Mesh::CreatePlane());
     if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere", Mesh::CreateSphere());
+    ImGui::Separator();
+    if (ImGui::MenuItem("Camera")) CreateCameraEntity();
     ImGui::EndPopup();
   }
 
-  ImGui::SameLine();
+  const bool has_selection = selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_;
 
-  // delete selected entity
-  if (ImGui::Button("Delete")) {
-    if (selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_) {
-      active_scene_->DestroyEntity(selected_entity_);
-      selected_entity_ = Entity();
-    }
+  ImGui::SameLine();
+  if (!has_selection) {
+    ImGui::BeginDisabled();
   }
-
+  if (ImGui::Button("Delete")) {
+    active_scene_->DestroyEntity(selected_entity_);
+    selected_entity_ = Entity();
+  }
   ImGui::SameLine();
-
   if (ImGui::Button("Duplicate")) {
     DuplicateSelectedEntity();
   }
+  if (!has_selection) {
+    ImGui::EndDisabled();
+  }
+
+  // Filter the hierarchy by name.
+  static char search[128] = {};
+  ImGui::SetNextItemWidth(-1);
+  ImGui::InputTextWithHint("##SceneSearch", "Search...", search, sizeof(search));
+  ImGui::Separator();
 
   for (auto &entity : active_scene_->GetAllEntities()) {
     if (entity == grid_entity_) {
@@ -503,6 +661,10 @@ void Editor::ShowImGuiScene() {
     }
 
     const std::string &tag = entity.GetComponent<Tag>().tag;
+    if (search[0] != '\0' && !ContainsIgnoreCase(tag, search)) {
+      continue;
+    }
+
     const ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen |
                                      (entity == selected_entity_ ? ImGuiTreeNodeFlags_Selected : 0);
     ImGui::TreeNodeEx(tag.c_str(), flags);
@@ -529,6 +691,10 @@ void Editor::ShowImGuiViewport() {
   if (ImGui::Button("Rotate")) gizmo_operation_ = ImGuizmo::ROTATE;
   ImGui::SameLine();
   if (ImGui::Button("Scale")) gizmo_operation_ = ImGuizmo::SCALE;
+  ImGui::SameLine();
+  if (ImGui::Button(editor_camera_.IsFlyMode() ? "Orbit" : "Fly")) {
+    editor_camera_.SetFlyMode(!editor_camera_.IsFlyMode());
+  }
   ImGui::SameLine();
   const char *play_label = game_mode_ == GameMode::Edit ? "Play" : "Stop";
   if (ImGui::Button(play_label)) {
@@ -557,36 +723,56 @@ void Editor::ShowImGuiViewport() {
   // Drop a model (OBJ / glTF) from the Content Browser to import it.
   if (ImGui::BeginDragDropTarget()) {
     if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-      const auto                 *path = static_cast<const wchar_t *>(payload->Data);
-      const std::filesystem::path file_path(path);
-      const std::string           ext = file_path.extension().string();
-      if (ext == ".obj" || ext == ".gltf" || ext == ".glb") {
-        CreateModelEntity(file_path);
+      if (payload->Data != nullptr) {
+        const std::filesystem::path file_path(static_cast<const wchar_t *>(payload->Data));
+        const std::string           ext = file_path.extension().string();
+        if (ext == ".obj" || ext == ".gltf" || ext == ".glb") {
+          CreateModelEntity(file_path);
+        }
       }
     }
     ImGui::EndDragDropTarget();
   }
 
-  const ImVec2 image_pos = ImGui::GetItemRectMin();
+  const ImVec2 image_pos  = ImGui::GetItemRectMin();
   const ImVec2 image_area = ImGui::GetItemRectSize();
 
-  // Editor camera input (orbit / pan / zoom) while hovering the viewport.
+  // Editor camera input while hovering the viewport (Edit mode only).
   const bool hovered     = ImGui::IsItemHovered();
   const bool using_gizmo = ImGuizmo::IsUsing();
-  if (hovered && !using_gizmo) {
+  if (hovered && !using_gizmo && game_mode_ == GameMode::Edit) {
     const ImGuiIO &io = ImGui::GetIO();
-    if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
-      editor_camera_.Orbit(io.MouseDelta.x, io.MouseDelta.y);
-    }
-    if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-      editor_camera_.Pan(io.MouseDelta.x, io.MouseDelta.y);
-    }
-    if (io.MouseWheel != 0.0f) {
-      editor_camera_.Zoom(io.MouseWheel);
+    if (editor_camera_.IsFlyMode()) {
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+        editor_camera_.LookAround(io.MouseDelta.x, io.MouseDelta.y);
+      }
+      float forward = 0.0f;
+      float right   = 0.0f;
+      float up      = 0.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_W)) forward += 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_S)) forward -= 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_D)) right += 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_A)) right -= 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_E)) up += 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_Q)) up -= 1.0f;
+      editor_camera_.MoveLocal(forward, right, up, io.DeltaTime);
+    } else {
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+        editor_camera_.Orbit(io.MouseDelta.x, io.MouseDelta.y);
+      }
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+        editor_camera_.Pan(io.MouseDelta.x, io.MouseDelta.y);
+      }
+      if (io.MouseWheel != 0.0f) {
+        editor_camera_.Zoom(io.MouseWheel);
+      }
     }
   }
 
-  ShowGizmo(image_pos, image_area);
+  if (game_mode_ == GameMode::Edit) {
+    ShowGizmo(image_pos, image_area);
+    DrawCameraGizmos(image_pos, image_area);
+  }
 
   ImGui::End();
   ImGui::PopStyleVar();
@@ -600,12 +786,9 @@ void Editor::ShowImGuiProperties() {
     auto &tag         = selected_entity_.GetComponent<Tag>().tag;
     char  buffer[256] = {};
     std::snprintf(buffer, sizeof(buffer), "%s", tag.c_str());
-    if (ImGui::InputText("##Tag", buffer, sizeof(buffer))) {
+    if (ImGui::InputText("Name", buffer, sizeof(buffer))) {
       tag = std::string(buffer);
     }
-
-    ImGui::SameLine();
-    ImGui::PushItemWidth(-1);
 
     if (ImGui::Button("Add Component")) {
       ImGui::OpenPopup("AddComponent");
@@ -619,7 +802,7 @@ void Editor::ShowImGuiProperties() {
       ImGui::EndPopup();
     }
 
-    ImGui::PopItemWidth();
+    ImGui::Separator();
 
     DrawComponent<Transform>("Transform", selected_entity_, [](auto &component) {
       DrawVec3Control("Translation", component.translation);
@@ -630,32 +813,71 @@ void Editor::ShowImGuiProperties() {
     });
 
     DrawComponent<MeshComponent>("Mesh", selected_entity_, [](auto &component) {
-      if (component.mesh) {
+      // Drop zone: drag a model file (.obj/.gltf/.glb) here to (re)assign the mesh.
+      ImGui::InvisibleButton("##MeshDropZone", ImVec2(ImGui::GetContentRegionAvail().x, 24.0f));
+      const ImVec2 zone_min = ImGui::GetItemRectMin();
+      const ImVec2 zone_max = ImGui::GetItemRectMax();
+      if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+          const std::filesystem::path file_path(static_cast<const wchar_t *>(payload->Data));
+          const std::string           ext = file_path.extension().string();
+          if (ext == ".obj" || ext == ".gltf" || ext == ".glb") {
+            Ref<Mesh>     mesh;
+            Ref<Material> material;
+            if (LoadModelAsset(file_path, mesh, material)) {
+              component.mesh     = mesh;
+              component.material = material;
+              LOG_INFO("Editor") << "Assigned model '" << file_path.filename().string() << "' to entity";
+            } else {
+              LOG_WARN("Editor") << "Failed to load model: " << file_path;
+            }
+          }
+        }
+        ImGui::EndDragDropTarget();
+      }
+      ImGui::GetWindowDrawList()->AddRect(zone_min, zone_max, ImGui::GetColorU32(ImGuiCol_Separator));
+      ImGui::SetCursorScreenPos(ImVec2(zone_min.x + 6.0f, zone_min.y + 5.0f));
+      ImGui::TextDisabled(
+          "%s", component.mesh ? "Drop a model here to replace the mesh" : "Drop a model here to assign a mesh");
+
+      if (!component.mesh) {
+        if (ImGui::Button("Cube")) component.mesh = Mesh::CreateCube();
+        ImGui::SameLine();
+        if (ImGui::Button("Plane")) component.mesh = Mesh::CreatePlane();
+        ImGui::SameLine();
+        if (ImGui::Button("Sphere")) component.mesh = Mesh::CreateSphere();
+      } else {
         ImGui::Text("Triangles: %d", component.mesh->GetIndexCount() / 3);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Remove Mesh")) component.mesh = nullptr;
       }
 
-      if (component.material) {
+      if (!component.material) {
+        component.material = CreateDefaultMaterial();
+      }
+
+      {
         Material *material = component.material.get();
 
         // Texture maps: thumbnails in a row, label underneath. Drag an image
         // from the Content Browser to assign; right-click to clear.
-        const float thumb = 64.0f;
-        auto draw_map = [&](const char *label, const Ref<Texture> &get, auto &&set) {
+        const float thumb    = 64.0f;
+        auto        draw_map = [&](const char *label, const Ref<Texture> &get, auto &&set) {
           ImGui::BeginGroup();
           if (get) {
-            ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(get->GetID())), {thumb, thumb}, ImVec2(0, 1),
-                         ImVec2(1, 0));
+            ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(get->GetID())), {thumb, thumb},
+                         ImVec2(0, 1), ImVec2(1, 0));
           } else {
             ImGui::Button("None", {thumb, thumb});
           }
           if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-              const auto                 *path = static_cast<const wchar_t *>(payload->Data);
+              const auto *path = static_cast<const wchar_t *>(payload->Data);
               set(Texture::Create(std::filesystem::path(path).string()));
             }
             ImGui::EndDragDropTarget();
           }
-          if (get && ImGui::BeginPopupContextItem()) {
+          if (get && ImGui::BeginPopupContextItem(label)) {
             if (ImGui::MenuItem("Clear")) {
               set(nullptr);
             }
@@ -701,11 +923,25 @@ void Editor::ShowImGuiProperties() {
       }
     });
 
-    DrawComponent<CameraComponent>("Camera", selected_entity_, [](auto &component) {
-      ImGui::Checkbox("Primary", &component.primary);
+    DrawComponent<CameraComponent>("Camera", selected_entity_, [&](auto &component) {
+      bool primary = component.primary;
+      if (ImGui::Checkbox("Primary", &primary)) {
+        component.primary = primary;
+        if (primary) {
+          // A scene has at most one primary camera.
+          for (auto &entity : active_scene_->GetAllEntities()) {
+            if (entity != selected_entity_ && entity.HasComponent<CameraComponent>()) {
+              entity.GetComponent<CameraComponent>().primary = false;
+            }
+          }
+        }
+      }
 
-      const char *items[]   = {"Perspective", "Orthographic"};
-      int         current   = component.camera.projection_type == ProjectionType::Perspective ? 0 : 1;
+      DrawVec3Control("Position", component.camera.position);
+      DrawVec3Control("Rotation", component.camera.rotation);
+
+      const char *items[] = {"Perspective", "Orthographic"};
+      int         current = component.camera.projection_type == ProjectionType::Perspective ? 0 : 1;
       if (ImGui::Combo("Projection", &current, items, 2)) {
         component.camera.projection_type = current == 0 ? ProjectionType::Perspective : ProjectionType::Orthographic;
       }
@@ -715,6 +951,8 @@ void Editor::ShowImGuiProperties() {
       ImGui::DragFloat("Near", &component.camera.near_plane, 0.01f, 0.001f, 1000.0f);
       ImGui::DragFloat("Far", &component.camera.far_plane, 1.0f, 0.1f, 10000.0f);
     });
+  } else {
+    ImGui::TextDisabled("Select an entity in the Scene panel to edit its properties.");
   }
 
   ImGui::End();
@@ -733,17 +971,17 @@ void Editor::ShowImGuiLighting() {
   ImGui::Text("Point Lights");
   if (ImGui::Button("Add Point Light")) {
     PointLight light;
-    light.position    = glm::vec3(0.0f, 2.0f, 0.0f);
-    light.color       = glm::vec3(1.0f);
-    light.intensity   = 2.0f;
-    light.radius      = 6.0f;
+    light.position     = glm::vec3(0.0f, 2.0f, 0.0f);
+    light.color        = glm::vec3(1.0f);
+    light.intensity    = 2.0f;
+    light.radius       = 6.0f;
     light.casts_shadow = false;
     point_lights_.push_back(light);
   }
 
   for (size_t i = 0; i < point_lights_.size(); ++i) {
-    PointLight    &light     = point_lights_[i];
-    const std::string label  = "Point Light " + std::to_string(i);
+    PointLight       &light = point_lights_[i];
+    const std::string label = "Point Light " + std::to_string(i);
     if (ImGui::CollapsingHeader(label.c_str())) {
       DrawVec3Control("Position", light.position);
       ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
@@ -760,18 +998,80 @@ void Editor::ShowImGuiLighting() {
   ImGui::End();
 }
 
+void Editor::ShowImGuiRendering() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Rendering");
+
+  int         render_mode = static_cast<int>(active_scene_->GetRenderMode());
+  const char *items[]     = {"Lit", "Unlit", "Wireframe"};
+  if (ImGui::Combo("Render Mode", &render_mode, items, 3)) {
+    active_scene_->SetRenderMode(static_cast<RenderMode>(render_mode));
+  }
+
+  bool bloom = active_scene_->IsBloomEnabled();
+  if (ImGui::Checkbox("HDR (Bloom)", &bloom)) {
+    active_scene_->SetBloomEnabled(bloom);
+  }
+
+  float exposure = active_scene_->GetExposure();
+  if (ImGui::SliderFloat("Exposure", &exposure, 0.0f, 5.0f)) {
+    active_scene_->SetExposure(exposure);
+  }
+
+  float bloom_strength = active_scene_->GetBloomStrength();
+  if (ImGui::SliderFloat("Bloom Strength", &bloom_strength, 0.0f, 1.0f)) {
+    active_scene_->SetBloomStrength(bloom_strength);
+  }
+
+  float bloom_threshold = active_scene_->GetBloomThreshold();
+  if (ImGui::SliderFloat("Bloom Threshold", &bloom_threshold, 0.0f, 5.0f)) {
+    active_scene_->SetBloomThreshold(bloom_threshold);
+  }
+
+  float god_rays = active_scene_->GetGodRaysStrength();
+  if (ImGui::SliderFloat("God Rays", &god_rays, 0.0f, 1.0f)) {
+    active_scene_->SetGodRaysStrength(god_rays);
+  }
+
+  ImGui::Separator();
+
+  bool ssao = active_scene_->IsSSAOEnabled();
+  if (ImGui::Checkbox("SSAO", &ssao)) {
+    active_scene_->SetSSAOEnabled(ssao);
+  }
+
+  bool taa = active_scene_->IsTAAEnabled();
+  if (ImGui::Checkbox("TAA", &taa)) {
+    active_scene_->SetTAAEnabled(taa);
+  }
+
+  ImGui::Separator();
+
+  float ibl = active_scene_->GetIblIntensity();
+  if (ImGui::SliderFloat("IBL Intensity", &ibl, 0.0f, 2.0f)) {
+    active_scene_->SetIblIntensity(ibl);
+  }
+
+  float pcf = active_scene_->GetShadowPcfRadius();
+  if (ImGui::SliderFloat("Shadow PCF Radius", &pcf, 0.0f, 8.0f)) {
+    active_scene_->SetShadowPcfRadius(pcf);
+  }
+
+  ImGui::End();
+}
+
 void Editor::ShowImGuiLog() {
   PROFILER_FUNCTION();
 
   // State persists across frames.
-  static char                    search[128] = {};
-  static bool                    auto_scroll = true;
-  static bool                    show_trace  = false;
-  static bool                    show_debug  = false;
-  static bool                    show_info   = true;
-  static bool                    show_warn   = true;
-  static bool                    show_error  = true;
-  static bool                    show_fatal  = true;
+  static char                     search[128] = {};
+  static bool                     auto_scroll = true;
+  static bool                     show_trace  = false;
+  static bool                     show_debug  = false;
+  static bool                     show_info   = true;
+  static bool                     show_warn   = true;
+  static bool                     show_error  = true;
+  static bool                     show_fatal  = true;
   static std::vector<std::string> lines;
   static std::uintmax_t           cached_size = 0;
 
@@ -796,15 +1096,12 @@ void Editor::ShowImGuiLog() {
     ImVec4      color;
   };
   static const LevelToggle toggles[] = {
-      {"TRACE", &show_trace, {0.55f, 0.55f, 0.55f, 1.0f}},
-      {"DEBUG", &show_debug, {0.45f, 0.75f, 1.00f, 1.0f}},
-      {"INFO", &show_info, {0.92f, 0.92f, 0.92f, 1.0f}},
-      {"WARN", &show_warn, {1.00f, 0.85f, 0.25f, 1.0f}},
-      {"ERROR", &show_error, {1.00f, 0.45f, 0.45f, 1.0f}},
-      {"FATAL", &show_fatal, {1.00f, 0.25f, 0.25f, 1.0f}},
+      {"TRACE", &show_trace, {0.76f, 0.77f, 0.80f, 1.0f}}, {"DEBUG", &show_debug, {0.72f, 0.83f, 0.96f, 1.0f}},
+      {"INFO", &show_info, {0.80f, 0.88f, 0.96f, 1.0f}},   {"WARN", &show_warn, {0.98f, 0.90f, 0.66f, 1.0f}},
+      {"ERROR", &show_error, {0.98f, 0.78f, 0.78f, 1.0f}}, {"FATAL", &show_fatal, {0.94f, 0.66f, 0.66f, 1.0f}},
   };
   for (const auto &toggle : toggles) {
-    const ImVec4 c = *toggle.flag ? toggle.color : ImVec4(0.22f, 0.22f, 0.24f, 1.0f);
+    const ImVec4 c = *toggle.flag ? toggle.color : ImVec4(0.88f, 0.89f, 0.92f, 1.0f);
     ImGui::PushStyleColor(ImGuiCol_Button, c);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, c);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, c);
@@ -832,16 +1129,16 @@ void Editor::ShowImGuiLog() {
   }
 
   const bool auto_scroll_this_frame = auto_scroll;
+  if (mono_font_) ImGui::PushFont(mono_font_);
   ImGui::BeginChild("##LogText", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
   const bool at_bottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY();
 
   for (const std::string &line : lines) {
-    const LogLevel level = ParseLogLevel(line);
-    const bool     level_ok =
-        (level == LogLevel::Trace && show_trace) || (level == LogLevel::Debug && show_debug) ||
-        (level == LogLevel::Info && show_info) || (level == LogLevel::Warn && show_warn) ||
-        (level == LogLevel::Error && show_error) || (level == LogLevel::Fatal && show_fatal) ||
-        (level == LogLevel::Unknown);
+    const LogLevel level    = ParseLogLevel(line);
+    const bool     level_ok = (level == LogLevel::Trace && show_trace) || (level == LogLevel::Debug && show_debug) ||
+                              (level == LogLevel::Info && show_info) || (level == LogLevel::Warn && show_warn) ||
+                              (level == LogLevel::Error && show_error) || (level == LogLevel::Fatal && show_fatal) ||
+                              (level == LogLevel::Unknown);
     if (!level_ok) {
       continue;
     }
@@ -859,6 +1156,7 @@ void Editor::ShowImGuiLog() {
   }
 
   ImGui::EndChild();
+  if (mono_font_) ImGui::PopFont();
   ImGui::End();
 }
 
@@ -883,31 +1181,89 @@ void Editor::ShowImGuiContentBrowser() {
   PROFILER_FUNCTION();
   ImGui::Begin("Content Browser");
 
-  if (current_directory_ != std::filesystem::path(base_directory_)) {
-    if (ImGui::Button("<-")) {
-      current_directory_ = current_directory_.parent_path();
-    }
+  // ---- Toolbar: back, current path, search, thumbnail size ----
+  const bool at_root = current_directory_ == std::filesystem::path(base_directory_);
+  if (at_root) {
+    ImGui::BeginDisabled();
   }
+  if (ImGui::Button("<-")) {
+    current_directory_ = current_directory_.parent_path();
+  }
+  if (at_root) {
+    ImGui::EndDisabled();
+  }
+  ImGui::SameLine();
 
-  static float padding       = 16.0f;
-  static float thumbnailSize = 128.0f;
-  float        cellSize      = thumbnailSize + padding;
+  std::string rel = std::filesystem::relative(current_directory_, base_directory_).string();
+  if (rel.empty()) {
+    rel = ".";
+  }
+  ImGui::TextDisabled("%s", ("assets/" + rel).c_str());
+  ImGui::SameLine();
 
-  float panelWidth  = ImGui::GetContentRegionAvail().x;
-  int   columnCount = static_cast<int>(panelWidth / cellSize);
-  if (columnCount < 1) columnCount = 1;
+  static char search[256] = {};
+  ImGui::SetNextItemWidth(200.0f);
+  ImGui::InputTextWithHint("##ContentBrowserSearch", "Search...", search, sizeof(search));
+  ImGui::SameLine();
 
-  ImGui::Columns(columnCount, nullptr, false);
+  static float thumbnailSize = 96.0f;
+  ImGui::SetNextItemWidth(140.0f);
+  ImGui::SliderFloat("Size", &thumbnailSize, 32.0f, 256.0f, "%.0f");
+  ImGui::Separator();
 
-  for (auto &directoryEntry : std::filesystem::directory_iterator(current_directory_)) {
-    const auto &path           = directoryEntry.path();
-    std::string filenameString = path.filename().string();
+  // ---- Grid of assets ----
+  constexpr float kPad    = 12.0f;
+  const float     cell_w  = thumbnailSize + kPad;
+  const float     label_h = ImGui::GetTextLineHeightWithSpacing() * 2.0f + 4.0f;
+  const float     cell_h  = thumbnailSize + label_h + kPad;
+  const float     hit_h   = thumbnailSize + label_h;
 
-    ImGui::PushID(filenameString.c_str());
-    std::shared_ptr<Texture> icon = directoryEntry.is_directory() ? directory_icon_ : file_icon_;
+  ImGui::BeginChild("##ContentBrowserGrid", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+  const float avail_x = ImGui::GetContentRegionAvail().x;
+  const int   cols    = std::max(1, static_cast<int>(avail_x / cell_w));
 
-    // Preview image assets with their actual content (cached by path).
-    if (!directoryEntry.is_directory() && IsImageFile(path)) {
+  ImDrawList      *draw = ImGui::GetWindowDrawList();
+  constexpr ImVec2 grid_origin(kPad, kPad);  // window-local grid origin
+
+  int index = 0;
+  for (const auto &entry : std::filesystem::directory_iterator(current_directory_)) {
+    const auto       &path   = entry.path();
+    const std::string name   = path.filename().string();
+    const bool        is_dir = entry.is_directory();
+
+    if (search[0] != '\0' && !ContainsIgnoreCase(name, search)) {
+      continue;
+    }
+
+    const int col = index % cols;
+    const int row = index / cols;
+
+    ImGui::PushID(name.c_str());
+
+    // Hit target covering the thumbnail + label. Window-local coords so the
+    // child window's scrolling is handled by ImGui automatically.
+    ImGui::SetCursorPos(ImVec2(grid_origin.x + col * cell_w, grid_origin.y + row * cell_h));
+    ImGui::InvisibleButton("##Cell", ImVec2(thumbnailSize, hit_h));
+    const bool   hovered   = ImGui::IsItemHovered();
+    const ImVec2 thumb_min = ImGui::GetItemRectMin();  // screen, scroll-adjusted
+    const ImVec2 thumb_max(thumb_min.x + thumbnailSize, thumb_min.y + thumbnailSize);
+
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+      std::filesystem::path abs_path(path);
+      const wchar_t        *item_path = abs_path.c_str();
+      ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", item_path, (wcslen(item_path) + 1) * sizeof(wchar_t));
+      ImGui::EndDragDropSource();
+    }
+
+    // Hover highlight behind the thumbnail.
+    if (hovered) {
+      draw->AddRectFilled(thumb_min, thumb_max, ImGui::GetColorU32(ImVec4(0.55f, 0.66f, 0.86f, 0.45f)));
+    }
+
+    // Thumbnail: folder icon / image preview / file icon.
+    if (is_dir) {
+      DrawFolderIcon(draw, thumb_min, thumb_max);
+    } else if (IsImageFile(path)) {
       const std::string key = path.string();
       auto              it  = thumbnail_cache_.find(key);
       if (it == thumbnail_cache_.end()) {
@@ -916,43 +1272,63 @@ void Editor::ShowImGuiContentBrowser() {
           it = thumbnail_cache_.emplace(key, thumb).first;
         }
       }
-      if (it != thumbnail_cache_.end() && it->second && it->second->GetID() != 0) {
-        icon = it->second;
+      const bool have_thumb = it != thumbnail_cache_.end() && it->second && it->second->GetID() != 0;
+      if (have_thumb) {
+        draw->AddImage(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(it->second->GetID())), thumb_min, thumb_max,
+                       ImVec2(0, 1), ImVec2(1, 0));
+      } else if (file_icon_ && file_icon_->GetID() != 0) {
+        draw->AddImage(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(file_icon_->GetID())), thumb_min, thumb_max,
+                       ImVec2(0, 1), ImVec2(1, 0));
       }
+    } else if (file_icon_ && file_icon_->GetID() != 0) {
+      draw->AddImage(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(file_icon_->GetID())), thumb_min, thumb_max,
+                     ImVec2(0, 1), ImVec2(1, 0));
     }
 
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    ImGui::ImageButton(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(icon->GetID())), {thumbnailSize, thumbnailSize},
-                       {0, 1}, {1, 0});
+    // Label centered under the thumbnail (window-local coordinates).
+    const ImVec2 text_size = ImGui::CalcTextSize(name.c_str(), nullptr, false, thumbnailSize - 4.0f);
+    const float  label_x   = grid_origin.x + col * cell_w + std::max(0.0f, (thumbnailSize - text_size.x)) * 0.5f;
+    const float  label_y   = grid_origin.y + row * cell_h + thumbnailSize + 4.0f;
+    ImGui::SetCursorPos(ImVec2(label_x, label_y));
+    ImGui::PushTextWrapPos(grid_origin.x + col * cell_w + thumbnailSize);
+    ImGui::TextUnformatted(name.c_str());
+    ImGui::PopTextWrapPos();
 
-    if (ImGui::BeginDragDropSource()) {
-      std::filesystem::path relativePath(path);
-      const wchar_t        *itemPath = relativePath.c_str();
-      ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", itemPath, (wcslen(itemPath) + 1) * sizeof(wchar_t));
-      ImGui::EndDragDropSource();
+    // Double-click a folder to enter it.
+    if (is_dir && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+      current_directory_ /= path.filename();
+      ImGui::PopID();
+      break;
     }
-
-    ImGui::PopStyleColor();
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-      if (directoryEntry.is_directory()) current_directory_ /= path.filename();
-    }
-    ImGui::TextWrapped("%s", filenameString.c_str());
-
-    ImGui::NextColumn();
 
     ImGui::PopID();
+    ++index;
   }
 
-  ImGui::Columns(1);
-
-  ImGui::SliderFloat("Thumbnail Size", &thumbnailSize, 16, 512);
-  ImGui::SliderFloat("Padding", &padding, 0, 32);
-
+  ImGui::EndChild();
   ImGui::End();
 }
 
+Entity Editor::CreateEntityWithUniqueName(const std::string &base_name) {
+  const auto name_taken = [&](const std::string &candidate) {
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (entity.HasComponent<Tag>() && entity.GetComponent<Tag>().tag == candidate) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  std::string name   = base_name;
+  int         suffix = 1;
+  while (name_taken(name)) {
+    name = base_name + " (" + std::to_string(suffix++) + ")";
+  }
+  return active_scene_->CreateEntity(name);
+}
+
 void Editor::CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh) {
-  Entity entity = active_scene_->CreateEntity(name);
+  Entity entity = CreateEntityWithUniqueName(name);
   entity.AddComponent<Transform>();
 
   if (mesh) {
@@ -962,40 +1338,32 @@ void Editor::CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh) {
   }
 
   selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created primitive '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+void Editor::CreateCameraEntity() {
+  Entity entity = CreateEntityWithUniqueName("Camera");
+
+  CameraComponent component;
+  component.camera.position = editor_camera_.GetPosition();
+  component.camera.LookAt(editor_camera_.target);
+  entity.AddComponent<CameraComponent>(component);
+
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created camera '" << entity.GetComponent<Tag>().tag << "'";
 }
 
 void Editor::CreateModelEntity(const std::filesystem::path &path) {
-  const std::string ext = path.extension().string();
+  LOG_INFO("Editor") << "Importing model: " << path.filename().string();
 
-  Ref<Mesh> mesh;
-  // Models default to a matte, white, non-metallic material so textured assets
-  // (multiplied by white) and bare meshes alike read correctly.
-  Ref<Material> material = CreateRef<Material>();
-  material->SetShader(AssetManager::Instance().GetShader("pbr"));
-  material->SetBaseColorFactor(glm::vec4(1.0f));
-  material->SetMetallicFactor(0.0f);
-  material->SetRoughnessFactor(1.0f);
-  material->SetSpecularFactor(0.3f);  // fabric: keep reflections low
-
-  if (ext == ".obj") {
-    mesh = ModelLoader::LoadObj(path.string());
-    if (mesh) {
-      AutoAssignObjTextures(material, path);
-    }
-  } else if (ext == ".gltf" || ext == ".glb") {
-    mesh = ModelLoader::LoadGltf(path.string());
-    if (auto mat = ModelLoader::LoadGltfMaterial(path.string())) {
-      mat->SetShader(AssetManager::Instance().GetShader("pbr"));
-      material = mat;
-    }
-  }
-
-  if (!mesh) {
+  Ref<Mesh>     mesh;
+  Ref<Material> material;
+  if (!LoadModelAsset(path, mesh, material)) {
     LOG_WARN("Editor") << "Failed to load model: " << path;
     return;
   }
 
-  Entity entity = active_scene_->CreateEntity(path.stem().string());
+  Entity entity    = CreateEntityWithUniqueName(path.stem().string());
   auto  &transform = entity.AddComponent<Transform>();
   entity.AddComponent<MeshComponent>(mesh, material);
 
@@ -1007,16 +1375,19 @@ void Editor::CreateModelEntity(const std::filesystem::path &path) {
     min_v = glm::min(min_v, v.position);
     max_v = glm::max(max_v, v.position);
   }
-  const glm::vec3 extent = max_v - min_v;
+  const glm::vec3 extent     = max_v - min_v;
   const float     max_extent = std::max({extent.x, extent.y, extent.z});
   if (max_extent > 0.0001f) {
-    const float fit_scale = 2.0f / max_extent;
-    transform.scale       = glm::vec3(fit_scale);
-    transform.translation = -glm::vec3((min_v + max_v) * 0.5f) * fit_scale;
+    const float fit_scale   = 2.0f / max_extent;
+    transform.scale         = glm::vec3(fit_scale);
+    transform.translation   = -glm::vec3((min_v + max_v) * 0.5f) * fit_scale;
     transform.translation.y = -min_v.y * fit_scale;  // sit on the grid
   }
 
   selected_entity_ = entity;
+
+  LOG_INFO("Editor") << "Imported model '" << path.filename().string() << "': " << mesh->GetVertices().size()
+                     << " vertices, " << mesh->GetIndexCount() / 3 << " triangles";
 }
 
 void Editor::DuplicateSelectedEntity() {
@@ -1026,7 +1397,7 @@ void Editor::DuplicateSelectedEntity() {
 
   Entity source = selected_entity_;
 
-  Entity duplicate = active_scene_->CreateEntity(source.GetComponent<Tag>().tag + " (Copy)");
+  Entity duplicate = CreateEntityWithUniqueName(source.GetComponent<Tag>().tag + " (Copy)");
   if (source.HasComponent<Transform>()) {
     duplicate.AddComponent<Transform>(source.GetComponent<Transform>());
   }
@@ -1039,6 +1410,8 @@ void Editor::DuplicateSelectedEntity() {
   }
 
   selected_entity_ = duplicate;
+  LOG_DEBUG("Editor") << "Duplicated entity '" << source.GetComponent<Tag>().tag << "' -> '"
+                      << duplicate.GetComponent<Tag>().tag << "'";
 }
 
 void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
@@ -1054,13 +1427,24 @@ void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
   ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.22f, &dock_right, &dockspace_id);
   ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Down, 0.25f, &dock_bottom, &dockspace_id);
 
-  ImGui::DockBuilderDockWindow("Scene", dock_left);
+  // Left column: Scene on top, Properties below it.
+  ImGuiID dock_left_scene = 0;
+  ImGuiID dock_left_props = 0;
+  ImGui::DockBuilderSplitNode(dock_left, ImGuiDir_Down, 0.45f, &dock_left_props, &dock_left_scene);
+  ImGui::DockBuilderDockWindow("Scene", dock_left_scene);
+  ImGui::DockBuilderDockWindow("Properties", dock_left_props);
+
   ImGui::DockBuilderDockWindow("Content Browser", dock_bottom);
   ImGui::DockBuilderDockWindow("Log", dock_bottom);
   ImGui::DockBuilderDockWindow("Viewport", dockspace_id);
-  ImGui::DockBuilderDockWindow("Properties", dock_right);
-  ImGui::DockBuilderDockWindow("Lighting", dock_right);
-  ImGui::DockBuilderDockWindow("Information", dock_right);
+
+  // Right column: Information on top, Lighting + Rendering below.
+  ImGuiID dock_right_info = 0;
+  ImGuiID dock_right_fx   = 0;
+  ImGui::DockBuilderSplitNode(dock_right, ImGuiDir_Down, 0.5f, &dock_right_fx, &dock_right_info);
+  ImGui::DockBuilderDockWindow("Information", dock_right_info);
+  ImGui::DockBuilderDockWindow("Lighting", dock_right_fx);
+  ImGui::DockBuilderDockWindow("Rendering", dock_right_fx);
 
   ImGui::DockBuilderFinish(dockspace_id);
 }
@@ -1070,8 +1454,8 @@ void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {
     return;
   }
 
-  auto      &transform = selected_entity_.GetComponent<Transform>();
-  glm::mat4 model      = transform.GetTransform();
+  auto     &transform = selected_entity_.GetComponent<Transform>();
+  glm::mat4 model     = transform.GetTransform();
 
   ImGuizmo::SetDrawlist();
   ImGuizmo::SetRect(image_pos.x, image_pos.y, image_size.x, image_size.y);
@@ -1088,6 +1472,98 @@ void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {
     transform.translation = translation;
     transform.rotation    = rotation;  // degrees (matches Transform's convention)
     transform.scale       = scale;
+  }
+}
+
+void Editor::DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size) {
+  if (image_size.x <= 0.0f || image_size.y <= 0.0f) {
+    return;
+  }
+
+  ImDrawList      *draw_list = ImGui::GetWindowDrawList();
+  const glm::mat4 view_proj = editor_camera_.GetProjectionMatrix() * editor_camera_.GetViewMatrix();
+
+  const auto world_to_screen = [&](const glm::vec3 &world) -> glm::vec2 {
+    const glm::vec4 clip = view_proj * glm::vec4(world, 1.0f);
+    if (clip.w <= 0.0f) {
+      return glm::vec2(std::numeric_limits<float>::max(), 0.0f);
+    }
+    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    return glm::vec2(image_pos.x + (ndc.x * 0.5f + 0.5f) * image_size.x,
+                     image_pos.y + (0.5f - ndc.y * 0.5f) * image_size.y);
+  };
+
+  const auto draw_line = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color, float thickness = 1.5f) {
+    const glm::vec2 s0 = world_to_screen(a);
+    const glm::vec2 s1 = world_to_screen(b);
+    if (s0.x == std::numeric_limits<float>::max() || s1.x == std::numeric_limits<float>::max()) {
+      return;
+    }
+    draw_list->AddLine(ImVec2(s0.x, s0.y), ImVec2(s1.x, s1.y), color, thickness);
+  };
+
+  for (auto &entity : active_scene_->GetAllEntitiesWith<CameraComponent>()) {
+    const Camera &camera  = entity.GetComponent<CameraComponent>().camera;
+    const bool    primary = entity.GetComponent<CameraComponent>().primary;
+    const ImU32   color   = primary ? IM_COL32(70, 200, 110, 255) : IM_COL32(130, 150, 200, 255);
+
+    const glm::vec3 forward = camera.GetForward();
+    const glm::vec3 right   = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 up      = glm::cross(right, forward);
+
+    const float near_d = std::max(camera.near_plane, 0.05f);
+    // A short, indicative frustum length (not the full far plane) so camera
+    // gizmos stay readable instead of stretching across the scene.
+    const float far_d  = near_d + 6.0f;
+    const float aspect = std::max(camera.aspect_ratio, 0.01f);
+
+    float half_h_near;
+    float half_h_far;
+    if (camera.projection_type == ProjectionType::Perspective) {
+      const float tan_half = glm::tan(glm::radians(camera.fov_degrees) * 0.5f);
+      half_h_near          = tan_half * near_d;
+      half_h_far           = tan_half * far_d;
+    } else {
+      half_h_near = camera.ortho_size;
+      half_h_far  = camera.ortho_size;
+    }
+
+    const glm::vec3 near_center = camera.position + forward * near_d;
+    const glm::vec3 far_center  = camera.position + forward * far_d;
+
+    glm::vec3 near_corners[4];
+    glm::vec3 far_corners[4];
+    for (int i = 0; i < 4; ++i) {
+      const float sx = (i == 0 || i == 3) ? -1.0f : 1.0f;
+      const float sy = (i < 2) ? 1.0f : -1.0f;
+      near_corners[i] = near_center + right * (sx * half_h_near * aspect) + up * (sy * half_h_near);
+      far_corners[i]  = far_center + right * (sx * half_h_far * aspect) + up * (sy * half_h_far);
+    }
+
+    // View frustum: near quad, far quad, and the four connecting edges.
+    for (int i = 0; i < 4; ++i) {
+      draw_line(near_corners[i], near_corners[(i + 1) % 4], color);
+      draw_line(far_corners[i], far_corners[(i + 1) % 4], color);
+      draw_line(near_corners[i], far_corners[i], color);
+    }
+    // View direction.
+    draw_line(camera.position, far_center, color, 2.0f);
+
+    // Camera body: a small box sitting behind the lens.
+    const glm::vec3 body_center = camera.position - forward * 0.10f;
+    const glm::vec3 hx          = right * 0.12f;
+    const glm::vec3 hy          = up * 0.08f;
+    const glm::vec3 hz          = forward * 0.16f;
+    const glm::vec3 box[8]      = {
+        body_center - hx - hy - hz, body_center + hx - hy - hz, body_center + hx + hy - hz,
+        body_center - hx + hy - hz, body_center - hx - hy + hz, body_center + hx - hy + hz,
+        body_center + hx + hy + hz, body_center - hx + hy + hz,
+    };
+    const int edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+                              {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+    for (const auto &edge : edges) {
+      draw_line(box[edge[0]], box[edge[1]], color);
+    }
   }
 }
 

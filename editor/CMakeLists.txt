@@ -41,3 +41,9 @@ add_custom_command(TARGET editor POST_BUILD
   ${CMAKE_CURRENT_SOURCE_DIR}/res/imgui.ini
   $<TARGET_FILE_DIR:editor>/imgui.ini
 )
+
+add_custom_command(TARGET editor POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${PROJECT_SOURCE_DIR}/deps/imgui/misc/fonts
+  $<TARGET_FILE_DIR:editor>/res/fonts
+)

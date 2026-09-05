@@ -42,7 +42,8 @@ class Logger {
 #define LOG_FATAL(name) MEngine::Logger(name, MEngine::Logger::Level::FATAL).GetStream()
 
 #ifdef NDEBUG
-#define LOG_DEBUG(name)
+// Compile the expression out entirely while keeping `LOG_DEBUG(...) << ...;` valid.
+#define LOG_DEBUG(name) while (false) MEngine::Logger(name, MEngine::Logger::Level::DEBUG).GetStream()
 #else
 #define LOG_DEBUG(name) MEngine::Logger(name, MEngine::Logger::Level::DEBUG).GetStream()
 #endif

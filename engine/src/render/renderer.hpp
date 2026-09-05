@@ -30,6 +30,9 @@ class Skybox;
 class SSAO;
 class Texture;
 
+/// @brief High-level shading mode selectable from the editor.
+enum class RenderMode { Lit, Unlit, Wireframe };
+
 class Renderer {
  public:
   Renderer();
@@ -117,6 +120,19 @@ class Renderer {
   void SetIblIntensity(float intensity);
   void SetGodRaysStrength(float strength);
 
+  void SetBloomEnabled(bool enabled);
+  [[nodiscard]] bool IsBloomEnabled() const;
+
+  void SetRenderMode(RenderMode mode) { render_mode_ = mode; }
+  [[nodiscard]] RenderMode GetRenderMode() const { return render_mode_; }
+
+  [[nodiscard]] float GetExposure() const;
+  [[nodiscard]] float GetBloomStrength() const;
+  [[nodiscard]] float GetBloomThreshold() const;
+  [[nodiscard]] float GetShadowPcfRadius() const { return shadow_pcf_radius_; }
+  [[nodiscard]] float GetIblIntensity() const { return ibl_intensity_; }
+  [[nodiscard]] float GetGodRaysStrength() const;
+
   unsigned int GetFramebuffer() const;
 
  private:
@@ -136,6 +152,7 @@ class Renderer {
   float shadow_pcf_radius_ = 2.0f;
   float ibl_intensity_     = 1.0f;
   bool  ssao_enabled_      = false;
+  RenderMode render_mode_  = RenderMode::Lit;
 };
 
 }  // namespace MEngine

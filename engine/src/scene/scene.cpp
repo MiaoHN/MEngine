@@ -20,12 +20,12 @@ Scene::~Scene() {}
 
 void Scene::LoadScene(const std::string &path) {
   (void)path;
-  // TODO: Implement
+  LOG_WARN("Scene") << "LoadScene is not implemented yet: " << path;
 }
 
 void Scene::SaveScene(const std::string &path) {
   (void)path;
-  // TODO: Implement
+  LOG_WARN("Scene") << "SaveScene is not implemented yet: " << path;
 }
 
 void Scene::OnUpdateEditor(const Camera &camera) { Render(camera); }
@@ -63,6 +63,39 @@ void Scene::Render(const Camera &camera) {
     auto &sprite = entity.GetComponent<AnimatedSprite2D>();
     renderer_->RenderSprite(sprite, proj_view);
   }
+}
+
+void Scene::RenderFromPrimaryCamera(unsigned int target_fbo, int target_width, int target_height) {
+  const float aspect = (target_width > 0 && target_height > 0)
+                           ? static_cast<float>(target_width) / static_cast<float>(target_height)
+                           : 16.0f / 9.0f;
+
+  const Camera *active = nullptr;
+  for (auto &entity : GetAllEntitiesWith<CameraComponent>()) {
+    auto &component = entity.GetComponent<CameraComponent>();
+    if (component.primary) {
+      component.camera.SetAspect(aspect);
+      active = &component.camera;
+      break;
+    }
+  }
+
+  if (!active) {
+    default_camera_info_->SetAspect(aspect);
+    active = default_camera_info_.get();
+  }
+
+  RenderMeshes(active->GetViewMatrix(), active->GetProjectionMatrix(), active->GetPosition(), target_fbo, target_width,
+               target_height);
+}
+
+bool Scene::HasPrimaryCamera() {
+  for (auto &entity : GetAllEntitiesWith<CameraComponent>()) {
+    if (entity.GetComponent<CameraComponent>().primary) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos,
@@ -194,5 +227,29 @@ void Scene::SetGodRaysStrength(float strength) { renderer_->SetGodRaysStrength(s
 void Scene::SetSSAOEnabled(bool enabled) { renderer_->SetSSAOEnabled(enabled); }
 
 void Scene::SetTAAEnabled(bool enabled) { renderer_->SetTAAEnabled(enabled); }
+
+void Scene::SetBloomEnabled(bool enabled) { renderer_->SetBloomEnabled(enabled); }
+
+bool Scene::IsSSAOEnabled() const { return renderer_->IsSSAOEnabled(); }
+
+bool Scene::IsTAAEnabled() const { return renderer_->IsTAAEnabled(); }
+
+bool Scene::IsBloomEnabled() const { return renderer_->IsBloomEnabled(); }
+
+float Scene::GetExposure() const { return renderer_->GetExposure(); }
+
+float Scene::GetBloomStrength() const { return renderer_->GetBloomStrength(); }
+
+float Scene::GetBloomThreshold() const { return renderer_->GetBloomThreshold(); }
+
+float Scene::GetShadowPcfRadius() const { return renderer_->GetShadowPcfRadius(); }
+
+float Scene::GetIblIntensity() const { return renderer_->GetIblIntensity(); }
+
+float Scene::GetGodRaysStrength() const { return renderer_->GetGodRaysStrength(); }
+
+void Scene::SetRenderMode(RenderMode mode) { renderer_->SetRenderMode(mode); }
+
+RenderMode Scene::GetRenderMode() const { return renderer_->GetRenderMode(); }
 
 }  // namespace MEngine

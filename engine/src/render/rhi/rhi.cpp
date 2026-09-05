@@ -11,9 +11,11 @@ static Ref<IRHI> s_active_rhi;
 Ref<IRHI> CreateRHI(GraphicsAPI api) {
   switch (api) {
     case GraphicsAPI::OpenGL:
+      LOG_INFO("RHI") << "Selected OpenGL backend";
       return CreateRef<OpenGLRHI>();
     case GraphicsAPI::Vulkan:
 #if defined(MENGINE_HAS_VULKAN)
+      LOG_INFO("RHI") << "Selected Vulkan backend";
       return CreateRef<VulkanRHI>();
 #else
       LOG_WARN("RHI") << "Vulkan backend requested, but Vulkan support is not compiled in. Falling back to OpenGL.";

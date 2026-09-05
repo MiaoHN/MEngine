@@ -28,17 +28,58 @@ class EditorCamera {
   float near_plane = 0.1f;
   float far_plane  = 1000.0f;
 
-  /// @brief Camera eye position derived from the orbit parameters.
-  [[nodiscard]] glm::vec3 GetPosition() const {
-    const float cos_pitch = std::cos(glm::radians(pitch));
-    return target + glm::vec3(distance * cos_pitch * std::sin(glm::radians(yaw)),
-                              distance * std::sin(glm::radians(pitch)),
-                              distance * cos_pitch * std::cos(glm::radians(yaw)));
+  // Free-fly state (WASD + right-drag look).
+  bool      fly_mode     = false;
+  glm::vec3 fly_position{0.0f, 1.0f, 8.0f};
+  float     fly_speed    = 5.0f;
+
+  [[nodiscard]] bool IsFlyMode() const { return fly_mode; }
+
+  /// @brief Switches between orbit and free-fly. Both directions are seamless:
+  /// entering fly keeps the current eye + look direction, and exiting fly keeps
+  /// the current eye + look direction by re-deriving the orbit target.
+  void SetFlyMode(bool fly) {
+    if (fly && !fly_mode) {
+      // Enter fly: start from the current orbit eye, keep the look direction.
+      fly_position      = GetPosition();
+      const glm::vec3 d = glm::normalize(target - fly_position);
+      yaw               = glm::degrees(std::atan2(d.x, d.z));
+      pitch             = glm::degrees(std::asin(glm::clamp(d.y, -1.0f, 1.0f)));
+    } else if (!fly && fly_mode) {
+      // Exit fly: keep the current eye + look direction by re-deriving the
+      // orbit target along the same view ray (retaining the orbit distance).
+      const glm::vec3 forward = ForwardFromAngles();
+      target                  = fly_position + forward * distance;
+      yaw += 180.0f;
+      pitch = -pitch;
+    }
+    fly_mode = fly;
   }
 
-  [[nodiscard]] glm::vec3 GetForward() const { return glm::normalize(target - GetPosition()); }
+  /// @brief Unit direction encoded by the current yaw/pitch.
+  [[nodiscard]] glm::vec3 ForwardFromAngles() const {
+    const float cos_pitch = std::cos(glm::radians(pitch));
+    return glm::normalize(glm::vec3(cos_pitch * std::sin(glm::radians(yaw)),
+                                    std::sin(glm::radians(pitch)),
+                                    cos_pitch * std::cos(glm::radians(yaw))));
+  }
+
+  /// @brief Camera eye position (orbit-derived, or free-fly position).
+  [[nodiscard]] glm::vec3 GetPosition() const {
+    if (fly_mode) {
+      return fly_position;
+    }
+    return target + distance * ForwardFromAngles();
+  }
+
+  [[nodiscard]] glm::vec3 GetForward() const {
+    return fly_mode ? ForwardFromAngles() : glm::normalize(target - GetPosition());
+  }
 
   [[nodiscard]] glm::mat4 GetViewMatrix() const {
+    if (fly_mode) {
+      return glm::lookAt(fly_position, fly_position + ForwardFromAngles(), glm::vec3(0.0f, 1.0f, 0.0f));
+    }
     return glm::lookAt(GetPosition(), target, glm::vec3(0.0f, 1.0f, 0.0f));
   }
 
@@ -53,6 +94,22 @@ class EditorCamera {
     yaw -= dx * sensitivity;    // drag right -> orbit left (view pans right)
     pitch -= dy * sensitivity;  // drag up -> camera rises (looks down more)
     pitch = glm::clamp(pitch, -89.0f, 89.0f);
+  }
+
+  /// @brief Rotate the free-fly camera by mouse deltas (look around).
+  void LookAround(float dx, float dy, float sensitivity = 0.25f) {
+    yaw += dx * sensitivity;    // drag right -> look right
+    pitch -= dy * sensitivity;  // drag up (dy < 0) -> look up
+    pitch = glm::clamp(pitch, -89.0f, 89.0f);
+  }
+
+  /// @brief Move the free-fly camera along its local axes (amounts are unit
+  /// multipliers; `dt` scales by the fly speed).
+  void MoveLocal(float forward_amount, float right_amount, float up_amount, float dt) {
+    const glm::vec3 fwd   = ForwardFromAngles();
+    const glm::vec3 right = glm::normalize(glm::cross(fwd, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 up    = glm::cross(right, fwd);
+    fly_position += (fwd * forward_amount + right * right_amount + up * up_amount) * fly_speed * dt;
   }
 
   /// @brief Move the target along the camera's right/up axes.
@@ -73,11 +130,13 @@ class EditorCamera {
   }
 
   void Reset() {
-    target   = glm::vec3(0.0f);
-    yaw      = 45.0f;
-    pitch    = 30.0f;
-    distance = 8.0f;
-    fov      = 45.0f;
+    target       = glm::vec3(0.0f);
+    yaw          = 45.0f;
+    pitch        = 30.0f;
+    distance     = 8.0f;
+    fov          = 45.0f;
+    fly_mode     = false;
+    fly_position = glm::vec3(0.0f, 1.0f, 8.0f);
   }
 };
 

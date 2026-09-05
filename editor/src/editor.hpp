@@ -36,6 +36,7 @@ class Editor : public Application {
   void ShowImGuiViewport();
   void ShowImGuiProperties();
   void ShowImGuiLighting();
+  void ShowImGuiRendering();
   void ShowImGuiLog();
   void ShowImGuiInformation();
 
@@ -79,16 +80,22 @@ class Editor : public Application {
   bool show_viewport_        = true;
   bool show_properties_      = true;
   bool show_lighting_        = true;
+  bool show_rendering_       = true;
   bool show_log_             = true;
   bool show_information_     = true;
 
   ImGuiID dockspace_id_ = 0;
 
+  ImFont *mono_font_ = nullptr;
+
+  Entity CreateEntityWithUniqueName(const std::string &base_name);
   void CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh);
+  void CreateCameraEntity();
   void CreateModelEntity(const std::filesystem::path &path);
   void DuplicateSelectedEntity();
   void ApplyDefaultLayout(ImGuiID dockspace_id);
   void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
+  void DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
 };
 
 ::MEngine::Application *CreateApplication();

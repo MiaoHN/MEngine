@@ -77,6 +77,10 @@ Renderer::Renderer() {
 
   // Skybox + IBL environment (equirectangular HDR).
   skybox_ = CreateRef<Skybox>(AssetManager::Instance().Resolve("textures/hdr/kloppenheim_06_puresky_1k.hdr"));
+
+  LOG_DEBUG("Renderer") << "Renderer initialized (directional shadow map " << shadow_map_->GetWidth() << "x"
+                        << shadow_map_->GetHeight() << ", " << kMaxPointShadows
+                        << " point-light shadow maps, SSAO + skybox + post-processing)";
 }
 
 Renderer::~Renderer() = default;
@@ -283,6 +287,18 @@ void Renderer::SetIblIntensity(float intensity) { ibl_intensity_ = intensity; }
 
 void Renderer::SetGodRaysStrength(float strength) { post_processing_->SetGodRaysStrength(strength); }
 
+void Renderer::SetBloomEnabled(bool enabled) { post_processing_->SetBloomEnabled(enabled); }
+
+bool Renderer::IsBloomEnabled() const { return post_processing_->IsBloomEnabled(); }
+
+float Renderer::GetExposure() const { return post_processing_->GetExposure(); }
+
+float Renderer::GetBloomStrength() const { return post_processing_->GetBloomStrength(); }
+
+float Renderer::GetBloomThreshold() const { return post_processing_->GetBloomThreshold(); }
+
+float Renderer::GetGodRaysStrength() const { return post_processing_->GetGodRaysStrength(); }
+
 void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
                         const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const {
   PROFILER_FUNCTION();
@@ -310,6 +326,7 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   shader->SetUniform("metallic_factor", material->GetMetallicFactor());
   shader->SetUniform("roughness_factor", material->GetRoughnessFactor());
   shader->SetUniform("specular_intensity", material->GetSpecularFactor());
+  shader->SetUniform("u_render_mode", render_mode_ == RenderMode::Unlit ? 1 : 0);
 
   shader->SetUniform("model", model);
   shader->SetUniform("proj_view", proj_view);
@@ -384,7 +401,9 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
 
   mesh->Bind();
   if (const auto *rhi = GetActiveRHI(); rhi) {
+    rhi->SetWireframe(render_mode_ == RenderMode::Wireframe);
     rhi->DrawIndexedTriangles(mesh->GetIndexCount());
+    rhi->SetWireframe(false);
   }
   mesh->Unbind();
 

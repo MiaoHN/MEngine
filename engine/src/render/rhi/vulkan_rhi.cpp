@@ -342,6 +342,10 @@ void VulkanRHI::RenderImGuiDrawData(ImDrawData *draw_data) const {
 #endif
 }
 
+void VulkanRHI::SetWireframe(bool wireframe) const {
+  (void)wireframe;  // Wireframe rasterization is not implemented for the Vulkan path yet.
+}
+
 void VulkanRHI::DrawIndexedTriangles(int index_count) const {
 #if defined(MENGINE_HAS_VULKAN)
   if (!frame_begun_ || cpu_framebuffer_.empty()) {
