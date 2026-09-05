@@ -1,79 +1,109 @@
 /**
  * @file camera.hpp
- * @brief Unified camera (perspective / orthographic).
+ * @author MiaoHN (582418227@qq.com)
+ * @brief
+ * @version 0.1
+ * @date 2024-04-21
  *
- * Replaces the old `Camera2D` / `OrthographicCamera` / `PerspectiveCamera`
- * trio with a single camera. Stores position + euler rotation (degrees) and a
- * projection description.
+ * @copyright Copyright (c) 2024
+ *
  */
 
 #pragma once
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/quaternion.hpp>
+
+#include "core/logger.hpp"
+#include "scene/component.hpp"
 
 namespace MEngine {
 
-enum class ProjectionType { Perspective, Orthographic };
-
-class Camera {
+class OrthographicCamera {
  public:
-  ProjectionType projection_type = ProjectionType::Perspective;
-  float          fov_degrees     = 45.0f;   // perspective vertical FOV
-  float          ortho_size      = 5.0f;    // orthographic half-height
-  float          near_plane      = 0.1f;
-  float          far_plane       = 100.0f;
-  float          aspect_ratio    = 16.0f / 9.0f;
+  OrthographicCamera(Camera2D &camera_info) : camera_info_(camera_info) {
+    projection_ = glm::ortho(-camera_info_.aspect_ratio * camera_info_.zoom_level,
+                             camera_info_.aspect_ratio * camera_info_.zoom_level, -camera_info_.zoom_level,
+                             camera_info_.zoom_level, -1.0f, 1.0f);
+    view_       = glm::mat4(1.0f);
 
-  glm::vec3 position{0.0f, 0.0f, 3.0f};
-  glm::vec3 rotation{0.0f, 0.0f, 0.0f};  // euler degrees: x=pitch, y=yaw, z=roll
-
-  void SetPosition(const glm::vec3 &p) { position = p; }
-  void SetRotation(const glm::vec3 &euler) { rotation = euler; }
-  void SetAspect(float aspect) { aspect_ratio = aspect; }
-  void SetFov(float fov) { fov_degrees = fov; }
-
-  [[nodiscard]] const glm::vec3 &GetPosition() const { return position; }
-  [[nodiscard]] const glm::vec3 &GetRotation() const { return rotation; }
-  [[nodiscard]] float            GetFov() const { return fov_degrees; }
-  [[nodiscard]] float            GetAspect() const { return aspect_ratio; }
-  [[nodiscard]] float            GetNear() const { return near_plane; }
-  [[nodiscard]] float            GetFar() const { return far_plane; }
-
-  /// @brief Orients the camera to look at a world-space target.
-  void LookAt(const glm::vec3 &target);
-
-  /// @brief Forward direction in world space.
-  [[nodiscard]] glm::vec3 GetForward() const;
-
-  [[nodiscard]] glm::mat4 GetViewMatrix() const;
-  [[nodiscard]] glm::mat4 GetProjectionMatrix() const;
-  [[nodiscard]] glm::mat4 GetProjectionView() const { return GetProjectionMatrix() * GetViewMatrix(); }
-};
-
-inline void Camera::LookAt(const glm::vec3 &target) {
-  const glm::vec3 forward = glm::normalize(target - position);
-  const glm::quat q       = glm::quatLookAt(forward, glm::vec3(0.0f, 1.0f, 0.0f));
-  rotation                = glm::degrees(glm::eulerAngles(q));
-}
-
-inline glm::vec3 Camera::GetForward() const {
-  return glm::normalize(glm::mat3(glm::mat4_cast(glm::quat(glm::radians(rotation)))) * glm::vec3(0.0f, 0.0f, -1.0f));
-}
-
-inline glm::mat4 Camera::GetViewMatrix() const {
-  const glm::mat4 transform = glm::translate(glm::mat4(1.0f), position) *
-                              glm::mat4_cast(glm::quat(glm::radians(rotation)));
-  return glm::inverse(transform);
-}
-
-inline glm::mat4 Camera::GetProjectionMatrix() const {
-  if (projection_type == ProjectionType::Orthographic) {
-    const float half_width = aspect_ratio * ortho_size;
-    return glm::ortho(-half_width, half_width, -ortho_size, ortho_size, near_plane, far_plane);
+    RecalculateViewMatrix();
   }
-  return glm::perspective(glm::radians(fov_degrees), aspect_ratio, near_plane, far_plane);
-}
+
+  ~OrthographicCamera() = default;
+
+  void OnWindowResize(float width, float height) {
+    camera_info_.aspect_ratio = width / height;
+    SetProjection(-camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  camera_info_.aspect_ratio * camera_info_.zoom_level, -camera_info_.zoom_level,
+                  camera_info_.zoom_level);
+  }
+
+  void OnMouseScroll(float y_offset) {
+    camera_info_.zoom_level += y_offset;
+    if (camera_info_.zoom_level < 0.25f) camera_info_.zoom_level = 0.25f;
+    SetProjection(-camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  camera_info_.aspect_ratio * camera_info_.zoom_level, -camera_info_.zoom_level,
+                  camera_info_.zoom_level);
+  }
+
+  void SetProjection(float left, float right, float bottom, float top) {
+    projection_ = glm::ortho(left, right, bottom, top, -1.0f, 1.0f);
+  }
+
+  void SetPosition(const glm::vec3 &position) { camera_info_.position = position; }
+
+  void SetRotation(float rotation) { camera_info_.rotation = rotation; }
+
+  const glm::mat4 &GetViewMatrix() const { return view_; }
+
+  const glm::mat4 &GetProjectionMatrix() const { return projection_; }
+
+  glm::mat4 GetProjectionView() {
+    RecalculateViewMatrix();
+    return projection_ * view_;
+  }
+
+  const glm::vec3 &GetPosition() const { return camera_info_.position; }
+
+  glm::vec3 &GetPosition() { return camera_info_.position; }
+
+  const float &GetRotation() const { return camera_info_.rotation; }
+
+  float &GetRotation() { return camera_info_.rotation; }
+
+  void RecalculateViewMatrix() {
+    glm::mat4 transform = glm::translate(glm::mat4(1.0f), camera_info_.position) *
+                          glm::rotate(glm::mat4(1.0f), glm::radians(camera_info_.rotation), glm::vec3(0, 0, 1));
+
+    view_ = glm::inverse(transform);
+  }
+
+  const float &GetZoomLevel() const { return camera_info_.zoom_level; }
+  float       &GetZoomLevel() { return camera_info_.zoom_level; }
+  const float &GetAspectRatio() const { return camera_info_.aspect_ratio; }
+  float       &GetAspectRatio() { return camera_info_.aspect_ratio; }
+
+  void SetZoomLevel(float zoom_level) {
+    camera_info_.zoom_level = zoom_level;
+    SetProjection(-camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  camera_info_.aspect_ratio * camera_info_.zoom_level, -camera_info_.zoom_level,
+                  camera_info_.zoom_level);
+  }
+  void SetAspectRatio(float aspect_ratio) {
+    camera_info_.aspect_ratio = aspect_ratio;
+    SetProjection(-camera_info_.aspect_ratio * camera_info_.zoom_level,
+                  camera_info_.aspect_ratio * camera_info_.zoom_level, -camera_info_.zoom_level,
+                  camera_info_.zoom_level);
+  }
+
+  void SetPrimary(bool primary = true) { camera_info_.primary = primary; }
+
+ private:
+  glm::mat4 view_;
+  glm::mat4 projection_;
+
+  Camera2D &camera_info_;
+};
 
 }  // namespace MEngine

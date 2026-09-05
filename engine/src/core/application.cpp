@@ -1,6 +1,5 @@
 #include "core/application.hpp"
 #include "core/logger.hpp"
-#include "render/asset_manager.hpp"
 #include "utils/profiler.h"
 
 namespace MEngine {
@@ -16,9 +15,6 @@ Application::Application(GraphicsAPI api) : graphics_api_(api) {
   }
   s_app = this;
 
-  // Shared asset root (single source of truth for shaders / textures / ...).
-  AssetManager::Instance().SetAssetRoot("assets");
-
   LOG_INFO("Application") << "Application started";
 
   IMGUI_CHECKVERSION();
@@ -31,11 +27,7 @@ Application::Application(GraphicsAPI api) : graphics_api_(api) {
   frame_count_ = 0;
   fps_         = 0;
 
-  if (!glfwInit()) {
-    LOG_FATAL("Application") << "Failed to initialize GLFW";
-    exit(-1);
-  }
-  LOG_DEBUG("Application") << "GLFW initialized";
+  glfwInit();
 
   rhi_ = CreateRHI(graphics_api_);
   if (!rhi_) {
@@ -54,11 +46,6 @@ Application::Application(GraphicsAPI api) : graphics_api_(api) {
     glfwTerminate();
     exit(-1);
   }
-
-  int window_width  = 0;
-  int window_height = 0;
-  glfwGetFramebufferSize(window_, &window_width, &window_height);
-  LOG_DEBUG("Application") << "Window created (framebuffer " << window_width << "x" << window_height << ")";
 
   if (!rhi_->Initialize(window_)) {
     LOG_FATAL("Application") << "Failed to initialize render backend";
@@ -83,7 +70,6 @@ void Application::Initialize() {
 }
 
 void Application::OnUpdate(float dt) {
-  (void)dt;
   // NOTE: This is a default implementation.
 }
 

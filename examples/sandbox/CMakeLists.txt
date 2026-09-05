@@ -1,8 +1,8 @@
-add_executable(editor
-  src/editor.cpp
+add_executable(sandbox
+  src/sandbox.cpp
 )
 
-target_include_directories(editor
+target_include_directories(sandbox
   PRIVATE
   ${PROJECT_SOURCE_DIR}/deps/entt/single_include
   ${PROJECT_SOURCE_DIR}/deps/glm
@@ -12,21 +12,21 @@ target_include_directories(editor
   ${PROJECT_SOURCE_DIR}/deps/imgui/backends
   ${PROJECT_SOURCE_DIR}/deps/ImGuizmo
   ${PROJECT_SOURCE_DIR}/engine/src
-  ${PROJECT_SOURCE_DIR}/editor/src
+  src
 )
 
-target_link_libraries(editor
+target_link_libraries(sandbox
   engine
 )
 
-add_custom_command(TARGET editor POST_BUILD
+add_custom_command(TARGET sandbox POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
   ${CMAKE_CURRENT_SOURCE_DIR}/res
-  $<TARGET_FILE_DIR:editor>/res
+  $<TARGET_FILE_DIR:sandbox>/res
 )
 
-add_custom_command(TARGET editor POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy
-  ${CMAKE_CURRENT_SOURCE_DIR}/res/imgui.ini
-  $<TARGET_FILE_DIR:editor>/imgui.ini
-)
+# add_custom_command(TARGET sandbox POST_BUILD
+#   COMMAND ${CMAKE_COMMAND} -E copy
+#   ${CMAKE_SOURCE_DIR}/sandbox/res/imgui.ini
+#   $<TARGET_FILE_DIR:sandbox>/imgui.ini
+# )

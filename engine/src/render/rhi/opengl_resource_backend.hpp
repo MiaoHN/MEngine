@@ -59,7 +59,6 @@ class OpenGLFrameBufferBackend final : public IFrameBufferBackend {
   void Clear() const override;
   void Resize(int width, int height) override;
   unsigned int GetTextureId() const override { return texture_id_; }
-  unsigned int GetFrameBufferId() const override { return id_; }
 
  private:
   unsigned int id_               = 0;

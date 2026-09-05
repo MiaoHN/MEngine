@@ -122,7 +122,6 @@ void ShaderLibrary::Add(const Ref<Shader> &shader) {
 Ref<Shader> ShaderLibrary::Load(const std::string &name, const std::string &vert_path, const std::string &frag_path) {
   auto shader = CreateRef<Shader>(name, vert_path, frag_path);
   Add(shader);
-  LOG_DEBUG("ShaderLibrary") << "Loaded shader '" << name << "'";
   return shader;
 }
 

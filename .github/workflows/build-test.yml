@@ -1,4 +1,4 @@
-name: Build and Test
+name: Build and Test On Windows
 
 on:
   push:
@@ -11,63 +11,62 @@ on:
       - dev
 
 jobs:
-  build:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Windows (MSVC)
-            os: windows-latest
-            preset: windows-msvc-release
-            setup-msvc: true
-          - name: Linux (GCC)
-            os: ubuntu-latest
-            preset: linux-gcc-release
-            setup-msvc: false
-          - name: Linux (Clang)
-            os: ubuntu-latest
-            preset: linux-clang-release
-            setup-msvc: false
-          - name: macOS (AppleClang)
-            os: macos-latest
-            preset: macos-release
-            setup-msvc: false
+  build-windows-msvc:
+    runs-on: windows-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
 
-      # Puts cl.exe (and the MSVC environment) on PATH so the
-      # windows-msvc-* Ninja preset can find the MSVC toolchain.
-      - name: Setup MSVC (Windows)
-        if: matrix.setup-msvc
-        uses: ilammy/msvc-dev-cmd@v1
+    - name: Setup MSVC
+      uses: ilammy/msvc-dev-cmd@v1
 
-      # GLFW needs the X11/Wayland/OpenGL development headers on Linux.
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            ninja-build \
-            libxrandr-dev \
-            libxinerama-dev \
-            libxcursor-dev \
-            libxi-dev \
-            libxext-dev \
-            libwayland-dev \
-            libxkbcommon-dev \
-            libgl1-mesa-dev
+    - name: Install CMake
+      uses: threeal/cmake-action@main
+      with:
+        run-build: false
 
-      - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+    - name: Configure and build
+      run: |
+        cd build
+        cmake ..
+        cmake --build .
 
-      - name: Build
-        run: cmake --build --preset ${{ matrix.preset }}
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure
+  
+  build-windows-clang:
+    runs-on: windows-latest
 
-      - name: Run tests
-        run: ctest --preset ${{ matrix.preset }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+
+    - name: Setup Clang
+      uses: egor-tensin/setup-clang@v1
+      with:
+        version: latest
+        platform: x64
+
+
+    - name: Install CMake
+      uses: threeal/cmake-action@main
+      with:
+        run-build: false
+
+    - name: Configure and build
+      run: |
+        cd build
+        cmake ..
+        cmake --build .
+
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure

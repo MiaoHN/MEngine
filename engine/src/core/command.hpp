@@ -41,11 +41,11 @@ class Command {
 
   virtual ~Command() = default;
 
-  bool IsCancelled() const { return is_cancelled_; }
+  const bool IsCancelled() const { return is_cancelled_; }
 
   void Cancel() { is_cancelled_ = true; }
 
-  Type GetType() const { return type_; }
+  const Type GetType() const { return type_; }
 
  private:
   Type type_;
@@ -100,7 +100,7 @@ class RotateCommand : public Command {
 
   ~RotateCommand() {}
 
-  float GetAngle() const { return angle_; }
+  const float GetAngle() const { return angle_; }
 
  private:
   float angle_;

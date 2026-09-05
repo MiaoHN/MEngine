@@ -56,7 +56,6 @@ class IFrameBufferBackend {
   virtual void Clear() const         = 0;
   virtual void Resize(int width, int height) = 0;
   virtual unsigned int GetTextureId() const = 0;
-  virtual unsigned int GetFrameBufferId() const = 0;
 };
 
 class IVertexArrayBackend {

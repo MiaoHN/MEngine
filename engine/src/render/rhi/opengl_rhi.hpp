@@ -26,8 +26,6 @@ class OpenGLRHI final : public IRHI {
 
   void DrawIndexedTriangles(int index_count) const override;
 
-  void SetWireframe(bool wireframe) const override;
-
   unsigned int CreateFramebuffer() const override;
 
   void DestroyFramebuffer(unsigned int framebuffer) const override;
