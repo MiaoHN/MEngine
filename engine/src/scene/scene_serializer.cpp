@@ -218,11 +218,30 @@ json EntityToJson(Entity &entity) {
   if (entity.HasComponent<ColliderComponent>()) {
     const auto &component = entity.GetComponent<ColliderComponent>();
     json        j;
-    j["shape"]        = component.shape == ColliderComponent::Shape::Sphere ? "sphere" : "box";
+    switch (component.shape) {
+      case ColliderComponent::Shape::Sphere:
+        j["shape"] = "sphere";
+        break;
+      case ColliderComponent::Shape::Capsule:
+        j["shape"] = "capsule";
+        break;
+      case ColliderComponent::Shape::Cylinder:
+        j["shape"] = "cylinder";
+        break;
+      case ColliderComponent::Shape::Box:
+      default:
+        j["shape"] = "box";
+        break;
+    }
     j["half_extents"] = Vec3ToJson(component.box_half_extents);
-    j["radius"]       = component.sphere_radius;
-    j["offset"]       = Vec3ToJson(component.offset);
-    e["collider"]     = j;
+    j["radius"]       = component.ShapeRadius();
+    if (component.shape == ColliderComponent::Shape::Capsule) {
+      j["half_height"] = component.capsule_half_height;
+    } else if (component.shape == ColliderComponent::Shape::Cylinder) {
+      j["half_height"] = component.cylinder_half_height;
+    }
+    j["offset"]   = Vec3ToJson(component.offset);
+    e["collider"] = j;
   }
 
   if (entity.HasComponent<CameraController>()) {
@@ -280,13 +299,19 @@ void LoadEntityFromJson(Scene &scene, const json &e) {
 
   if (e.contains("collider")) {
     const auto &j = e["collider"];
+    const std::string shape_name = j.value("shape", "box");
     ColliderComponent component;
-    component.shape             = j.value("shape", "box") == "sphere" ? ColliderComponent::Shape::Sphere
-                                                                      : ColliderComponent::Shape::Box;
+    component.shape = shape_name == "sphere"   ? ColliderComponent::Shape::Sphere
+                      : shape_name == "capsule" ? ColliderComponent::Shape::Capsule
+                      : shape_name == "cylinder" ? ColliderComponent::Shape::Cylinder
+                                                 : ColliderComponent::Shape::Box;
     component.box_half_extents  = Vec3FromJson(j.value("half_extents", json()), glm::vec3(0.5f));
-    component.sphere_radius     = j.value("radius", 0.5f);
-    component.offset            = Vec3FromJson(j.value("offset", json()));
-    entity.AddComponent<ColliderComponent>(component);
+    const float radius          = j.value("radius", 0.5f);
+    component.sphere_radius     = radius;
+    component.capsule_radius    = radius;
+    component.cylinder_radius   = radius;
+    component.capsule_half_height  = j.value("half_height", component.capsule_half_height);
+    component.cylinder_half_height = j.value("half_height", component.cylinder_half_height);
   }
 
   if (e.contains("camera_controller")) {

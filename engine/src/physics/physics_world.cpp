@@ -6,6 +6,8 @@
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/RegisterTypes.h>
 
@@ -79,6 +81,32 @@ JPH::BodyID PhysicsWorld::CreateBoxBody(const glm::vec3 &position, const glm::qu
 JPH::BodyID PhysicsWorld::CreateSphereBody(const glm::vec3 &position, const glm::quat &rotation, float radius,
                                            bool is_dynamic, float friction, float restitution) {
   JPH::BodyCreationSettings body_settings(new JPH::SphereShape(radius), ToJolt(position), ToJolt(rotation),
+                                          is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
+                                          is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
+  body_settings.mFriction    = friction;
+  body_settings.mRestitution = restitution;
+  return physics_system_.GetBodyInterface().CreateAndAddBody(
+      body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+}
+
+JPH::BodyID PhysicsWorld::CreateCapsuleBody(const glm::vec3 &position, const glm::quat &rotation, float half_height,
+                                            float radius, bool is_dynamic, float friction, float restitution) {
+  // Jolt CapsuleShape is oriented along the local Y axis; match that convention.
+  JPH::BodyCreationSettings body_settings(new JPH::CapsuleShape(half_height, radius), ToJolt(position),
+                                          ToJolt(rotation),
+                                          is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
+                                          is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
+  body_settings.mFriction    = friction;
+  body_settings.mRestitution = restitution;
+  return physics_system_.GetBodyInterface().CreateAndAddBody(
+      body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+}
+
+JPH::BodyID PhysicsWorld::CreateCylinderBody(const glm::vec3 &position, const glm::quat &rotation, float half_height,
+                                             float radius, bool is_dynamic, float friction, float restitution) {
+  // Jolt CylinderShape is oriented along the local Y axis; match that convention.
+  JPH::BodyCreationSettings body_settings(new JPH::CylinderShape(half_height, radius), ToJolt(position),
+                                          ToJolt(rotation),
                                           is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
                                           is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
   body_settings.mFriction    = friction;

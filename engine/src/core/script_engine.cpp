@@ -307,6 +307,14 @@ int Entity_AddComponent(lua_State *L) {
     if (shape == "sphere") {
       collider.shape         = ColliderComponent::Shape::Sphere;
       collider.sphere_radius = static_cast<float>(luaL_optnumber(L, 4, 0.5));
+    } else if (shape == "capsule") {
+      collider.shape               = ColliderComponent::Shape::Capsule;
+      collider.capsule_radius      = static_cast<float>(luaL_optnumber(L, 4, 0.5));
+      collider.capsule_half_height = static_cast<float>(luaL_optnumber(L, 5, 0.5));
+    } else if (shape == "cylinder") {
+      collider.shape                = ColliderComponent::Shape::Cylinder;
+      collider.cylinder_radius      = static_cast<float>(luaL_optnumber(L, 4, 0.5));
+      collider.cylinder_half_height = static_cast<float>(luaL_optnumber(L, 5, 0.5));
     }
     if (!reg.all_of<ColliderComponent>(ud->id)) {
       reg.emplace<ColliderComponent>(ud->id, collider);

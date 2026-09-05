@@ -1123,15 +1123,27 @@ void Editor::ShowImGuiProperties() {
     });
 
     DrawComponent<ColliderComponent>("Collider", selected_entity_, [](auto &component) {
-      const char *shapes[] = {"Box", "Sphere"};
-      int         current  = component.shape == ColliderComponent::Shape::Box ? 0 : 1;
-      if (ImGui::Combo("Shape", &current, shapes, 2)) {
-        component.shape = current == 0 ? ColliderComponent::Shape::Box : ColliderComponent::Shape::Sphere;
+      const char *shapes[] = {"Box", "Sphere", "Capsule", "Cylinder"};
+      int         current  = static_cast<int>(component.shape);
+      if (ImGui::Combo("Shape", &current, shapes, 4)) {
+        component.shape = static_cast<ColliderComponent::Shape>(current);
       }
-      if (component.shape == ColliderComponent::Shape::Sphere) {
-        ImGui::DragFloat("Radius", &component.sphere_radius, 0.01f, 0.01f, 100.0f);
-      } else {
-        DrawVec3Control("Half Extents", component.box_half_extents, 1.0f);
+      switch (component.shape) {
+        case ColliderComponent::Shape::Sphere:
+          ImGui::DragFloat("Radius", &component.sphere_radius, 0.01f, 0.01f, 100.0f);
+          break;
+        case ColliderComponent::Shape::Capsule:
+          ImGui::DragFloat("Radius", &component.capsule_radius, 0.01f, 0.01f, 100.0f);
+          ImGui::DragFloat("Half Height", &component.capsule_half_height, 0.01f, 0.01f, 100.0f);
+          break;
+        case ColliderComponent::Shape::Cylinder:
+          ImGui::DragFloat("Radius", &component.cylinder_radius, 0.01f, 0.01f, 100.0f);
+          ImGui::DragFloat("Half Height", &component.cylinder_half_height, 0.01f, 0.01f, 100.0f);
+          break;
+        case ColliderComponent::Shape::Box:
+        default:
+          DrawVec3Control("Half Extents", component.box_half_extents, 1.0f);
+          break;
       }
       DrawVec3Control("Offset", component.offset, 1.0f);
     });
@@ -2237,7 +2249,21 @@ void Editor::DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_siz
         }
       }
     } else {
-      const glm::vec3 he = collider.box_half_extents;
+      // Capsule/Cylinder are shown as their axis-aligned bounding box for now.
+      glm::vec3 he;
+      switch (collider.shape) {
+        case ColliderComponent::Shape::Capsule:
+          he = glm::vec3(collider.capsule_radius, collider.capsule_half_height + collider.capsule_radius,
+                         collider.capsule_radius);
+          break;
+        case ColliderComponent::Shape::Cylinder:
+          he = glm::vec3(collider.cylinder_radius, collider.cylinder_half_height, collider.cylinder_radius);
+          break;
+        case ColliderComponent::Shape::Box:
+        default:
+          he = collider.box_half_extents;
+          break;
+      }
       glm::vec3       corners[8];
       for (int i = 0; i < 8; ++i) {
         const glm::vec3 local((i & 1) ? he.x : -he.x, (i & 2) ? he.y : -he.y, (i & 4) ? he.z : -he.z);

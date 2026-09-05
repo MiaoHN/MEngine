@@ -97,17 +97,33 @@ struct RigidBodyComponent {
   explicit RigidBodyComponent(Type type) : type(type) {}
 };
 
-/// @brief Collision shape used by the physics world. The shape is world-space
-/// (the transform's scale is intentionally ignored).
+/// @brief One collision shape attached to an entity. Shapes are world-space
+/// (the transform's scale is intentionally ignored). A ColliderComponent can
+/// hold several shapes; the physics world builds a compound body out of them.
 struct ColliderComponent {
-  enum class Shape { Box, Sphere };
+  enum class Shape { Box, Sphere, Capsule, Cylinder };
 
-  Shape     shape             = Shape::Box;
+  Shape     shape                = Shape::Box;
   glm::vec3 box_half_extents{0.5f, 0.5f, 0.5f};
-  float     sphere_radius     = 0.5f;
+  float     sphere_radius        = 0.5f;
+  float     capsule_radius       = 0.5f;
+  float     capsule_half_height  = 0.5f;  // half of the cylindrical middle segment
+  float     cylinder_radius      = 0.5f;
+  float     cylinder_half_height = 0.5f;
   glm::vec3 offset{0.0f, 0.0f, 0.0f};
 
   ColliderComponent() = default;
+
+  /// @brief True when the shape list is a single shape whose data lives on the
+  /// component (used by serialization / the Lua single-shape API).
+  [[nodiscard]] float ShapeRadius() const {
+    switch (shape) {
+      case Shape::Sphere: return sphere_radius;
+      case Shape::Capsule: return capsule_radius;
+      case Shape::Cylinder: return cylinder_radius;
+      default: return 0.0f;
+    }
+  }
 };
 
 /// @brief Attaches a Lua script to an entity. The script runs with `self` =

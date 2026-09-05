@@ -104,12 +104,26 @@ void Scene::RefreshEntityBody(entt::entity handle) {
     const glm::quat rotation = glm::quat(glm::radians(transform.rotation));
 
     JPH::BodyID body_id;
-    if (collider.shape == ColliderComponent::Shape::Sphere) {
-      body_id = physics_world_->CreateSphereBody(position, rotation, collider.sphere_radius, is_dynamic,
-                                                 rigid_body.friction, rigid_body.restitution);
-    } else {
-      body_id = physics_world_->CreateBoxBody(position, rotation, collider.box_half_extents, is_dynamic,
-                                              rigid_body.friction, rigid_body.restitution);
+    switch (collider.shape) {
+      case ColliderComponent::Shape::Sphere:
+        body_id = physics_world_->CreateSphereBody(position, rotation, collider.sphere_radius, is_dynamic,
+                                                   rigid_body.friction, rigid_body.restitution);
+        break;
+      case ColliderComponent::Shape::Capsule:
+        body_id = physics_world_->CreateCapsuleBody(position, rotation, collider.capsule_half_height,
+                                                    collider.capsule_radius, is_dynamic, rigid_body.friction,
+                                                    rigid_body.restitution);
+        break;
+      case ColliderComponent::Shape::Cylinder:
+        body_id = physics_world_->CreateCylinderBody(position, rotation, collider.cylinder_half_height,
+                                                     collider.cylinder_radius, is_dynamic, rigid_body.friction,
+                                                     rigid_body.restitution);
+        break;
+      case ColliderComponent::Shape::Box:
+      default:
+        body_id = physics_world_->CreateBoxBody(position, rotation, collider.box_half_extents, is_dynamic,
+                                                rigid_body.friction, rigid_body.restitution);
+        break;
     }
     if (body_id.IsInvalid()) {
       LOG_WARN("Scene") << "Failed to create physics body for entity " << entt::to_integral(handle);

@@ -52,6 +52,15 @@ class PhysicsWorld {
   JPH::BodyID CreateSphereBody(const glm::vec3 &position, const glm::quat &rotation, float radius, bool is_dynamic,
                                float friction = 0.5f, float restitution = 0.0f);
 
+  /// @brief Creates a capsule rigid body (vertical axis). `half_height` is half
+  /// of the cylindrical middle segment, matching Jolt's CapsuleShape.
+  JPH::BodyID CreateCapsuleBody(const glm::vec3 &position, const glm::quat &rotation, float half_height, float radius,
+                                bool is_dynamic, float friction = 0.5f, float restitution = 0.0f);
+
+  /// @brief Creates a cylinder rigid body (vertical axis, full-height cylinder).
+  JPH::BodyID CreateCylinderBody(const glm::vec3 &position, const glm::quat &rotation, float half_height, float radius,
+                                 bool is_dynamic, float friction = 0.5f, float restitution = 0.0f);
+
   /// @brief Removes a body from the world (no-op for an invalid id).
   void DestroyBody(JPH::BodyID body_id);
 
