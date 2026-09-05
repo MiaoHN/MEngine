@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 
 #include "render/rhi/resource_backend.hpp"
@@ -42,8 +43,14 @@ class OpenGLShaderBackend final : public IShaderBackend {
   static std::vector<char> ReadFile(const std::string &path);
   static unsigned int Compile(unsigned int type, const char *src);
 
+  /// @brief Resolves (and caches) the location of a uniform. The program is
+  /// fixed for the backend's lifetime, so locations never go stale.
+  [[nodiscard]] int Location(const std::string &name) const;
+
   unsigned int program_ = 0;
   bool         valid_   = false;
+
+  mutable std::unordered_map<std::string, int> uniform_locations_;
 };
 
 class OpenGLFrameBufferBackend final : public IFrameBufferBackend {

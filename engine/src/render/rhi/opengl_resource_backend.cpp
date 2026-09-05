@@ -134,34 +134,44 @@ void OpenGLShaderBackend::Bind() const {
 
 void OpenGLShaderBackend::Unbind() const { glUseProgram(0); }
 
+int OpenGLShaderBackend::Location(const std::string &name) const {
+  const auto cached = uniform_locations_.find(name);
+  if (cached != uniform_locations_.end()) {
+    return cached->second;
+  }
+  const int location = glGetUniformLocation(program_, name.c_str());
+  uniform_locations_[name] = location;  // -1 (inactive) is cached too
+  return location;
+}
+
 void OpenGLShaderBackend::SetUniformInt(const std::string &name, int value) const {
   Bind();
-  glUniform1i(glGetUniformLocation(program_, name.c_str()), value);
+  glUniform1i(Location(name), value);
 }
 
 void OpenGLShaderBackend::SetUniformFloat(const std::string &name, float value) const {
   Bind();
-  glUniform1f(glGetUniformLocation(program_, name.c_str()), value);
+  glUniform1f(Location(name), value);
 }
 
 void OpenGLShaderBackend::SetUniformVec2(const std::string &name, const glm::vec2 &value) const {
   Bind();
-  glUniform2f(glGetUniformLocation(program_, name.c_str()), value.x, value.y);
+  glUniform2f(Location(name), value.x, value.y);
 }
 
 void OpenGLShaderBackend::SetUniformVec3(const std::string &name, const glm::vec3 &value) const {
   Bind();
-  glUniform3f(glGetUniformLocation(program_, name.c_str()), value.x, value.y, value.z);
+  glUniform3f(Location(name), value.x, value.y, value.z);
 }
 
 void OpenGLShaderBackend::SetUniformVec4(const std::string &name, const glm::vec4 &value) const {
   Bind();
-  glUniform4f(glGetUniformLocation(program_, name.c_str()), value.x, value.y, value.z, value.w);
+  glUniform4f(Location(name), value.x, value.y, value.z, value.w);
 }
 
 void OpenGLShaderBackend::SetUniformMat4(const std::string &name, const glm::mat4 &value) const {
   Bind();
-  glUniformMatrix4fv(glGetUniformLocation(program_, name.c_str()), 1, GL_FALSE, &value[0][0]);
+  glUniformMatrix4fv(Location(name), 1, GL_FALSE, &value[0][0]);
 }
 
 OpenGLFrameBufferBackend::OpenGLFrameBufferBackend(int width, int height) : width_(width), height_(height) {
