@@ -244,6 +244,38 @@ json EntityToJson(Entity &entity) {
     e["collider"] = j;
   }
 
+  if (entity.HasComponent<ColliderGroupComponent>()) {
+    const auto &group = entity.GetComponent<ColliderGroupComponent>();
+    json        arr   = json::array();
+    for (const auto &s : group.shapes) {
+      json j;
+      switch (s.shape) {
+        case ColliderShapeData::Shape::Sphere: j["shape"] = "sphere"; break;
+        case ColliderShapeData::Shape::Capsule: j["shape"] = "capsule"; break;
+        case ColliderShapeData::Shape::Cylinder: j["shape"] = "cylinder"; break;
+        case ColliderShapeData::Shape::Box:
+        default: j["shape"] = "box"; break;
+      }
+      j["half_extents"] = Vec3ToJson(s.box_half_extents);
+      j["offset"]       = Vec3ToJson(s.offset);
+      switch (s.shape) {
+        case ColliderShapeData::Shape::Sphere: j["radius"] = s.sphere_radius; break;
+        case ColliderShapeData::Shape::Capsule:
+          j["radius"] = s.capsule_radius;
+          j["half_height"] = s.capsule_half_height;
+          break;
+        case ColliderShapeData::Shape::Cylinder:
+          j["radius"] = s.cylinder_radius;
+          j["half_height"] = s.cylinder_half_height;
+          break;
+        case ColliderShapeData::Shape::Box:
+        default: break;
+      }
+      arr.push_back(std::move(j));
+    }
+    e["collider_group"] = std::move(arr);
+  }
+
   if (entity.HasComponent<CameraController>()) {
     const auto &component = entity.GetComponent<CameraController>();
     json        j;
@@ -312,6 +344,41 @@ void LoadEntityFromJson(Scene &scene, const json &e) {
     component.cylinder_radius   = radius;
     component.capsule_half_height  = j.value("half_height", component.capsule_half_height);
     component.cylinder_half_height = j.value("half_height", component.cylinder_half_height);
+    component.offset            = Vec3FromJson(j.value("offset", json()));
+    entity.AddComponent<ColliderComponent>(component);
+  }
+
+  if (e.contains("collider_group") && e["collider_group"].is_array()) {
+    ColliderGroupComponent group;
+    for (const auto &js : e["collider_group"]) {
+      const std::string shape_name = js.value("shape", "box");
+      ColliderShapeData  s;
+      s.shape = shape_name == "sphere"   ? ColliderShapeData::Shape::Sphere
+                : shape_name == "capsule" ? ColliderShapeData::Shape::Capsule
+                : shape_name == "cylinder" ? ColliderShapeData::Shape::Cylinder
+                                          : ColliderShapeData::Shape::Box;
+      s.box_half_extents = Vec3FromJson(js.value("half_extents", json()), glm::vec3(0.5f));
+      s.offset           = Vec3FromJson(js.value("offset", json()));
+      const float radius = js.value("radius", 0.5f);
+      const float hh     = js.value("half_height", 0.5f);
+      switch (s.shape) {
+        case ColliderShapeData::Shape::Sphere: s.sphere_radius = radius; break;
+        case ColliderShapeData::Shape::Capsule:
+          s.capsule_radius = radius;
+          s.capsule_half_height = hh;
+          break;
+        case ColliderShapeData::Shape::Cylinder:
+          s.cylinder_radius = radius;
+          s.cylinder_half_height = hh;
+          break;
+        case ColliderShapeData::Shape::Box:
+        default: break;
+      }
+      group.shapes.push_back(s);
+    }
+    if (!group.Empty()) {
+      entity.AddComponent<ColliderGroupComponent>(std::move(group));
+    }
   }
 
   if (e.contains("camera_controller")) {

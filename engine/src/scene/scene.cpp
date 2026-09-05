@@ -90,40 +90,90 @@ void Scene::RefreshEntityBody(entt::entity handle) {
     return;
   }
 
-  const bool eligible = registry_.all_of<Transform>(handle) && registry_.all_of<ColliderComponent>(handle) &&
-                        registry_.all_of<RigidBodyComponent>(handle);
+  const auto *group      = registry_.try_get<ColliderGroupComponent>(handle);
+  const bool  has_primary = registry_.all_of<ColliderComponent>(handle);
+  const bool  has_group   = group != nullptr && !group->Empty();
+  const bool  eligible = registry_.all_of<Transform>(handle) && registry_.all_of<RigidBodyComponent>(handle) &&
+                         (has_primary || has_group);
   const auto it  = body_ids_.find(handle);
   const bool has = it != body_ids_.end();
 
   if (eligible && !has) {
-    const auto  &rigid_body = registry_.get<RigidBodyComponent>(handle);
-    const auto  &collider   = registry_.get<ColliderComponent>(handle);
-    const auto  &transform  = registry_.get<Transform>(handle);
-    const bool   is_dynamic = rigid_body.type == RigidBodyComponent::Type::Dynamic;
-    const glm::vec3 position = transform.translation + collider.offset;
+    const auto &rigid_body = registry_.get<RigidBodyComponent>(handle);
+    const auto &transform  = registry_.get<Transform>(handle);
+    const bool  is_dynamic = rigid_body.type == RigidBodyComponent::Type::Dynamic;
     const glm::quat rotation = glm::quat(glm::radians(transform.rotation));
 
+    // Translate component shapes into physics shape descriptions.
+    const auto primary_to_desc = [](const ColliderComponent &c) {
+      ColliderShapeDesc d;
+      d.kind         = static_cast<ColliderShapeDesc::Kind>(static_cast<int>(c.shape));
+      d.half_extents = c.box_half_extents;
+      d.radius       = c.ShapeRadius();
+      d.half_height  = (c.shape == ColliderComponent::Shape::Capsule) ? c.capsule_half_height : c.cylinder_half_height;
+      d.offset       = c.offset;
+      return d;
+    };
+    const auto data_to_desc = [](const ColliderShapeData &s) {
+      ColliderShapeDesc d;
+      d.kind         = static_cast<ColliderShapeDesc::Kind>(static_cast<int>(s.shape));
+      d.half_extents = s.box_half_extents;
+      d.radius       = (s.shape == ColliderShapeData::Shape::Box) ? 0.0f : 0.5f;  // overwritten below
+      switch (s.shape) {
+        case ColliderShapeData::Shape::Sphere: d.radius = s.sphere_radius; break;
+        case ColliderShapeData::Shape::Capsule:
+          d.radius = s.capsule_radius;
+          d.half_height = s.capsule_half_height;
+          break;
+        case ColliderShapeData::Shape::Cylinder:
+          d.radius = s.cylinder_radius;
+          d.half_height = s.cylinder_half_height;
+          break;
+        case ColliderShapeData::Shape::Box:
+        default: break;
+      }
+      d.offset = s.offset;
+      return d;
+    };
+
     JPH::BodyID body_id;
-    switch (collider.shape) {
-      case ColliderComponent::Shape::Sphere:
-        body_id = physics_world_->CreateSphereBody(position, rotation, collider.sphere_radius, is_dynamic,
-                                                   rigid_body.friction, rigid_body.restitution);
-        break;
-      case ColliderComponent::Shape::Capsule:
-        body_id = physics_world_->CreateCapsuleBody(position, rotation, collider.capsule_half_height,
-                                                    collider.capsule_radius, is_dynamic, rigid_body.friction,
-                                                    rigid_body.restitution);
-        break;
-      case ColliderComponent::Shape::Cylinder:
-        body_id = physics_world_->CreateCylinderBody(position, rotation, collider.cylinder_half_height,
-                                                     collider.cylinder_radius, is_dynamic, rigid_body.friction,
-                                                     rigid_body.restitution);
-        break;
-      case ColliderComponent::Shape::Box:
-      default:
-        body_id = physics_world_->CreateBoxBody(position, rotation, collider.box_half_extents, is_dynamic,
-                                                rigid_body.friction, rigid_body.restitution);
-        break;
+    if (has_primary && !has_group) {
+      // Legacy single-collider path (keeps body at translation + primary offset).
+      const auto &collider  = registry_.get<ColliderComponent>(handle);
+      const glm::vec3 position = transform.translation + collider.offset;
+      switch (collider.shape) {
+        case ColliderComponent::Shape::Sphere:
+          body_id = physics_world_->CreateSphereBody(position, rotation, collider.sphere_radius, is_dynamic,
+                                                     rigid_body.friction, rigid_body.restitution);
+          break;
+        case ColliderComponent::Shape::Capsule:
+          body_id = physics_world_->CreateCapsuleBody(position, rotation, collider.capsule_half_height,
+                                                      collider.capsule_radius, is_dynamic, rigid_body.friction,
+                                                      rigid_body.restitution);
+          break;
+        case ColliderComponent::Shape::Cylinder:
+          body_id = physics_world_->CreateCylinderBody(position, rotation, collider.cylinder_half_height,
+                                                       collider.cylinder_radius, is_dynamic, rigid_body.friction,
+                                                       rigid_body.restitution);
+          break;
+        case ColliderComponent::Shape::Box:
+        default:
+          body_id = physics_world_->CreateBoxBody(position, rotation, collider.box_half_extents, is_dynamic,
+                                                  rigid_body.friction, rigid_body.restitution);
+          break;
+      }
+    } else {
+      // Compound body: ColliderGroupComponent (and the primary collider if any)
+      // are merged; each shape offset is a local offset, body centre == entity.
+      std::vector<ColliderShapeDesc> shapes;
+      if (has_primary) {
+        shapes.push_back(primary_to_desc(registry_.get<ColliderComponent>(handle)));
+      }
+      for (const auto &s : group->shapes) {
+        shapes.push_back(data_to_desc(s));
+      }
+      body_id = physics_world_->CreateBody(transform.translation, rotation, is_dynamic, rigid_body.friction,
+                                           rigid_body.restitution, shapes);
     }
     if (body_id.IsInvalid()) {
       LOG_WARN("Scene") << "Failed to create physics body for entity " << entt::to_integral(handle);
@@ -230,11 +280,15 @@ void Scene::WriteBackTransforms() {
     auto *transform = registry_.try_get<Transform>(handle);
     if (transform == nullptr) continue;
 
-    // Bodies are placed at translation + collider.offset, so undo the offset
-    // when writing the simulated position back.
+    // Legacy single collider: body is placed at translation + collider.offset,
+    // so undo the offset when writing back. Compound bodies (ColliderGroup)
+    // keep shape offsets inside the body, so their centre is the translation.
     glm::vec3 offset{0.0f};
-    if (auto *collider = registry_.try_get<ColliderComponent>(handle)) {
-      offset = collider->offset;
+    const auto *group = registry_.try_get<ColliderGroupComponent>(handle);
+    if (!(group && !group->Empty())) {
+      if (auto *collider = registry_.try_get<ColliderComponent>(handle)) {
+        offset = collider->offset;
+      }
     }
 
     transform->translation = ToGlm(body_interface.GetPosition(body_id)) - offset;
@@ -303,7 +357,8 @@ void Scene::SyncSimulationBodies() {
   // Refresh every entity that has (or had) physics-relevant components.
   for (auto &entity : entities_) {
     const entt::entity handle = entity.GetHandle();
-    if (registry_.all_of<RigidBodyComponent>(handle) || registry_.all_of<ColliderComponent>(handle)) {
+    if (registry_.all_of<RigidBodyComponent>(handle) || registry_.all_of<ColliderComponent>(handle) ||
+        registry_.all_of<ColliderGroupComponent>(handle)) {
       RefreshEntityBody(handle);
     }
   }

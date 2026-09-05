@@ -958,6 +958,7 @@ void Editor::ShowImGuiProperties() {
       DisplayAddComponentEntry<LuaScriptComponent>("Lua Script");
       DisplayAddComponentEntry<RigidBodyComponent>("Rigid Body");
       DisplayAddComponentEntry<ColliderComponent>("Collider");
+      DisplayAddComponentEntry<ColliderGroupComponent>("Collider Group");
 
       ImGui::EndPopup();
     }
@@ -1146,6 +1147,55 @@ void Editor::ShowImGuiProperties() {
           break;
       }
       DrawVec3Control("Offset", component.offset, 1.0f);
+    });
+
+    // Compound collider group: extra shapes merged with the primary collider.
+    DrawComponent<ColliderGroupComponent>("Collider Group", selected_entity_, [](auto &group) {
+      constexpr const char *kShapeNames[] = {"Box", "Sphere", "Capsule", "Cylinder"};
+
+      const auto draw_shape = [&kShapeNames](ColliderShapeData &s) {
+        int current = static_cast<int>(s.shape);
+        if (ImGui::Combo("Type", &current, kShapeNames, 4)) {
+          s.shape = static_cast<ColliderShapeData::Shape>(current);
+        }
+        switch (s.shape) {
+          case ColliderShapeData::Shape::Sphere:
+            ImGui::DragFloat("Radius", &s.sphere_radius, 0.01f, 0.01f, 100.0f);
+            break;
+          case ColliderShapeData::Shape::Capsule:
+            ImGui::DragFloat("Radius", &s.capsule_radius, 0.01f, 0.01f, 100.0f);
+            ImGui::DragFloat("Half Height", &s.capsule_half_height, 0.01f, 0.01f, 100.0f);
+            break;
+          case ColliderShapeData::Shape::Cylinder:
+            ImGui::DragFloat("Radius", &s.cylinder_radius, 0.01f, 0.01f, 100.0f);
+            ImGui::DragFloat("Half Height", &s.cylinder_half_height, 0.01f, 0.01f, 100.0f);
+            break;
+          case ColliderShapeData::Shape::Box:
+          default:
+            DrawVec3Control("Half Extents", s.box_half_extents, 1.0f);
+            break;
+        }
+        DrawVec3Control("Offset", s.offset, 1.0f);
+      };
+
+      for (size_t i = 0; i < group.shapes.size();) {
+        ImGui::PushID(static_cast<int>(i));
+        ImGui::Text("Shape %zu", i + 1);
+        draw_shape(group.shapes[i]);
+        if (ImGui::Button("Remove")) {
+          group.shapes.erase(group.shapes.begin() + static_cast<ptrdiff_t>(i));
+          ImGui::PopID();
+          ImGui::Separator();
+          continue;  // don't advance i
+        }
+        ImGui::PopID();
+        ImGui::Separator();
+        ++i;
+      }
+      if (ImGui::Button("Add Shape")) {
+        group.shapes.push_back(ColliderShapeData{});
+      }
+      ImGui::TextDisabled("Extra shapes are merged with the primary collider into one body.");
     });
 
     DrawComponent<CameraController>("Camera Controller", selected_entity_, [](auto &component) {

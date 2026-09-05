@@ -271,6 +271,7 @@ int Entity_HasComponent(lua_State *L) {
   else if (name == "mesh") has = reg.all_of<MeshComponent>(ud->id);
   else if (name == "rigid_body") has = reg.all_of<RigidBodyComponent>(ud->id);
   else if (name == "collider") has = reg.all_of<ColliderComponent>(ud->id);
+  else if (name == "collider_group") has = reg.all_of<ColliderGroupComponent>(ud->id);
   else if (name == "camera") has = reg.all_of<CameraComponent>(ud->id);
   else if (name == "lua_script") has = reg.all_of<LuaScriptComponent>(ud->id);
   lua_pushboolean(L, has);
@@ -322,6 +323,28 @@ int Entity_AddComponent(lua_State *L) {
       reg.get<ColliderComponent>(ud->id) = collider;
     }
     if (simulating) ud->scene->RefreshEntityBody(ud->id);
+  } else if (name == "collider_group") {
+    // Appends one extra shape to the entity's compound collider group.
+    const std::string shape = luaL_optstring(L, 3, "box");
+    ColliderShapeData s;
+    if (shape == "sphere") {
+      s.shape = ColliderShapeData::Shape::Sphere;
+      s.sphere_radius = static_cast<float>(luaL_optnumber(L, 4, 0.5));
+    } else if (shape == "capsule") {
+      s.shape = ColliderShapeData::Shape::Capsule;
+      s.capsule_radius = static_cast<float>(luaL_optnumber(L, 4, 0.5));
+      s.capsule_half_height = static_cast<float>(luaL_optnumber(L, 5, 0.5));
+    } else if (shape == "cylinder") {
+      s.shape = ColliderShapeData::Shape::Cylinder;
+      s.cylinder_radius = static_cast<float>(luaL_optnumber(L, 4, 0.5));
+      s.cylinder_half_height = static_cast<float>(luaL_optnumber(L, 5, 0.5));
+    }
+    if (!reg.all_of<ColliderGroupComponent>(ud->id)) {
+      reg.emplace<ColliderGroupComponent>(ud->id, std::vector<ColliderShapeData>{s});
+    } else {
+      reg.get<ColliderGroupComponent>(ud->id).shapes.push_back(s);
+    }
+    if (simulating) ud->scene->RefreshEntityBody(ud->id);
   } else if (name == "rigid_body") {
     const std::string   type = luaL_optstring(L, 3, "dynamic");
     RigidBodyComponent rb;
@@ -364,11 +387,14 @@ int Entity_RemoveComponent(lua_State *L) {
   if (name == "transform" && reg.all_of<Transform>(ud->id)) reg.remove<Transform>(ud->id);
   else if (name == "mesh" && reg.all_of<MeshComponent>(ud->id)) reg.remove<MeshComponent>(ud->id);
   else if (name == "collider" && reg.all_of<ColliderComponent>(ud->id)) reg.remove<ColliderComponent>(ud->id);
+  else if (name == "collider_group" && reg.all_of<ColliderGroupComponent>(ud->id))
+    reg.remove<ColliderGroupComponent>(ud->id);
   else if (name == "rigid_body" && reg.all_of<RigidBodyComponent>(ud->id)) reg.remove<RigidBodyComponent>(ud->id);
   else if (name == "camera" && reg.all_of<CameraComponent>(ud->id)) reg.remove<CameraComponent>(ud->id);
   else if (name == "lua_script" && reg.all_of<LuaScriptComponent>(ud->id)) reg.remove<LuaScriptComponent>(ud->id);
 
-  if (simulating && (name == "transform" || name == "collider" || name == "rigid_body")) {
+  if (simulating && (name == "transform" || name == "collider" || name == "collider_group" ||
+                     name == "rigid_body")) {
     ud->scene->RefreshEntityBody(ud->id);
   }
 

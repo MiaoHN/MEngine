@@ -8,6 +8,7 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/RegisterTypes.h>
 
@@ -107,6 +108,49 @@ JPH::BodyID PhysicsWorld::CreateCylinderBody(const glm::vec3 &position, const gl
   // Jolt CylinderShape is oriented along the local Y axis; match that convention.
   JPH::BodyCreationSettings body_settings(new JPH::CylinderShape(half_height, radius), ToJolt(position),
                                           ToJolt(rotation),
+                                          is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
+                                          is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
+  body_settings.mFriction    = friction;
+  body_settings.mRestitution = restitution;
+  return physics_system_.GetBodyInterface().CreateAndAddBody(
+      body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+}
+
+JPH::BodyID PhysicsWorld::CreateBody(const glm::vec3 &position, const glm::quat &rotation, bool is_dynamic,
+                                     float friction, float restitution, const std::vector<ColliderShapeDesc> &shapes) {
+  if (shapes.empty()) return {};
+
+  // Build a compound (Jolt merges a single shape into a trivial compound too;
+  // each shape's offset is kept as a local offset so body position == entity
+  // translation).
+  JPH::StaticCompoundShapeSettings settings;
+  for (const auto &s : shapes) {
+    JPH::Ref<JPH::Shape> sub;
+    switch (s.kind) {
+      case ColliderShapeDesc::Kind::Box:
+        sub = new JPH::BoxShape(ToJolt(s.half_extents));
+        break;
+      case ColliderShapeDesc::Kind::Sphere:
+        sub = new JPH::SphereShape(s.radius);
+        break;
+      case ColliderShapeDesc::Kind::Capsule:
+        sub = new JPH::CapsuleShape(s.half_height, s.radius);
+        break;
+      case ColliderShapeDesc::Kind::Cylinder:
+        sub = new JPH::CylinderShape(s.half_height, s.radius);
+        break;
+    }
+    settings.AddShape(ToJolt(s.offset), JPH::Quat::sIdentity(), sub.GetPtr());
+  }
+
+  const JPH::ShapeSettings::ShapeResult result = settings.Create();
+  if (result.HasError()) {
+    LOG_ERROR("Physics") << "Failed to create compound body: " << result.GetError();
+    return {};
+  }
+
+  JPH::Ref<JPH::Shape> compound = result.Get();
+  JPH::BodyCreationSettings body_settings(compound.GetPtr(), ToJolt(position), ToJolt(rotation),
                                           is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
                                           is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
   body_settings.mFriction    = friction;

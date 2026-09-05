@@ -6,6 +6,7 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
@@ -23,6 +24,17 @@
 #include "physics/jolt_math.hpp"
 
 namespace MEngine {
+
+/// @brief A single collider shape description used to build compound bodies.
+struct ColliderShapeDesc {
+  enum class Kind { Box, Sphere, Capsule, Cylinder };
+
+  Kind      kind         = Kind::Box;
+  glm::vec3 half_extents{0.5f, 0.5f, 0.5f};
+  float     radius       = 0.5f;
+  float     half_height  = 0.5f;
+  glm::vec3 offset{0.0f, 0.0f, 0.0f};  // local position inside the compound
+};
 
 /// @brief Owns a Jolt Physics simulation: temp allocator, thread-pool job
 /// system, object/broad-phase layer mapping, and the PhysicsSystem itself.
@@ -60,6 +72,13 @@ class PhysicsWorld {
   /// @brief Creates a cylinder rigid body (vertical axis, full-height cylinder).
   JPH::BodyID CreateCylinderBody(const glm::vec3 &position, const glm::quat &rotation, float half_height, float radius,
                                  bool is_dynamic, float friction = 0.5f, float restitution = 0.0f);
+
+  /// @brief Creates a body from one or more shapes. A single shape is created
+  /// directly; multiple shapes are merged into a Jolt compound. Each shape's
+  /// offset is interpreted as a local offset inside the (compound) body.
+  /// Returns an invalid BodyID on failure.
+  JPH::BodyID CreateBody(const glm::vec3 &position, const glm::quat &rotation, bool is_dynamic, float friction,
+                         float restitution, const std::vector<ColliderShapeDesc> &shapes);
 
   /// @brief Removes a body from the world (no-op for an invalid id).
   void DestroyBody(JPH::BodyID body_id);

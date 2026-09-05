@@ -16,6 +16,8 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "render/material.hpp"
 #include "render/mesh.hpp"
@@ -124,6 +126,32 @@ struct ColliderComponent {
       default: return 0.0f;
     }
   }
+};
+
+/// @brief One shape description (used by the collider-group API).
+struct ColliderShapeData {
+  enum class Shape { Box, Sphere, Capsule, Cylinder };
+
+  Shape     shape                = Shape::Box;
+  glm::vec3 box_half_extents{0.5f, 0.5f, 0.5f};
+  float     sphere_radius        = 0.5f;
+  float     capsule_radius       = 0.5f;
+  float     capsule_half_height  = 0.5f;
+  float     cylinder_radius      = 0.5f;
+  float     cylinder_half_height = 0.5f;
+  glm::vec3 offset{0.0f, 0.0f, 0.0f};  // local offset inside the compound body
+};
+
+/// @brief Optional extra collision shapes on an entity. When present they are
+/// merged with the entity's `ColliderComponent` (if any) into one Jolt
+/// compound body, so a single entity can own several collision boxes/shapes.
+struct ColliderGroupComponent {
+  std::vector<ColliderShapeData> shapes;
+
+  ColliderGroupComponent() = default;
+  explicit ColliderGroupComponent(std::vector<ColliderShapeData> shapes) : shapes(std::move(shapes)) {}
+
+  [[nodiscard]] bool Empty() const { return shapes.empty(); }
 };
 
 /// @brief Attaches a Lua script to an entity. The script runs with `self` =
