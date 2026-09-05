@@ -79,6 +79,46 @@ Frustum ExtractFrustum(const glm::mat4 &proj_view) {
   return f;
 }
 
+
+/// @brief Total order over material content (pointer-free), used to make
+/// equal-content materials adjacent for batching.
+bool MaterialLessForBatching(const Ref<Material> &a, const Ref<Material> &b) {
+  if (a.get() == b.get()) {
+    return false;
+  }
+  const auto ptr_cmp = [](const Ref<Shader> &x, const Ref<Shader> &y) { return x.get() < y.get(); };
+  if (a->GetShader() != b->GetShader()) {
+    return ptr_cmp(a->GetShader(), b->GetShader());
+  }
+  const auto tex_cmp = [](const Ref<Texture> &x, const Ref<Texture> &y) { return x.get() < y.get(); };
+  if (a->GetAlbedoMap() != b->GetAlbedoMap()) return tex_cmp(a->GetAlbedoMap(), b->GetAlbedoMap());
+  if (a->GetNormalMap() != b->GetNormalMap()) return tex_cmp(a->GetNormalMap(), b->GetNormalMap());
+  if (a->GetMetallicRoughnessMap() != b->GetMetallicRoughnessMap()) {
+    return tex_cmp(a->GetMetallicRoughnessMap(), b->GetMetallicRoughnessMap());
+  }
+  if (a->GetAOMap() != b->GetAOMap()) return tex_cmp(a->GetAOMap(), b->GetAOMap());
+  const glm::vec4 ca = a->GetBaseColorFactor();
+  const glm::vec4 cb = b->GetBaseColorFactor();
+  if (ca != cb) return ca.r < cb.r || (ca.r == cb.r && (ca.g < cb.g || (ca.g == cb.g && (ca.b < cb.b ||
+                                   (ca.b == cb.b && ca.a < cb.a)))));
+  if (a->GetMetallicFactor() != b->GetMetallicFactor()) return a->GetMetallicFactor() < b->GetMetallicFactor();
+  if (a->GetRoughnessFactor() != b->GetRoughnessFactor()) return a->GetRoughnessFactor() < b->GetRoughnessFactor();
+  return a->GetSpecularFactor() < b->GetSpecularFactor();
+}
+
+/// @brief True when two materials are interchangeable for draw batching: same
+/// shader, same texture slots and identical factors. (Materials are often
+/// per-entity objects with equal content — batching must merge those.)
+bool SameMaterialForBatching(const Ref<Material> &a, const Ref<Material> &b) {
+  if (a.get() == b.get()) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return !MaterialLessForBatching(a, b) && !MaterialLessForBatching(b, a);
+}
+
 /// @brief True when the AABB is at least partially inside the frustum.
 bool AABBInsideFrustum(const Frustum &f, const glm::vec3 &world_min, const glm::vec3 &world_max) {
   for (const auto &plane : f.planes) {
@@ -620,12 +660,32 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     light_view_proj = light.GetLightSpaceMatrix(glm::vec3(0.0f), 2.0f);
   }
 
-  // Directional shadow pass.
+  // Directional shadow pass: all renderable meshes, batched per mesh so
+  // identical meshes go out as one instanced draw.
   renderer_->BeginShadowPass(light_view_proj);
   {
     const auto t_start = clock::now();
+    std::vector<const RenderItem *> ordered;
+    ordered.reserve(items.size());
     for (const auto &item : items) {
-      renderer_->DrawMeshShadow(item.mesh, item.model, light_view_proj);
+      ordered.push_back(&item);
+    }
+    std::stable_sort(ordered.begin(), ordered.end(),
+                     [](const RenderItem *a, const RenderItem *b) { return a->mesh.get() < b->mesh.get(); });
+    std::vector<glm::mat4> batch;
+    for (size_t i = 0; i < ordered.size();) {
+      size_t j = i + 1;
+      while (j < ordered.size() && ordered[j]->mesh == ordered[i]->mesh) {
+        ++j;
+      }
+      batch.clear();
+      batch.reserve(j - i);
+      for (size_t k = i; k < j; ++k) {
+        batch.push_back(ordered[k]->model);
+      }
+      renderer_->DrawMeshShadowInstanced(ordered[i]->mesh, batch.data(), static_cast<int>(batch.size()),
+                                         light_view_proj);
+      i = j;
     }
     renderer_->EndShadowPass();
     pass_times_ms_[0] = time_ms(t_start);
@@ -643,11 +703,29 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
       }
 
       const auto transforms = point_lights[i].GetShadowMatrices();
+      std::vector<const RenderItem *> ordered;
+      ordered.reserve(items.size());
+      for (const auto &item : items) {
+        ordered.push_back(&item);
+      }
+      std::stable_sort(ordered.begin(), ordered.end(),
+                       [](const RenderItem *a, const RenderItem *b) { return a->mesh.get() < b->mesh.get(); });
       renderer_->BeginPointShadowPass(shadow_index, point_lights[i].position, point_lights[i].radius);
       for (int face = 0; face < 6; ++face) {
         renderer_->BindPointShadowFace(shadow_index, face, transforms[face]);
-        for (const auto &item : items) {
-          renderer_->DrawMeshPointShadow(item.mesh, item.model);
+        std::vector<glm::mat4> batch;
+        for (size_t k = 0; k < ordered.size();) {
+          size_t j = k + 1;
+          while (j < ordered.size() && ordered[j]->mesh == ordered[k]->mesh) {
+            ++j;
+          }
+          batch.clear();
+          batch.reserve(j - k);
+          for (size_t m = k; m < j; ++m) {
+            batch.push_back(ordered[m]->model);
+          }
+          renderer_->DrawMeshPointShadowInstanced(ordered[k]->mesh, batch.data(), static_cast<int>(batch.size()));
+          k = j;
         }
       }
       renderer_->EndPointShadowPass(shadow_index);
@@ -660,11 +738,29 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   const auto t_ssao_start = clock::now();
   if (renderer_->IsSSAOEnabled()) {
     renderer_->BeginSSAOPass(proj, view);
+    std::vector<const RenderItem *> visible;
+    visible.reserve(items.size());
     for (const auto &item : items) {
       if (item.has_bounds && !AABBInsideFrustum(frustum, item.world_min, item.world_max)) {
         continue;
       }
-      renderer_->DrawMeshSSAO(item.mesh, item.model);
+      visible.push_back(&item);
+    }
+    std::stable_sort(visible.begin(), visible.end(),
+                     [](const RenderItem *a, const RenderItem *b) { return a->mesh.get() < b->mesh.get(); });
+    std::vector<glm::mat4> batch;
+    for (size_t k = 0; k < visible.size();) {
+      size_t j = k + 1;
+      while (j < visible.size() && visible[j]->mesh == visible[k]->mesh) {
+        ++j;
+      }
+      batch.clear();
+      batch.reserve(j - k);
+      for (size_t m = k; m < j; ++m) {
+        batch.push_back(visible[m]->model);
+      }
+      renderer_->DrawMeshSSAOInstanced(visible[k]->mesh, batch.data(), static_cast<int>(batch.size()));
+      k = j;
     }
     renderer_->EndSSAOPass();
     renderer_->GenerateSSAO(proj, view);
@@ -678,6 +774,8 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   {
     renderer_->BeginScene();
     const auto t_start = clock::now();
+    std::vector<const RenderItem *> visible;
+    visible.reserve(items.size());
     for (const auto &item : items) {
       if (!item.material || !item.material->GetShader()) {
         ++culled_main;  // counted as not drawn by the main pass
@@ -688,7 +786,32 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
         continue;
       }
       ++visible_main;
-      renderer_->DrawMesh(item.mesh, item.material, item.model, proj_view, camera_pos, light_view_proj);
+      visible.push_back(&item);
+    }
+    // Batch by (mesh, material content): same mesh + interchangeable material
+    // drawn as one instanced draw; material uniforms are uploaded once per
+    // batch. Pointer sorting keeps equal-content materials adjacent.
+    std::stable_sort(visible.begin(), visible.end(), [](const RenderItem *a, const RenderItem *b) {
+      if (a->mesh.get() != b->mesh.get()) {
+        return a->mesh.get() < b->mesh.get();
+      }
+      return MaterialLessForBatching(a->material, b->material);
+    });
+    std::vector<glm::mat4> batch;
+    for (size_t k = 0; k < visible.size();) {
+      size_t j = k + 1;
+      while (j < visible.size() && visible[j]->mesh == visible[k]->mesh &&
+             SameMaterialForBatching(visible[j]->material, visible[k]->material)) {
+        ++j;
+      }
+      batch.clear();
+      batch.reserve(j - k);
+      for (size_t m = k; m < j; ++m) {
+        batch.push_back(visible[m]->model);
+      }
+      renderer_->DrawMeshInstanced(visible[k]->mesh, visible[k]->material, batch.data(),
+                                   static_cast<int>(batch.size()), proj_view, camera_pos, light_view_proj);
+      k = j;
     }
     pass_times_ms_[3] = time_ms(t_start);
   }

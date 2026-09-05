@@ -708,9 +708,9 @@ void Editor::ShowImGuiScene() {
 
   if (ImGui::BeginPopup("CreateEntity")) {
     if (ImGui::MenuItem("Empty Entity")) CreatePrimitive("Empty", nullptr);
-    if (ImGui::MenuItem("Cube")) CreatePrimitive("Cube", Mesh::CreateCube());
-    if (ImGui::MenuItem("Plane")) CreatePrimitive("Plane", Mesh::CreatePlane());
-    if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere", Mesh::CreateSphere());
+    if (ImGui::MenuItem("Cube")) CreatePrimitive("Cube", AssetManager::Instance().GetMesh("cube"));
+    if (ImGui::MenuItem("Plane")) CreatePrimitive("Plane", AssetManager::Instance().GetMesh("plane"));
+    if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere", AssetManager::Instance().GetMesh("sphere"));
     ImGui::Separator();
     if (ImGui::MenuItem("Camera")) CreateCameraEntity();
     ImGui::EndPopup();

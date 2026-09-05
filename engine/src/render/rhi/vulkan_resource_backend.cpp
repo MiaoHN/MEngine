@@ -162,6 +162,14 @@ void VulkanVertexArrayBackend::SetVertexBuffer(const void *data, size_t size, co
   vertex_bytes_.assign(static_cast<const unsigned char *>(data), static_cast<const unsigned char *>(data) + size);
 }
 
+void VulkanVertexArrayBackend::SetInstanceData(const glm::mat4 *data, int count) {
+  // CPU-side placeholder backend: nothing to upload yet (Vulkan path is
+  // experimental; the real implementation will stage instance matrices into
+  // a GPU buffer). Keeping the interface so renderer code stays backend-agnostic.
+  (void)data;
+  (void)count;
+}
+
 void VulkanVertexArrayBackend::SetIndexBuffer(const unsigned int *data, int count) {
   if (data && count > 0) {
     indices_.assign(data, data + count);

@@ -35,6 +35,10 @@ class IRHI {
 
   virtual void DrawIndexedTriangles(int index_count) const = 0;
 
+  /// @brief Instanced indexed draw: `instance_count` copies of the bound mesh,
+  /// per-instance data coming from the bound vertex array's instance buffer.
+  virtual void DrawIndexedInstanced(int index_count, int instance_count) const = 0;
+
   /// @brief Toggles wireframe rasterization for subsequent draw calls.
   virtual void SetWireframe(bool wireframe) const = 0;
 

@@ -156,18 +156,22 @@ void Renderer::BeginShadowPass(const glm::mat4 &light_view_proj) const {
 }
 
 void Renderer::DrawMeshShadow(const Ref<Mesh> &mesh, const glm::mat4 &model, const glm::mat4 &light_view_proj) const {
-  if (!mesh) {
+  DrawMeshShadowInstanced(mesh, &model, 1, light_view_proj);
+}
+
+void Renderer::DrawMeshShadowInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count,
+                                       const glm::mat4 &light_view_proj) const {
+  if (!mesh || count <= 0) {
     return;
   }
   (void)light_view_proj;
-  depth_shader_->SetUniform("model", model);
-  mesh->Bind();
+  mesh->SetInstanceData(models, count);
   stats_.draw_calls += 1;
-  stats_.triangles += mesh->GetIndexCount() / 3;
+  stats_.instanced_draws += 1;
+  stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
   if (const auto *rhi = GetActiveRHI(); rhi) {
-    rhi->DrawIndexedTriangles(mesh->GetIndexCount());
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
   }
-  mesh->Unbind();
 }
 
 void Renderer::EndShadowPass() const {
@@ -204,17 +208,20 @@ void Renderer::BindPointShadowFace(int light_index, int face, const glm::mat4 &l
 }
 
 void Renderer::DrawMeshPointShadow(const Ref<Mesh> &mesh, const glm::mat4 &model) const {
-  if (!mesh) {
+  DrawMeshPointShadowInstanced(mesh, &model, 1);
+}
+
+void Renderer::DrawMeshPointShadowInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count) const {
+  if (!mesh || count <= 0) {
     return;
   }
-  point_light_depth_shader_->SetUniform("model", model);
-  mesh->Bind();
+  mesh->SetInstanceData(models, count);
   stats_.draw_calls += 1;
-  stats_.triangles += mesh->GetIndexCount() / 3;
+  stats_.instanced_draws += 1;
+  stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
   if (const auto *rhi = GetActiveRHI(); rhi) {
-    rhi->DrawIndexedTriangles(mesh->GetIndexCount());
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
   }
-  mesh->Unbind();
 }
 
 void Renderer::EndPointShadowPass(int light_index) const {
@@ -227,17 +234,20 @@ void Renderer::BeginSSAOPass(const glm::mat4 &proj, const glm::mat4 &view) const
 }
 
 void Renderer::DrawMeshSSAO(const Ref<Mesh> &mesh, const glm::mat4 &model) const {
-  if (!mesh) {
+  DrawMeshSSAOInstanced(mesh, &model, 1);
+}
+
+void Renderer::DrawMeshSSAOInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count) const {
+  if (!mesh || count <= 0) {
     return;
   }
-  ssao_->SetGeometryModel(model);
-  mesh->Bind();
+  mesh->SetInstanceData(models, count);
   stats_.draw_calls += 1;
-  stats_.triangles += mesh->GetIndexCount() / 3;
+  stats_.instanced_draws += 1;
+  stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
   if (const auto *rhi = GetActiveRHI(); rhi) {
-    rhi->DrawIndexedTriangles(mesh->GetIndexCount());
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
   }
-  mesh->Unbind();
 }
 
 void Renderer::EndSSAOPass() const { ssao_->EndGeometryPass(); }
@@ -311,9 +321,15 @@ float Renderer::GetGodRaysStrength() const { return post_processing_->GetGodRays
 
 void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
                         const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const {
+  DrawMeshInstanced(mesh, material, &model, 1, proj_view, view_pos, light_view_proj);
+}
+
+void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 *models,
+                                 int count, const glm::mat4 &proj_view, const glm::vec3 &view_pos,
+                                 const glm::mat4 &light_view_proj) const {
   PROFILER_FUNCTION();
 
-  if (!mesh || !material || !material->GetShader()) {
+  if (!mesh || !material || !material->GetShader() || count <= 0) {
     return;
   }
 
@@ -338,7 +354,6 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
   shader->SetUniform("specular_intensity", material->GetSpecularFactor());
   shader->SetUniform("u_render_mode", render_mode_ == RenderMode::Unlit ? 1 : 0);
 
-  shader->SetUniform("model", model);
   shader->SetUniform("proj_view", proj_view);
   shader->SetUniform("view_pos", view_pos);
 
@@ -409,15 +424,16 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
     shader->SetUniform("spot_light_outer_cutoffs[" + index + "]", light.outer_cutoff);
   }
 
-  mesh->Bind();
+  // Per-instance model matrices (locations 3..6, divisor 1) + instanced draw.
+  mesh->SetInstanceData(models, count);
   if (const auto *rhi = GetActiveRHI(); rhi) {
     stats_.draw_calls += 1;
-    stats_.triangles += mesh->GetIndexCount() / 3;
+    stats_.instanced_draws += 1;
+    stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
     rhi->SetWireframe(render_mode_ == RenderMode::Wireframe);
-    rhi->DrawIndexedTriangles(mesh->GetIndexCount());
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
     rhi->SetWireframe(false);
   }
-  mesh->Unbind();
 
   shader->Unbind();
 }

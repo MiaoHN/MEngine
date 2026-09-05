@@ -65,6 +65,13 @@ class IVertexArrayBackend {
 
   virtual void SetVertexBuffer(const void *data, size_t size, const std::vector<VertexAttribute> &layouts) = 0;
   virtual void SetIndexBuffer(const unsigned int *data, int count)                                   = 0;
+
+  /// @brief Uploads `count` per-instance model matrices. The instance matrices
+  /// are exposed to shaders as a `mat4` attribute at locations 3..6 with a
+  /// per-instance divisor (engine convention for every instanced vertex
+  /// shader). Call before an instanced draw.
+  virtual void SetInstanceData(const glm::mat4 *data, int count) = 0;
+
   virtual void Bind() const                                                                          = 0;
   virtual void Unbind() const                                                                        = 0;
   virtual int  GetCount() const                                                                      = 0;

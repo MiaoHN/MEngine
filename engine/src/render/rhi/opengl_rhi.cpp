@@ -70,6 +70,13 @@ void OpenGLRHI::DrawIndexedTriangles(int index_count) const {
   glDrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_INT, nullptr);
 }
 
+void OpenGLRHI::DrawIndexedInstanced(int index_count, int instance_count) const {
+  if (instance_count <= 0) {
+    return;
+  }
+  glDrawElementsInstanced(GL_TRIANGLES, index_count, GL_UNSIGNED_INT, nullptr, instance_count);
+}
+
 void OpenGLRHI::SetWireframe(bool wireframe) const {
   glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
 }

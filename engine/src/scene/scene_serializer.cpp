@@ -84,27 +84,15 @@ RenderMode RenderModeFromString(const std::string &str) {
 // --- mesh ------------------------------------------------------------------
 
 /// @brief Rebuilds a mesh from its serialized source string.
+/// @brief Rebuilds a mesh from its serialized source string. Shared meshes
+/// (AssetManager cache) let same-source entities batch into instanced draws.
 Ref<Mesh> MeshFromSource(const std::string &source) {
-  if (source == "cube") return Mesh::CreateCube();
-  if (source == "plane") return Mesh::CreatePlane();
-  if (source == "sphere") return Mesh::CreateSphere();
-  if (source.empty()) return nullptr;
-
-  const std::string resolved = ResolveAsset(source);
-  const std::string ext      = std::filesystem::path(resolved).extension().string();
-
-  Ref<Mesh> mesh;
-  if (ext == ".obj") {
-    mesh = ModelLoader::LoadObj(resolved);
-  } else if (ext == ".gltf" || ext == ".glb") {
-    mesh = ModelLoader::LoadGltf(resolved);
-  }
-  if (mesh) {
-    mesh->SetSource(source);
+  Ref<Mesh> mesh = AssetManager::Instance().GetMesh(source);
+  if (!mesh && !source.empty()) {
+    LOG_WARN("SceneSerializer") << "Failed to load mesh from '" << source << "'";
   }
   return mesh;
 }
-
 // --- material --------------------------------------------------------------
 
 json MaterialToJson(const Ref<Material> &material) {

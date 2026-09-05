@@ -230,6 +230,7 @@ OpenGLVertexArrayBackend::OpenGLVertexArrayBackend() { glGenVertexArrays(1, &id_
 OpenGLVertexArrayBackend::~OpenGLVertexArrayBackend() {
   glDeleteBuffers(1, &vbo_);
   glDeleteBuffers(1, &ibo_);
+  glDeleteBuffers(1, &inst_vbo_);
   glDeleteVertexArrays(1, &id_);
 }
 
@@ -286,6 +287,30 @@ void OpenGLVertexArrayBackend::SetVertexBuffer(const void *data, size_t size, co
     }
     ++index;
   }
+}
+
+void OpenGLVertexArrayBackend::SetInstanceData(const glm::mat4 *data, int count) {
+  Bind();
+  if (inst_vbo_ == 0) {
+    glGenBuffers(1, &inst_vbo_);
+  }
+  glBindBuffer(GL_ARRAY_BUFFER, inst_vbo_);
+  glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(count) * sizeof(glm::mat4), data, GL_DYNAMIC_DRAW);
+
+  // Engine convention: the per-instance model matrix occupies attribute
+  // locations 3..6 (one vec4 per column) with a per-instance divisor, which
+  // matches `layout(location = 3) in mat4 aInstanceModel;` in the shaders.
+  constexpr GLuint kInstanceLocation = 3;
+  const GLsizei    stride            = static_cast<GLsizei>(sizeof(glm::mat4));
+  for (int column = 0; column < 4; ++column) {
+    const GLuint location = kInstanceLocation + static_cast<GLuint>(column);
+    glEnableVertexAttribArray(location);
+    glVertexAttribPointer(location, 4, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<const void *>(static_cast<size_t>(column) * sizeof(glm::vec4)));
+    glVertexAttribDivisor(location, 1);
+  }
+  // Restore the vertex-data binding so later plain draws keep working.
+  glBindBuffer(GL_ARRAY_BUFFER, vbo_);
 }
 
 void OpenGLVertexArrayBackend::SetIndexBuffer(const unsigned int *data, int count) {

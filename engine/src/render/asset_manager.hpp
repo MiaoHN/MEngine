@@ -11,6 +11,7 @@ namespace MEngine {
 
 class Shader;
 class Texture;
+class Mesh;
 class ShaderLibrary;
 class TextureLibrary;
 
@@ -46,6 +47,12 @@ class AssetManager {
   /// @brief Loads (and caches) a texture by name or path relative to the root.
   Ref<Texture> GetTexture(const std::string &name_or_path);
 
+  /// @brief Returns a shared mesh for a serialized source string ("cube",
+  /// "plane", "sphere" or a model file path relative to the asset root).
+  /// Same-source meshes share one GPU object, which lets the renderer batch
+  /// them into single instanced draws.
+  Ref<Mesh> GetMesh(const std::string &source);
+
   /// @brief The fallback shader / texture used when a load fails.
   Ref<Shader> GetDefaultShader();
   Ref<Texture> GetDefaultTexture();
@@ -63,6 +70,8 @@ class AssetManager {
 
   std::unique_ptr<ShaderLibrary>  shader_library_;
   std::unique_ptr<TextureLibrary> texture_library_;
+  // source string -> shared mesh (primitives + loaded model files)
+  std::unordered_map<std::string, Ref<Mesh>> mesh_cache_;
 
   Ref<Shader>  default_shader_;
   Ref<Texture> default_texture_;

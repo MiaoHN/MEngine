@@ -79,6 +79,7 @@ class VulkanVertexArrayBackend final : public IVertexArrayBackend {
 
   void SetVertexBuffer(const void *data, size_t size, const std::vector<VertexAttribute> &layouts) override;
   void SetIndexBuffer(const unsigned int *data, int count) override;
+  void SetInstanceData(const glm::mat4 *data, int count) override;
   void Bind() const override;
   void Unbind() const override;
   int  GetCount() const override { return count_; }

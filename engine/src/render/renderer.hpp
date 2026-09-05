@@ -54,6 +54,10 @@ class Renderer {
   void BeginShadowPass(const glm::mat4 &light_view_proj) const;
   /// @brief Renders a mesh into the shadow map.
   void DrawMeshShadow(const Ref<Mesh> &mesh, const glm::mat4 &model, const glm::mat4 &light_view_proj) const;
+  /// @brief Renders `count` copies of one mesh into the shadow map (per-instance
+  /// model matrices; models must stay alive for the call).
+  void DrawMeshShadowInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count,
+                               const glm::mat4 &light_view_proj) const;
   /// @brief Ends the shadow pass and restores the default framebuffer.
   void EndShadowPass() const;
 
@@ -63,6 +67,8 @@ class Renderer {
   void BindPointShadowFace(int light_index, int face, const glm::mat4 &light_space_matrix) const;
   /// @brief Renders a mesh into the current point shadow face.
   void DrawMeshPointShadow(const Ref<Mesh> &mesh, const glm::mat4 &model) const;
+  /// @brief Instanced variant of DrawMeshPointShadow.
+  void DrawMeshPointShadowInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count) const;
   /// @brief Ends the point shadow pass.
   void EndPointShadowPass(int light_index) const;
 
@@ -70,6 +76,8 @@ class Renderer {
   void BeginSSAOPass(const glm::mat4 &proj, const glm::mat4 &view) const;
   /// @brief Renders a mesh into the SSAO G-buffer.
   void DrawMeshSSAO(const Ref<Mesh> &mesh, const glm::mat4 &model) const;
+  /// @brief Instanced variant of DrawMeshSSAO.
+  void DrawMeshSSAOInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count) const;
   /// @brief Ends the SSAO geometry pass.
   void EndSSAOPass() const;
   /// @brief Runs the SSAO sampling + blur passes.
@@ -83,6 +91,12 @@ class Renderer {
   /// @brief Draw a 3D mesh with the given PBR material (shadowed by the light).
   void DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
                 const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const;
+
+  /// @brief Draws `count` copies of one mesh+material pair with per-instance
+  /// model matrices (models must stay alive for the call). Material uniforms
+  /// are uploaded once per call — Scene batches same-material meshes together.
+  void DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 *models, int count,
+                         const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const;
 
   [[nodiscard]] const DirectionalLight &GetLight() const { return light_; }
   DirectionalLight &GetLight() { return light_; }
@@ -139,6 +153,8 @@ class Renderer {
   void ResetFrameStats() const { stats_ = RenderStats{}; }
   /// @brief Per-frame counters (draw calls, triangles, culled entities).
   [[nodiscard]] const RenderStats &GetFrameStats() const { return stats_; }
+  /// @brief Records how many entities the scene's frustum culling rejected.
+  void RecordCulledEntities(uint64_t count) const { stats_.culled_entities = count; }
 
   [[nodiscard]] float GetExposure() const;
   [[nodiscard]] float GetBloomStrength() const;

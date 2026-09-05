@@ -346,6 +346,11 @@ void VulkanRHI::SetWireframe(bool wireframe) const {
   (void)wireframe;  // Wireframe rasterization is not implemented for the Vulkan path yet.
 }
 
+void VulkanRHI::DrawIndexedInstanced(int index_count, int instance_count) const {
+  // CPU placeholder backend: instancing arrives with the real Vulkan draw path.
+  (void)index_count;
+  (void)instance_count;
+}
 void VulkanRHI::DrawIndexedTriangles(int index_count) const {
 #if defined(MENGINE_HAS_VULKAN)
   if (!frame_begun_ || cpu_framebuffer_.empty()) {

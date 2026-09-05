@@ -28,6 +28,7 @@ class VulkanRHI final : public IRHI {
   void RenderImGuiDrawData(ImDrawData *draw_data) const override;
 
   void DrawIndexedTriangles(int index_count) const override;
+  void DrawIndexedInstanced(int index_count, int instance_count) const override;
 
   void SetWireframe(bool wireframe) const override;
 

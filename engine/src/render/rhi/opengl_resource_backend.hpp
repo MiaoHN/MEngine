@@ -83,15 +83,17 @@ class OpenGLVertexArrayBackend final : public IVertexArrayBackend {
 
   void SetVertexBuffer(const void *data, size_t size, const std::vector<VertexAttribute> &layouts) override;
   void SetIndexBuffer(const unsigned int *data, int count) override;
+  void SetInstanceData(const glm::mat4 *data, int count) override;
   void Bind() const override;
   void Unbind() const override;
   int  GetCount() const override { return count_; }
 
  private:
-  unsigned int              id_     = 0;
-  unsigned int              vbo_    = 0;
-  unsigned int              ibo_    = 0;
-  int                       count_  = 0;
+  unsigned int              id_       = 0;
+  unsigned int              vbo_      = 0;
+  unsigned int              ibo_      = 0;
+  unsigned int              inst_vbo_ = 0;  // per-instance model matrices (locations 3..6)
+  int                       count_    = 0;
   std::vector<VertexAttribute> layouts_;
 };
 

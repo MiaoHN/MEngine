@@ -27,6 +27,10 @@ class Mesh {
   void Bind() const;
   void Unbind() const;
 
+  /// @brief Uploads per-instance model matrices (locations 3..6, divisor 1).
+  /// Call after Bind() and before an instanced draw of this mesh.
+  void SetInstanceData(const glm::mat4 *models, int count) const { vao_->SetInstanceData(models, count); }
+
   [[nodiscard]] int GetIndexCount() const { return index_count_; }
   [[nodiscard]] const std::vector<Vertex> &GetVertices() const { return vertices_; }
   [[nodiscard]] const std::vector<unsigned int> &GetIndices() const { return indices_; }

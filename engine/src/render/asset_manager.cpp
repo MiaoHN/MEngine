@@ -6,6 +6,8 @@
 #include <json.hpp>
 
 #include "core/logger.hpp"
+#include "render/mesh.hpp"
+#include "render/model_loader.hpp"
 #include "render/shader.hpp"
 #include "render/texture.hpp"
 
@@ -109,6 +111,40 @@ Ref<Shader> AssetManager::GetDefaultShader() {
     default_shader_ = GetShader("default");
   }
   return default_shader_;
+}
+
+Ref<Mesh> AssetManager::GetMesh(const std::string &source) {
+  if (source.empty()) {
+    return nullptr;
+  }
+  const auto cached = mesh_cache_.find(source);
+  if (cached != mesh_cache_.end()) {
+    return cached->second;
+  }
+
+  Ref<Mesh> mesh;
+  if (source == "cube") {
+    mesh = Mesh::CreateCube();
+  } else if (source == "plane") {
+    mesh = Mesh::CreatePlane();
+  } else if (source == "sphere") {
+    mesh = Mesh::CreateSphere();
+  } else {
+    const std::string resolved = Resolve(source);
+    const std::string ext      = std::filesystem::path(resolved).extension().string();
+    if (ext == ".obj") {
+      mesh = ModelLoader::LoadObj(resolved);
+    } else if (ext == ".gltf" || ext == ".glb") {
+      mesh = ModelLoader::LoadGltf(resolved);
+    }
+  }
+
+  if (!mesh) {
+    return nullptr;  // do not cache failures; a later file may appear
+  }
+  mesh->SetSource(source);
+  mesh_cache_[source] = mesh;
+  return mesh;
 }
 
 Ref<Texture> AssetManager::GetDefaultTexture() {
