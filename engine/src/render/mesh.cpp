@@ -89,7 +89,10 @@ Ref<Mesh> Mesh::CreatePlane(float size) {
       {{h, 0.0f, h}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
       {{-h, 0.0f, h}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
   };
-  const std::vector<unsigned int> indices = {0, 1, 2, 2, 3, 0};
+  // Wound so the triangle's geometric normal is +Y (front face when viewed
+  // from above) — required for back-face culling (the default). For a
+  // double-sided overlay, set the material's cull mode to CullMode::None.
+  const std::vector<unsigned int> indices = {0, 3, 2, 2, 1, 0};
 
   Ref<Mesh> mesh = Create(vertices, indices);
   mesh->source_  = "plane";

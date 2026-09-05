@@ -59,7 +59,13 @@ class Material {
   float     metallic_factor_ = 1.0f;
   float     roughness_factor_ = 1.0f;
   float     specular_factor_ = 1.0f;
-  CullMode  cull_mode_ = CullMode::None;
+  // Closed, opaque meshes are the norm (primitives, models, stress grids), so
+  // back-face culling is on by default: interior/back faces of tightly packed
+  // geometry (e.g. adjacent cubes) are not rasterised, which removes the
+  // "overlapping interior faces" look when the camera goes inside geometry and
+  // the redundant shared-face fill. Materials that must be double-sided
+  // (planes, decals, editor overlays) set CullMode::None explicitly.
+  CullMode cull_mode_ = CullMode::Back;
 };
 
 }  // namespace MEngine
