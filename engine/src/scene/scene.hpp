@@ -117,6 +117,13 @@ class Scene {
   /// @brief Rewinds the clock to 0 and applies the t = 0 pose.
   void ResetAnimation();
 
+  /// @brief Timeline / clip length in seconds. The playhead range and loop wrap
+  /// use this (it is independent of where the last keyframe happens to be, so
+  /// the playhead stays movable before any key exists). Grows are optional;
+  /// keys beyond this length are clamped out of playback.
+  void SetAnimationLength(float seconds);
+  [[nodiscard]] float GetAnimationLength() const { return anim_length_; }
+
   template <typename... Components>
   auto GetAllEntitiesWith() {
     auto                view = registry_.view<Components...>();
@@ -283,6 +290,7 @@ class Scene {
 
   /// @brief Shared keyframe-animation timeline clock and playback state.
   float anim_time_    = 0.0f;
+  float anim_length_  = 1.0f;  // timeline/clip length in seconds (scrub range)
   bool  anim_playing_ = false;
   bool  anim_loop_    = true;
 

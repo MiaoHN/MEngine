@@ -92,6 +92,12 @@ class Editor : public Application {
   /// keys at the current playhead (like Blender auto-keyframe / Unity record).
   bool auto_key_ = true;
 
+  // --- Timeline interaction state ------------------------------------------
+  /// @brief Currently selected keyframe: channel 0..2 (T/R/S), -1 = none; the
+  /// key is identified by its time so it survives re-sorting of the channel.
+  int   tl_sel_channel_ = -1;
+  float tl_sel_time_    = -1.0f;
+
   ImGuiID dockspace_id_ = 0;
 
   ImFont *mono_font_ = nullptr;

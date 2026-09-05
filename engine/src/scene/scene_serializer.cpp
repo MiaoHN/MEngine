@@ -561,10 +561,11 @@ void Scene::SaveScene(const std::string &path) {
   }
 
   // Scene-level animation timeline settings (persisted so standalone playback
-  // matches the editor's Loop toggle).
+  // matches the editor's Loop toggle / Length field).
   if (HasAnyAnimation()) {
     json j;
-    j["loop"] = anim_loop_;
+    j["loop"]   = anim_loop_;
+    j["length"] = anim_length_;
     root["animation"] = std::move(j);
   }
 
@@ -680,12 +681,16 @@ void Scene::LoadScene(const std::string &path) {
     SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
   }
 
-  if (root.contains("animation") && root["animation"].is_object()) {
-    anim_loop_ = root["animation"].value("loop", true);
-  }
-
   // Entities.
   LoadEntitiesFromJson(*this, root.value("entities", json()));
+
+  // Scene-level animation settings. Length falls back to the longest clip so
+  // files saved before the explicit length existed still get a usable range.
+  if (root.contains("animation") && root["animation"].is_object()) {
+    const auto &j = root["animation"];
+    anim_loop_    = j.value("loop", true);
+    anim_length_  = j.value("length", std::max(GetAnimationDuration(), 1.0f));
+  }
 
   // Scene main script (loaded after the entities it may reference).
   main_script_ = root.value("main_script", "");
@@ -844,12 +849,15 @@ bool Scene::OpenSceneFile(const std::string &path) {
     SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
   }
 
-  if (root.contains("animation") && root["animation"].is_object()) {
-    anim_loop_ = root["animation"].value("loop", true);
-  }
-
   // Entities.
   LoadEntitiesFromJson(*this, root.value("entities", json()));
+
+  // Scene-level animation settings (length falls back to the longest clip).
+  if (root.contains("animation") && root["animation"].is_object()) {
+    const auto &j = root["animation"];
+    anim_loop_    = j.value("loop", true);
+    anim_length_  = j.value("length", std::max(GetAnimationDuration(), 1.0f));
+  }
 
   main_script_ = root.value("main_script", "");
   LOG_INFO("Scene") << "Opened scene file " << path << " (" << entities_.size() << " entities)";

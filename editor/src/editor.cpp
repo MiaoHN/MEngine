@@ -2146,19 +2146,20 @@ void Editor::ShowImGuiTimeline() {
   PROFILER_FUNCTION();
   ImGui::Begin("Timeline");
 
-  const float duration    = active_scene_->GetAnimationDuration();
-  // The scrub range always has a usable length, so the playhead can move even
-  // before/with a single key (when a lone t=0 key would keep duration == 0).
-  const float timeline_len = std::max(duration, 1.0f);
+  // The scene has an explicit clip LENGTH (seconds). The playhead and loop wrap
+  // always move within [0, length] — independent of where keys happen to be, so
+  // the playhead is never "stuck" at 0.
+  const float length   = active_scene_->GetAnimationLength();
+  const float duration = active_scene_->GetAnimationDuration();
 
-  // --- Transport controls ---------------------------------------------------
+  // --- Transport + clip length ----------------------------------------------
   const bool playing = active_scene_->IsAnimationPlaying();
   if (ImGui::Button(playing ? "Pause" : "Play")) {
     if (!playing && !active_scene_->HasAnyAnimation()) {
-      LOG_INFO("Editor") << "Timeline: nothing animated yet — add keyframes to an entity first";
+      LOG_INFO("Editor") << "Timeline: nothing animated yet — add a key first";
     } else {
       active_scene_->SetAnimationPlaying(!playing);
-      if (!playing && active_scene_->GetAnimationTime() >= duration - 1e-3f) {
+      if (!playing && active_scene_->GetAnimationTime() >= length - 1e-3f) {
         active_scene_->ResetAnimation();  // replay from the start
       }
     }
@@ -2174,27 +2175,33 @@ void Editor::ShowImGuiTimeline() {
     active_scene_->SetAnimationLoop(loop);
   }
   ImGui::SameLine();
-  if (ImGui::Checkbox("Auto-Key", &auto_key_)) {
-    // Auto-Key records gizmo moves on animated entities at the current playhead.
-  }
-  ImGui::SameLine();
-  ImGui::Text("t = %.2f / %.2f s", active_scene_->GetAnimationTime(), timeline_len);
+  ImGui::Checkbox("Auto-Key", &auto_key_);
 
-  // --- Playhead scrubber (drag or type an exact time) -----------------------
+  ImGui::SameLine();
+  ImGui::Text("|  Length");
+  ImGui::SameLine();
+  float len = length;
+  ImGui::SetNextItemWidth(64.0f);
+  if (ImGui::DragFloat("##anim_length", &len, 0.05f, 0.05f, 3600.0f, "%.2f s")) {
+    active_scene_->SetAnimationLength(len);
+  }
+  if (duration > 0.0f) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("(last key %.2fs)", duration);
+  }
+
+  // --- Numeric playhead (drag or type an exact time) -------------------------
   ImGui::SetNextItemWidth(-1.0f);
   float time = active_scene_->GetAnimationTime();
-  if (ImGui::DragFloat("##TimelineScrub", &time, 0.01f, 0.0f, timeline_len, "t = %.2f / %.2f s",
+  if (ImGui::DragFloat("##TimelineScrub", &time, 0.01f, 0.0f, length, "playhead  t = %.2f / %.2f s",
                        ImGuiSliderFlags_AlwaysClamp)) {
     active_scene_->SetAnimationTime(time);
   }
 
-  ImGui::Separator();
-
   if (!active_scene_->HasAnyAnimation()) {
-    ImGui::TextWrapped("Workflow: 1) put the playhead at t=0 and press a Key button below "
-                       "(creates the first key). 2) Drag/type the playhead to a LATER time, then move the "
-                       "entity with the gizmo — Auto-Key records it there. Keys never overwrite each other "
-                       "unless they land on the exact same time.");
+    ImGui::TextWrapped("Workflow: 1) select an entity and press a Key button below (t=0). "
+                       "2) Drag the ruler/playhead (or set Length) to a later time, move the entity — "
+                       "Auto-Key records it there. You can also drag keyframes (diamonds) to retime them.");
   }
 
   // --- Selected-entity keyframe editor ---------------------------------------
@@ -2206,19 +2213,16 @@ void Editor::ShowImGuiTimeline() {
     return;
   }
 
-  Entity &target = selected_entity_;
+  Entity &target    = selected_entity_;
   auto   &transform = target.GetComponent<Transform>();
   if (target.HasComponent<Tag>()) {
     ImGui::Text("Entity: %s", target.GetComponent<Tag>().tag.c_str());
   }
-  const float playhead = active_scene_->GetAnimationTime();
 
   AnimationComponent *anim = target.HasComponent<AnimationComponent>()
                                  ? &target.GetComponent<AnimationComponent>()
                                  : nullptr;
 
-  // The component is only created when the user actually presses a Key button,
-  // never by merely selecting an entity / looking at this panel.
   auto ensure_anim = [&]() -> AnimationComponent & {
     if (anim == nullptr) {
       target.AddComponent<AnimationComponent>();
@@ -2228,12 +2232,21 @@ void Editor::ShowImGuiTimeline() {
   };
 
   using ChannelMember = std::vector<Keyframe> AnimationComponent::*;
+  struct ChannelInfo {
+    const char  *name;
+    ChannelMember member;
+    ImU32         color;
+  };
+  const ChannelInfo kChannels[3] = {
+      {"Translation", &AnimationComponent::translation_keys, IM_COL32(120, 190, 255, 255)},
+      {"Rotation", &AnimationComponent::rotation_keys, IM_COL32(255, 205, 120, 255)},
+      {"Scale", &AnimationComponent::scale_keys, IM_COL32(180, 235, 150, 255)},
+  };
 
-  // Inserts a key at `at` seconds recording the entity's current pose (what the
-  // gizmo/playhead left the Transform at). Same-time keys are overwritten.
-  const auto add_key = [&](ChannelMember member, float at, const glm::vec3 &value) {
+  // Adds a key at `at` recording the current (gizmo/playhead) pose.
+  const auto put_key = [&](int channel, float at, const glm::vec3 &value) {
     auto       &a    = ensure_anim();
-    auto       &keys = a.*member;
+    auto       &keys = a.*kChannels[channel].member;
     const auto  it   = std::find_if(keys.begin(), keys.end(),
                                     [&](const Keyframe &k) { return std::abs(k.time - at) < 1e-4f; });
     if (it != keys.end()) {
@@ -2242,94 +2255,214 @@ void Editor::ShowImGuiTimeline() {
       keys.push_back(Keyframe(at, value));
       std::sort(keys.begin(), keys.end(), [](const Keyframe &x, const Keyframe &y) { return x.time < y.time; });
     }
-    active_scene_->SetAnimationTime(at);  // preview the recorded pose under that time
+    tl_sel_channel_ = channel;
+    tl_sel_time_    = at;
   };
+  const float playhead_time = active_scene_->GetAnimationTime();
 
-  // Re-samples the timeline so an edited key's value/time is reflected in the viewport.
-  const auto reapply = [&]() { active_scene_->SetAnimationTime(active_scene_->GetAnimationTime()); };
-
-  // One channel: an "add time + Key" control, then every key as an editable row
-  // (time and value can be dragged/typed; x deletes it).
-  const auto draw_channel = [&](const char *label, ChannelMember member, const glm::vec3 &current) {
-    bool edited = false;
-    ImGui::TextUnformatted(label);
-    ImGui::SameLine();
-    // Optional explicit timestamp for the next key (defaults to the playhead).
-    ImGui::SetNextItemWidth(56.0f);
-    float add_at = playhead;
-    ImGui::DragFloat(("##addt_" + std::string(label)).c_str(), &add_at, 0.01f, 0.0f, 1e4f, "%.2f");
-    ImGui::SameLine();
-    if (ImGui::SmallButton(("Key##" + std::string(label)).c_str())) {
-      add_key(member, add_at, current);
-    }
-    const size_t count = anim != nullptr ? (anim->*member).size() : 0;
-    ImGui::SameLine();
-    ImGui::TextDisabled("(%zu keys)", count);
-
-    if (anim == nullptr) {
-      return;
-    }
-    auto &keys = anim->*member;
-    std::vector<size_t> to_remove;
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 4.0f));
-    constexpr float kEps = 1e-3f;
-    for (size_t i = 0; i < keys.size(); ++i) {
-      ImGui::PushID(static_cast<int>(label[0]) * 131 + static_cast<int>(i));
-
-      // Time is clamped to stay between its neighbours so the track stays sorted
-      // and key times can never collide.
-      const float tmin = i > 0 ? keys[i - 1].time + kEps : 0.0f;
-      const float tmax = i + 1 < keys.size() ? keys[i + 1].time - kEps : 1e4f;
-      ImGui::SetNextItemWidth(56.0f);
-      if (ImGui::DragFloat("##t", &keys[i].time, 0.01f, tmin, tmax, "%.2f")) {
-        edited = true;
-      }
-      ImGui::SameLine();
-
-      ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f, 2.0f));
-      ImGui::SetNextItemWidth(46.0f);
-      if (ImGui::DragFloat("##x", &keys[i].value.x, 0.05f, -1e4f, 1e4f, "%.2f")) edited = true;
-      ImGui::SameLine();
-      ImGui::SetNextItemWidth(46.0f);
-      if (ImGui::DragFloat("##y", &keys[i].value.y, 0.05f, -1e4f, 1e4f, "%.2f")) edited = true;
-      ImGui::SameLine();
-      ImGui::SetNextItemWidth(46.0f);
-      if (ImGui::DragFloat("##z", &keys[i].value.z, 0.05f, -1e4f, 1e4f, "%.2f")) edited = true;
-      ImGui::SameLine();
-      if (ImGui::SmallButton("x")) {
-        to_remove.push_back(i);
-      }
-      ImGui::PopStyleVar();
-      ImGui::PopID();
-    }
-    ImGui::PopStyleVar();
-    for (auto it = to_remove.rbegin(); it != to_remove.rend(); ++it) {
-      keys.erase(keys.begin() + static_cast<std::ptrdiff_t>(*it));
-    }
-    if (edited) {
-      reapply();
-    }
-  };
-
-  draw_channel("Translation", &AnimationComponent::translation_keys, transform.translation);
-  draw_channel("Rotation", &AnimationComponent::rotation_keys, transform.rotation);
-  draw_channel("Scale", &AnimationComponent::scale_keys, transform.scale);
-
+  // --- "Add key @ playhead" buttons ------------------------------------------
+  if (ImGui::Button("Key Translation")) put_key(0, playhead_time, transform.translation);
+  ImGui::SameLine();
+  if (ImGui::Button("Key Rotation")) put_key(1, playhead_time, transform.rotation);
+  ImGui::SameLine();
+  if (ImGui::Button("Key Scale")) put_key(2, playhead_time, transform.scale);
+  ImGui::SameLine();
+  ImGui::TextDisabled("(records current pose at playhead)");
   if (anim != nullptr && anim->Empty()) {
-    // No keys left on any channel -> drop the now-useless component.
+    // Keys removed from every channel -> drop the now-useless component.
     target.RemoveComponent<AnimationComponent>();
     anim = nullptr;
+  }
+  ImGui::Separator();
+
+  // ==========================================================================
+  //  Keyframe graph (Godot/Unity style): time ruler + per-property lanes with
+  //  draggable keyframe diamonds.
+  // ==========================================================================
+  const float label_w = 90.0f;
+  const float lane_h  = 20.0f;
+  const float ruler_h = 22.0f;
+  const float left_x  = ImGui::GetCursorScreenPos().x;
+  const float top_y   = ImGui::GetCursorScreenPos().y;
+  const float avail_x = std::max(ImGui::GetContentRegionAvail().x, 60.0f);
+  const float lane_x0 = left_x + label_w;
+  const float lane_w  = std::max(avail_x - label_w - 6.0f, 20.0f);
+  const float px_per_s = length > 1e-4f ? lane_w / length : 0.0f;
+
+  const auto t_to_x = [&](float t) { return lane_x0 + t * px_per_s; };
+  const auto x_to_t = [&](float mx) {
+    return px_per_s > 0.0f ? std::max(0.0f, (mx - lane_x0) / px_per_s) : 0.0f;
+  };
+  auto scrub_to_x = [&](float mx) {
+    const float t = std::min(x_to_t(mx), length);
+    active_scene_->SetAnimationTime(t);
+  };
+
+  ImDrawList *dl = ImGui::GetWindowDrawList();
+  const float graph_bottom = top_y + ruler_h + 3.0f * lane_h;
+
+  // --- Ruler ---------------------------------------------------------------
+  ImGui::SetCursorScreenPos(ImVec2(lane_x0, top_y));
+  ImGui::InvisibleButton("##tl_ruler", ImVec2(lane_w, ruler_h));
+  if (ImGui::IsItemActive()) {
+    scrub_to_x(ImGui::GetIO().MousePos.x);
+  }
+  const float tick_step = length <= 2.0f   ? 0.25f
+                          : length <= 5.0f ? 0.5f
+                          : length <= 12.0f ? 1.0f
+                                            : 2.0f;
+  dl->AddRect(ImVec2(lane_x0, top_y), ImVec2(lane_x0 + lane_w, top_y + ruler_h), IM_COL32(120, 120, 120, 120));
+  for (float t = 0.0f; t <= length + 1e-4f; t += tick_step) {
+    const float x = t_to_x(t);
+    const bool  major = std::abs(t - std::floor(t + 1e-4f)) < 1e-3f;
+    dl->AddLine(ImVec2(x, top_y + (major ? 2.0f : 10.0f)), ImVec2(x, top_y + ruler_h - 2.0f),
+                IM_COL32(140, 140, 140, major ? 200 : 90));
+    if (major) {
+      char buf[16];
+      std::snprintf(buf, sizeof(buf), "%.0fs", t);
+      const ImVec2 ts = ImGui::CalcTextSize(buf);
+      dl->AddText(ImVec2(x - ts.x * 0.5f, top_y + 4.0f), IM_COL32(190, 190, 190, 220), buf);
+    }
+  }
+
+  // --- Lanes (T / R / S) ----------------------------------------------------
+  for (int c = 0; c < 3; ++c) {
+    const ChannelInfo &info = kChannels[c];
+    const float        y0   = top_y + ruler_h + static_cast<float>(c) * lane_h;
+
+    // Label + per-property quick-add.
+    ImGui::SetCursorScreenPos(ImVec2(left_x + 4.0f, y0));
+    ImGui::TextUnformatted(info.name);
+
+    // The lane itself: drag on empty space scrubs the playhead.
+    ImGui::SetCursorScreenPos(ImVec2(lane_x0, y0));
+    ImGui::InvisibleButton(("##tl_lane" + std::to_string(c)).c_str(), ImVec2(lane_w, lane_h));
+    if (ImGui::IsItemActive()) {
+      scrub_to_x(ImGui::GetIO().MousePos.x);
+    }
+    if (ImGui::IsItemHovered()) {
+      dl->AddRectFilled(ImVec2(lane_x0, y0), ImVec2(lane_x0 + lane_w, y0 + lane_h), IM_COL32(90, 90, 100, 24));
+    }
+
+    auto *keys = (anim != nullptr) ? &(anim->*info.member) : nullptr;
+    if (keys == nullptr) {
+      continue;
+    }
+
+    // Keyframe handles (created AFTER the lane so they take the hit) + diamonds.
+    constexpr float kEps = 1e-3f;
+    for (size_t i = 0; i < keys->size(); ++i) {
+      Keyframe &key = (*keys)[i];
+      const float cx = t_to_x(key.time);
+      ImGui::PushID(static_cast<int>(c) * 4096 + static_cast<int>(i));
+      ImGui::SetCursorScreenPos(ImVec2(cx - 6.0f, y0));
+      ImGui::InvisibleButton("##tl_key", ImVec2(12.0f, lane_h));
+      if (ImGui::IsItemActive()) {
+        // Retime this key by dragging horizontally; clamp between neighbours so
+        // the channel always stays sorted and no two keys share a time.
+        float t = std::min(x_to_t(ImGui::GetIO().MousePos.x), length);
+        if (i > 0) t = std::max(t, (*keys)[i - 1].time + kEps);
+        if (i + 1 < keys->size()) t = std::min(t, (*keys)[i + 1].time - kEps);
+        key.time          = t;
+        tl_sel_channel_   = c;
+        tl_sel_time_      = key.time;
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+        tl_sel_channel_ = c;
+        tl_sel_time_    = key.time;
+      }
+      ImGui::PopID();
+
+      const bool selected = tl_sel_channel_ == c && std::abs(tl_sel_time_ - key.time) < 1e-3f;
+      const float cy = y0 + lane_h * 0.5f;
+      if (selected) {
+        dl->AddRectFilled(ImVec2(cx - 4.0f, cy - 4.0f), ImVec2(cx + 4.0f, cy + 4.0f), IM_COL32(255, 255, 255, 255));
+      }
+      dl->AddTriangleFilled(ImVec2(cx, cy - 6.0f), ImVec2(cx - 5.0f, cy), ImVec2(cx + 5.0f, cy), info.color);
+      if (selected) {
+        dl->AddTriangle(ImVec2(cx, cy - 6.0f), ImVec2(cx - 5.0f, cy), ImVec2(cx + 5.0f, cy), IM_COL32(0, 0, 0, 255), 1.5f);
+      }
+    }
+  }
+
+  // Playhead line across the whole graph + a draggable head at the ruler.
+  {
+    const float px = t_to_x(active_scene_->GetAnimationTime());
+    dl->AddLine(ImVec2(px, top_y), ImVec2(px, graph_bottom), IM_COL32(240, 90, 90, 220), 1.5f);
+    dl->AddTriangleFilled(ImVec2(px, top_y), ImVec2(px - 5.0f, top_y + 6.0f), ImVec2(px + 5.0f, top_y + 6.0f),
+                          IM_COL32(240, 90, 90, 255));
+  }
+
+  // Advance layout below the graph, then the selected-key inspector.
+  ImGui::SetCursorScreenPos(ImVec2(left_x, graph_bottom + 6.0f));
+  ImGui::Separator();
+
+  // --- Selected key inspector ----------------------------------------------
+  // Identified by (channel, time); resolved to an index each frame so edits
+  // never dangle. Time edits are clamped between neighbours (no re-sort needed).
+  int                       sel_c = -1;
+  size_t                    sel_i = 0;
+  std::vector<Keyframe>    *sel_keys = nullptr;
+  if (anim != nullptr && tl_sel_channel_ >= 0 && tl_sel_channel_ < 3) {
+    auto &keys = anim->*kChannels[tl_sel_channel_].member;
+    for (size_t i = 0; i < keys.size(); ++i) {
+      if (std::abs(keys[i].time - tl_sel_time_) < 1e-3f) {
+        sel_c     = tl_sel_channel_;
+        sel_i     = i;
+        sel_keys  = &keys;
+        break;
+      }
+    }
+    if (sel_keys == nullptr) {
+      tl_sel_channel_ = -1;  // key deleted; drop the stale selection
+    }
+  }
+
+  if (sel_keys != nullptr) {
+    Keyframe &key = (*sel_keys)[sel_i];
+    ImGui::TextUnformatted(("Key  " + std::string(kChannels[sel_c].name)).c_str());
+    ImGui::SameLine();
+    constexpr float kEps = 1e-3f;
+    const float tmin = sel_i > 0 ? (*sel_keys)[sel_i - 1].time + kEps : 0.0f;
+    const float tmax = sel_i + 1 < sel_keys->size() ? (*sel_keys)[sel_i + 1].time - kEps : length;
+    float       st   = key.time;
+    ImGui::SetNextItemWidth(64.0f);
+    if (ImGui::DragFloat("time", &st, 0.01f, tmin, tmax, "%.2f s")) {
+      key.time    = st;
+      tl_sel_time_ = key.time;
+    }
+    bool edited = false;
+    ImGui::SetNextItemWidth(52.0f);
+    edited |= ImGui::DragFloat("##vx", &key.value.x, 0.05f, -1e4f, 1e4f, "%.2f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(52.0f);
+    edited |= ImGui::DragFloat("##vy", &key.value.y, 0.05f, -1e4f, 1e4f, "%.2f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(52.0f);
+    edited |= ImGui::DragFloat("##vz", &key.value.z, 0.05f, -1e4f, 1e4f, "%.2f");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Delete")) {
+      sel_keys->erase(sel_keys->begin() + static_cast<std::ptrdiff_t>(sel_i));
+      tl_sel_channel_ = -1;
+    }
+    if (edited) {
+      // Refresh the viewport pose so value edits are visible immediately.
+      active_scene_->SetAnimationTime(active_scene_->GetAnimationTime());
+    }
+  } else {
+    ImGui::TextDisabled("Click a keyframe diamond (or drag it to change its time), then edit here.");
   }
 
   ImGui::Separator();
   if (anim != nullptr && ImGui::Button("Remove Animation")) {
     target.RemoveComponent<AnimationComponent>();
     anim = nullptr;
+    tl_sel_channel_ = -1;
     LOG_INFO("Editor") << "Removed animation from '" << target.GetComponent<Tag>().tag << "'";
   }
   if (anim != nullptr && !anim->Empty()) {
     ImGui::SameLine();
-    ImGui::TextDisabled("duration %.2f s", anim->Duration());
+    ImGui::TextDisabled("content duration %.2f s (clip length %.2f s)", anim->Duration(), length);
   }
 
   ImGui::End();

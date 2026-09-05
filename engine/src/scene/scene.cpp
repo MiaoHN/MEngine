@@ -438,8 +438,9 @@ void Scene::ApplyAnimations() {
 }
 
 void Scene::SetAnimationTime(float time) {
-  const float duration = GetAnimationDuration();
-  anim_time_           = duration > 0.0f ? std::max(0.0f, std::min(time, duration)) : 0.0f;
+  // The playhead is clamped to the timeline LENGTH (not to where the last key
+  // is) so it stays movable even when nothing / a lone t=0 key exists.
+  anim_time_ = std::max(0.0f, std::min(time, anim_length_));
   ApplyAnimations();
 }
 
@@ -447,19 +448,25 @@ void Scene::AdvanceAnimation(float dt) {
   if (dt <= 0.0f) {
     return;
   }
-  const float duration = GetAnimationDuration();
-  if (duration <= 0.0f) {
+  if (anim_length_ <= 0.0f) {
     anim_time_ = 0.0f;
     return;
   }
   if (anim_loop_) {
-    SetAnimationTime(std::fmod(anim_time_ + dt, duration));
+    SetAnimationTime(std::fmod(anim_time_ + dt, anim_length_));
   } else {
     const float next = anim_time_ + dt;
-    if (next >= duration) {
+    if (next >= anim_length_) {
       anim_playing_ = false;
     }
     SetAnimationTime(next);
+  }
+}
+
+void Scene::SetAnimationLength(float seconds) {
+  anim_length_ = std::max(0.01f, seconds);
+  if (anim_time_ > anim_length_) {
+    SetAnimationTime(anim_length_);  // keep the playhead in range
   }
 }
 

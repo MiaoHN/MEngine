@@ -34,7 +34,7 @@ graph TB
 | 内容浏览器 | `ShowImGuiContentBrowser()` | 遍历 `assets/` 目录，图片缩略图 + 拖拽源（`CONTENT_BROWSER_ITEM` payload） |
 | 视口 | `ShowImGuiViewport()` | 显示视口 FBO 纹理；工具栏（Translate/Rotate/Scale + Play/Stop）；接收模型拖入 |
 | 场景层级 | `ShowImGuiScene()` | **父/子层级树**（缩进 + 展开/折叠，子实体随父实体移动/旋转/缩放）；Create（Empty/Cube/Plane/Sphere/Camera）+ Delete（级联删除子树）+ Duplicate（整棵子树深拷贝）；右键节点可 Create Child / Duplicate / Delete / Unparent；**拖拽到另一节点 = 重新父化**，拖到列表下方空区 = 解除父化 |
-| 时间轴 | `ShowImGuiTimeline()` | **关键帧动画**：Play/Pause/Stop + Loop + 时间线 scrub（用共享场景时钟采样所有 `AnimationComponent` 写入本地 Transform，视口实时预览位姿）；选中实体可对 Translation / Rotation / Scale 在当前时间 **加关键帧**（记录当前位姿）、点击关键帧跳转 / `x` 删除、Remove Animation；无关键帧的通道不动、空组件自动移除；Play 模式自动从 t=0 播放 |
+| 时间轴 | `ShowImGuiTimeline()` | **关键帧动画（对齐 Godot/Unity/UE 习惯）**：Play/Pause/Stop + Loop + Auto-Key；可设置 **Length(时长)**；可拖/可输入的 **playhead**；下方是**时间标尺 + T/R/S 三条关键帧轨道**——在标尺/轨道上点击拖动 = 移动 playhead，**菱形关键帧可左右拖动改时间**，点击选中后在下方 inspector 编辑 time / xyz / 删除；顶部 Key Translation/Rotation/Scale 在当前 playhead 记录当前位姿；Play 模式自动从 t=0 播放（时长/loop 持久化到场景） |
 | 属性 | `ShowImGuiProperties()` | 编辑选中实体：Tag/Transform/Mesh（材质贴图槽 + 因子）/Camera |
 | 光照 | `ShowImGuiLighting()` | 方向光 + 点光源列表（增删改） |
 | 日志 | 同 | 显示 `mengine.log`，支持 Clear |
