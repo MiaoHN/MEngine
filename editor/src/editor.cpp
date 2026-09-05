@@ -1406,7 +1406,15 @@ void Editor::ShowImGuiLighting() {
 
   DirectionalLight &dir_light = active_scene_->GetLight();
   ImGui::Text("Directional Light");
-  DrawVec3Control("Direction", dir_light.direction);
+  DrawVec3Control("Direction (travel)", dir_light.direction);
+  ImGui::SameLine();
+  ImGui::TextDisabled("(?)");
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Direction the light TRAVELS (away from the sun).\n"
+                      "The sun is at the opposite end.\n"
+                      "e.g. (0, -1, 0) = sun straight above.\n"
+                      "Filling in the sun position instead makes shading look inverted.");
+  }
   ImGui::ColorEdit3("Color", glm::value_ptr(dir_light.color));
 
   ImGui::Separator();
