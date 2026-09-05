@@ -72,6 +72,22 @@ class Application {
   static void SetStartupScenePath(const std::string &path) { startup_scene_path_ = path; }
   [[nodiscard]] static const std::string &GetStartupScenePath() { return startup_scene_path_; }
 
+  /// @brief Graphics API parsed from the command line (`--api opengl|vulkan`);
+  /// apps use this when choosing their backend.
+  static void SetStartupApi(GraphicsAPI api) { startup_api_ = api; }
+  [[nodiscard]] static GraphicsAPI GetStartupApi() { return startup_api_; }
+
+  /// @brief Optional frame budget (`--frames <n>`): when positive the main loop
+  /// exits after that many frames (headless/unattended smoke runs).
+  static void SetMaxFrames(int frames) { max_frames_ = frames; }
+  [[nodiscard]] static int GetMaxFrames() { return max_frames_; }
+
+  /// @brief Whether the window should stay invisible (`--hidden`): rendering
+  /// still happens into the default framebuffer, which is what unattended
+  /// verification runs rely on.
+  static void SetWindowHidden(bool hidden) { window_hidden_ = hidden; }
+  [[nodiscard]] static bool IsWindowHidden() { return window_hidden_; }
+
  protected:
   /**
    * @brief scene_ is a unique pointer to the Scene class.
@@ -101,7 +117,10 @@ class Application {
 
   GraphicsAPI graphics_api_;
 
-  static std::string startup_scene_path_;
+  static std::string     startup_scene_path_;
+  static GraphicsAPI     startup_api_;
+  static int             max_frames_;
+  static bool            window_hidden_;
 };
 
 }  // namespace MEngine

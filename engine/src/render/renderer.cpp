@@ -106,6 +106,8 @@ void Renderer::RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) const 
     shader->SetUniform("proj_view", proj_view);
     shader->SetUniform("texture1", 0);
 
+    stats_.draw_calls += 1;
+    stats_.triangles += 2;
     pipeline_->Execute();
   } else {
     const auto shader  = pipeline_->GetShader();
@@ -135,6 +137,8 @@ void Renderer::RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view
   shader->SetUniform("proj_view", proj_view);
   shader->SetUniform("texture1", 0);
 
+  stats_.draw_calls += 1;
+  stats_.triangles += 2;
   pipeline_->Execute();
   // pass_->Begin();
 
@@ -158,6 +162,8 @@ void Renderer::DrawMeshShadow(const Ref<Mesh> &mesh, const glm::mat4 &model, con
   (void)light_view_proj;
   depth_shader_->SetUniform("model", model);
   mesh->Bind();
+  stats_.draw_calls += 1;
+  stats_.triangles += mesh->GetIndexCount() / 3;
   if (const auto *rhi = GetActiveRHI(); rhi) {
     rhi->DrawIndexedTriangles(mesh->GetIndexCount());
   }
@@ -203,6 +209,8 @@ void Renderer::DrawMeshPointShadow(const Ref<Mesh> &mesh, const glm::mat4 &model
   }
   point_light_depth_shader_->SetUniform("model", model);
   mesh->Bind();
+  stats_.draw_calls += 1;
+  stats_.triangles += mesh->GetIndexCount() / 3;
   if (const auto *rhi = GetActiveRHI(); rhi) {
     rhi->DrawIndexedTriangles(mesh->GetIndexCount());
   }
@@ -224,6 +232,8 @@ void Renderer::DrawMeshSSAO(const Ref<Mesh> &mesh, const glm::mat4 &model) const
   }
   ssao_->SetGeometryModel(model);
   mesh->Bind();
+  stats_.draw_calls += 1;
+  stats_.triangles += mesh->GetIndexCount() / 3;
   if (const auto *rhi = GetActiveRHI(); rhi) {
     rhi->DrawIndexedTriangles(mesh->GetIndexCount());
   }
@@ -401,6 +411,8 @@ void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, co
 
   mesh->Bind();
   if (const auto *rhi = GetActiveRHI(); rhi) {
+    stats_.draw_calls += 1;
+    stats_.triangles += mesh->GetIndexCount() / 3;
     rhi->SetWireframe(render_mode_ == RenderMode::Wireframe);
     rhi->DrawIndexedTriangles(mesh->GetIndexCount());
     rhi->SetWireframe(false);

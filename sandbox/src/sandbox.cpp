@@ -8,7 +8,7 @@
 #include "render/model_loader.hpp"
 #include "utils/profiler.h"
 
-Sandbox::Sandbox() : Application(GraphicsAPI::OpenGL) {
+Sandbox::Sandbox() : Application(Application::GetStartupApi()) {
   active_scene_ = std::make_shared<Scene>();
 
   // Standalone play: load a scene saved by the editor instead of the demo.

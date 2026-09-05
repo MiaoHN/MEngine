@@ -33,6 +33,15 @@ class Texture;
 /// @brief High-level shading mode selectable from the editor.
 enum class RenderMode { Lit, Unlit, Wireframe };
 
+/// @brief Per-frame render counters. Reset at the start of each scene render
+/// (`ResetFrameStats`) and read back by Scene (logging) and the editor (UI).
+struct RenderStats {
+  uint64_t draw_calls      = 0;  ///< API-level indexed draws issued this frame
+  uint64_t triangles       = 0;  ///< triangles submitted (instancing multiplies)
+  uint64_t instanced_draws = 0;  ///< draw calls issued through instancing
+  uint64_t culled_entities = 0;  ///< mesh entities rejected by frustum culling
+};
+
 class Renderer {
  public:
   Renderer();
@@ -126,6 +135,11 @@ class Renderer {
   void SetRenderMode(RenderMode mode) { render_mode_ = mode; }
   [[nodiscard]] RenderMode GetRenderMode() const { return render_mode_; }
 
+  /// @brief Clears the per-frame counters (call at the start of a scene pass).
+  void ResetFrameStats() const { stats_ = RenderStats{}; }
+  /// @brief Per-frame counters (draw calls, triangles, culled entities).
+  [[nodiscard]] const RenderStats &GetFrameStats() const { return stats_; }
+
   [[nodiscard]] float GetExposure() const;
   [[nodiscard]] float GetBloomStrength() const;
   [[nodiscard]] float GetBloomThreshold() const;
@@ -153,6 +167,8 @@ class Renderer {
   float ibl_intensity_     = 1.0f;
   bool  ssao_enabled_      = false;
   RenderMode render_mode_  = RenderMode::Lit;
+
+  mutable RenderStats stats_;
 };
 
 }  // namespace MEngine

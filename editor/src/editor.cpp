@@ -297,7 +297,7 @@ void DrawFolderIcon(ImDrawList *draw, const ImVec2 &min, const ImVec2 &max) {
 
 }  // namespace
 
-Editor::Editor() = default;
+Editor::Editor() : Application(Application::GetStartupApi()) {}
 
 Editor::~Editor() {
   if (rhi_) {

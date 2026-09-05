@@ -8,6 +8,9 @@ namespace MEngine {
 static Application *s_app;
 
 std::string Application::startup_scene_path_;
+GraphicsAPI Application::startup_api_ = GraphicsAPI::OpenGL;
+int         Application::max_frames_  = 0;  // 0 = run until the window closes
+bool        Application::window_hidden_ = false;
 
 Application *Application::GetInstance() { return s_app; }
 
@@ -46,6 +49,12 @@ Application::Application(GraphicsAPI api) : graphics_api_(api) {
   SetActiveRHI(rhi_);
 
   rhi_->SetupWindowHints();
+
+  // `--hidden` keeps the window invisible (headless-style smoke runs still
+  // render into the default framebuffer and swap normally).
+  if (window_hidden_) {
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+  }
 
   window_ = glfwCreateWindow(1600, 900, "MEngine", nullptr, nullptr);
 
@@ -101,6 +110,12 @@ void Application::Run() {
     rhi_->EndFrame(window_);
 
     glfwPollEvents();
+
+    // Unattended runs: exit after the requested frame budget.
+    if (max_frames_ > 0 && frame_count_ >= max_frames_) {
+      LOG_INFO("Application") << "Frame budget reached (" << frame_count_ << " frames); exiting";
+      break;
+    }
   }
 }
 

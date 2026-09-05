@@ -1,6 +1,7 @@
 #include "scene/scene.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <limits>
 
 #include <glm/gtx/euler_angles.hpp>
@@ -506,7 +507,16 @@ bool Scene::HasPrimaryCamera() {
 
 void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos,
                          unsigned int target_fbo, int target_width, int target_height) {
+  using clock = std::chrono::steady_clock;
+  const auto time_ms = [](clock::time_point start) {
+    return static_cast<float>(std::chrono::duration<double, std::milli>(clock::now() - start).count());
+  };
+
   auto entities = GetAllEntitiesWith<MeshComponent>();
+  renderer_->ResetFrameStats();
+  for (float &t : pass_times_ms_) {
+    t = 0.0f;
+  }
   if (entities.empty()) {
     return;
   }
@@ -536,20 +546,25 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   }
 
   renderer_->BeginShadowPass(light_view_proj);
-  for (auto &entity : entities) {
-    if (!IsRenderable(entity)) {
-      continue;
+  {
+    const auto t_start = clock::now();
+    for (auto &entity : entities) {
+      if (!IsRenderable(entity)) {
+        continue;
+      }
+      auto &component = entity.GetComponent<MeshComponent>();
+      const glm::mat4 model =
+          entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
+      renderer_->DrawMeshShadow(component.mesh, model, light_view_proj);
     }
-    auto &component = entity.GetComponent<MeshComponent>();
-    const glm::mat4 model =
-        entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
-    renderer_->DrawMeshShadow(component.mesh, model, light_view_proj);
+    renderer_->EndShadowPass();
+    pass_times_ms_[0] = time_ms(t_start);
   }
-  renderer_->EndShadowPass();
 
   // Omnidirectional (point light) shadow passes: one cube map per
   // shadow-casting point light, rendered face by face.
   {
+    const auto t_point_start = clock::now();
     const auto &point_lights = renderer_->GetPointLights();
     for (size_t i = 0; i < point_lights.size(); ++i) {
       const int shadow_index = renderer_->GetPointShadowIndex(static_cast<int>(i));
@@ -573,9 +588,11 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
       }
       renderer_->EndPointShadowPass(shadow_index);
     }
+    pass_times_ms_[1] = time_ms(t_point_start);
   }
 
   // SSAO geometry pass (view-space position + normal), then the AO passes.
+  const auto t_ssao_start = clock::now();
   if (renderer_->IsSSAOEnabled()) {
     renderer_->BeginSSAOPass(proj, view);
     for (auto &entity : entities) {
@@ -590,30 +607,60 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     renderer_->EndSSAOPass();
     renderer_->GenerateSSAO(proj, view);
   }
+  pass_times_ms_[2] = time_ms(t_ssao_start);
 
   // Main pass into the HDR scene framebuffer.
   renderer_->BeginScene();
-  for (auto &entity : entities) {
-    auto &component = entity.GetComponent<MeshComponent>();
-    if (!component.mesh || !component.material) {
-      continue;
+  {
+    const auto t_start = clock::now();
+    for (auto &entity : entities) {
+      auto &component = entity.GetComponent<MeshComponent>();
+      if (!component.mesh || !component.material) {
+        continue;
+      }
+
+      const glm::mat4 model =
+          entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
+
+      renderer_->DrawMesh(component.mesh, component.material, model, proj_view, camera_pos, light_view_proj);
     }
-
-    const glm::mat4 model =
-        entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
-
-    renderer_->DrawMesh(component.mesh, component.material, model, proj_view, camera_pos, light_view_proj);
+    pass_times_ms_[3] = time_ms(t_start);
   }
 
   // Skybox background (drawn after the meshes with depth test LEQUAL).
-  renderer_->RenderSkybox(view, render_proj);
-  renderer_->EndScene();
+  {
+    const auto t_start = clock::now();
+    renderer_->RenderSkybox(view, render_proj);
+    renderer_->EndScene();
+    pass_times_ms_[4] = time_ms(t_start);
+  }
 
   // TAA resolve blends the jittered frame with the history buffer.
   renderer_->ResolveTAA();
 
   // Bloom + tone mapping to the target framebuffer.
-  renderer_->PostProcess(view, proj, target_fbo, target_width, target_height);
+  {
+    const auto t_start = clock::now();
+    renderer_->PostProcess(view, proj, target_fbo, target_width, target_height);
+    pass_times_ms_[5] = time_ms(t_start);
+  }
+
+  // Periodic unattended-friendly summary of the frame's render work. Throttled
+  // by wall-clock time (steady clock) so short headless runs still emit rows.
+  {
+    static clock::time_point s_last_log = clock::now();
+    const float elapsed_s = static_cast<float>(
+        std::chrono::duration<double>(clock::now() - s_last_log).count());
+    if (elapsed_s >= 2.0f) {
+      s_last_log = clock::now();
+      const auto &stats = renderer_->GetFrameStats();
+      LOG_INFO("RenderStats") << "drawcalls=" << stats.draw_calls << " instanced=" << stats.instanced_draws
+                              << " triangles=" << stats.triangles << " culled=" << stats.culled_entities
+                              << " [ms] shadow=" << pass_times_ms_[0] << " point=" << pass_times_ms_[1]
+                              << " ssao=" << pass_times_ms_[2] << " main=" << pass_times_ms_[3]
+                              << " post=" << pass_times_ms_[5];
+    }
+  }
 }
 
 void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(light); }
@@ -665,6 +712,12 @@ float Scene::GetShadowPcfRadius() const { return renderer_->GetShadowPcfRadius()
 float Scene::GetIblIntensity() const { return renderer_->GetIblIntensity(); }
 
 float Scene::GetGodRaysStrength() const { return renderer_->GetGodRaysStrength(); }
+
+void Scene::GetLastPassTimes(float out_times[6]) const {
+  for (int i = 0; i < 6; ++i) {
+    out_times[i] = pass_times_ms_[i];
+  }
+}
 
 void Scene::SetRenderMode(RenderMode mode) { renderer_->SetRenderMode(mode); }
 

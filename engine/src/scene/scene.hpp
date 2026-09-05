@@ -160,6 +160,10 @@ class Scene {
   void SetMainScript(const std::string &path) { main_script_ = path; }
   [[nodiscard]] const std::string &GetMainScript() const { return main_script_; }
 
+  /// @brief Fills `out` with the per-pass timings of the last frame
+  /// (shadow / point shadows / ssao / main / skybox / post), in milliseconds.
+  void GetLastPassTimes(float out_times[6]) const;
+
   /// @brief Finds an entity by tag name (returns a null entity when absent).
   [[nodiscard]] Entity FindEntityByName(const std::string &name);
 
@@ -237,6 +241,9 @@ class Scene {
 
   Ref<ScriptEngine> script_engine_;
   std::string       main_script_;
+
+  /// @brief Per-pass timings of the last rendered frame (ms).
+  float pass_times_ms_[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 }  // namespace MEngine
