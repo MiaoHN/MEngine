@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-06 — Editor Timeline：关键帧时间戳可直接编辑（修复“改不了时间戳”）
+
+- **用户反馈**：Timeline 里“改不了动画的时间戳”——初版只能把关键帧加到“当前 playhead”，没有地方改/输入某个关键帧的时间；且无关键帧时 duration=0、scrub 被禁用。
+- **改动**（editor.cpp 仅 UI）：
+  - 每个通道头部新增**“时间输入框 + Key”**：可先输入目标时间（默认跟随 playhead）再 Key，第一帧也能落在任意 t。
+  - 每个关键帧改成可编辑行：**时间可拖/可输入**（DragFloat，自动夹在相邻关键帧之间，保持有序、防重叠）、**值 x/y/z 可拖/可输入**、`x` 删除；改动后立即 `SetAnimationTime` 刷新视口位姿。
+  - Playhead 由 SliderFloat 改为 **DragFloat（可输入精确时间）**，范围夹到 [0, duration]。
+- **验证**：debug/release 全链零警告，`tools/run_smoke.py` ALL PASS（该面板行为需在编辑器里手动确认：选中实体后可拖动/输入每个关键帧的时间）。
+
+---
+
 ## 2026-09-06 — Editor：关键帧时间轴动画（AnimationComponent + Timeline 面板 + Play 自动播放）
 
 - **需求**：在父子层级地基之上实现“关键帧时间轴动画”（DEV-PLAN 推荐路线 A）。
