@@ -237,6 +237,9 @@ void Editor::OnUpdate(float dt) {
 
   if (show_information_) ShowImGuiInformation();
 
+  // Close the "DockSpace Demo" host window opened in BeginImGui().
+  ImGui::End();
+
   EndImGui();
 }
 
