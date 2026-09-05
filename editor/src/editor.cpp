@@ -785,9 +785,18 @@ void Editor::ShowImGuiViewport() {
       SetGridVisible(false);
     } else {
       game_mode_ = GameMode::Edit;
-      active_scene_->StopSimulation();
+      // Fire OnDestroy hooks first (while the entities are still alive), then
+      // restore the authoring scene captured at Play start.
       active_scene_->GetScriptEngine().Clear();
+      active_scene_->StopSimulation();
       SetGridVisible(true);
+
+      // The snapshot restore re-creates entities; drop a selection that no
+      // longer exists so the Properties panel never dereferences a stale handle.
+      if (selected_entity_.GetHandle() != entt::null &&
+          !active_scene_->GetRegistry().valid(selected_entity_.GetHandle())) {
+        selected_entity_ = Entity();
+      }
     }
   }
   ImGui::SameLine();
@@ -1922,8 +1931,13 @@ void Editor::LaunchStandalone() {
   // transforms rather than mid-simulation poses.
   if (game_mode_ == GameMode::Play) {
     game_mode_ = GameMode::Edit;
+    active_scene_->GetScriptEngine().Clear();
     active_scene_->StopSimulation();
     SetGridVisible(true);
+    if (selected_entity_.GetHandle() != entt::null &&
+        !active_scene_->GetRegistry().valid(selected_entity_.GetHandle())) {
+      selected_entity_ = Entity();
+    }
   }
 
   const std::filesystem::path scene_path  = build_root / "play_scene.json";
@@ -2023,8 +2037,14 @@ void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
 
   ImGui::DockBuilderDockWindow("Content Browser", dock_bottom);
   ImGui::DockBuilderDockWindow("Log", dock_bottom);
-  ImGui::DockBuilderDockWindow("Script Editor", dock_bottom);
-  ImGui::DockBuilderDockWindow("Viewport", dockspace_id);
+
+  // Central area: the Viewport keeps most of the space, with the Script Editor
+  // docked beside it so code and the game view stay visible together.
+  ImGuiID dock_editor   = 0;
+  ImGuiID dock_viewport = 0;
+  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.32f, &dock_editor, &dock_viewport);
+  ImGui::DockBuilderDockWindow("Viewport", dock_viewport);
+  ImGui::DockBuilderDockWindow("Script Editor", dock_editor);
 
   // Right column: Information on top, Lighting + Rendering below.
   ImGuiID dock_right_info = 0;

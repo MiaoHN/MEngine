@@ -203,14 +203,21 @@ class Scene {
   /// + collision dispatch all advance at kFixedTimeStep).
   float sim_accumulator_ = 0.0f;
 
-  struct TransformSnapshot {
-    glm::vec3 translation;
-    glm::vec3 rotation;
-    glm::vec3 scale;
-  };
-  std::unordered_map<entt::entity, TransformSnapshot> transform_snapshot_;
-  std::unordered_map<entt::entity, JPH::BodyID>       body_ids_;
-  std::unordered_map<uint32_t, entt::entity>          body_id_to_entity_;
+  std::unordered_map<entt::entity, JPH::BodyID> body_ids_;
+  std::unordered_map<uint32_t, entt::entity>    body_id_to_entity_;
+
+  /// @brief JSON snapshot of the authoring (content, non-editor) entities,
+  /// taken when a simulation starts. StopSimulation restores the scene from it
+  /// so script-side changes (moves, colors, spawned/destroyed entities) never
+  /// leak back into Edit mode.
+  std::string play_snapshot_;
+
+  /// @brief Serializes the current content entities into play_snapshot_.
+  void CapturePlaySnapshot();
+
+  /// @brief Replaces every content entity with the captured snapshot, leaving
+  /// editor-only entities (e.g. the grid) untouched.
+  void RestorePlaySnapshot();
 
   /// @brief Synchronizes Jolt bodies with the RigidBody/Collider components
   /// (used to pick up entities spawned or re-configured at runtime).

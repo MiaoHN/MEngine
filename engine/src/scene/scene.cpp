@@ -166,7 +166,6 @@ void Scene::StartSimulation() {
     return;
   }
 
-  transform_snapshot_.clear();
   body_ids_.clear();
   body_id_to_entity_.clear();
   // Drop any queued events / tracked pairs left over from a previous run.
@@ -174,15 +173,11 @@ void Scene::StartSimulation() {
   sim_accumulator_ = 0.0f;
   simulating_      = true;
 
+  // Remember the authoring scene so StopSimulation can restore it exactly.
+  CapturePlaySnapshot();
+
   // Build bodies for every entity that is currently eligible.
   SyncSimulationBodies();
-
-  // Snapshot the initial transforms so StopSimulation can restore them.
-  for (auto &[handle, body_id] : body_ids_) {
-    if (auto *transform = registry_.try_get<Transform>(handle)) {
-      transform_snapshot_[handle] = {transform->translation, transform->rotation, transform->scale};
-    }
-  }
   LOG_INFO("Scene") << "Physics simulation started with " << body_ids_.size() << " bodies";
 }
 
@@ -309,19 +304,14 @@ void Scene::StopSimulation() {
   body_ids_.clear();
   body_id_to_entity_.clear();
   sim_accumulator_ = 0.0f;
+  simulating_      = false;
 
-  // Restore the transforms captured before the simulation started.
-  for (auto &[handle, snapshot] : transform_snapshot_) {
-    if (auto *transform = registry_.try_get<Transform>(handle)) {
-      transform->translation = snapshot.translation;
-      transform->rotation    = snapshot.rotation;
-      transform->scale       = snapshot.scale;
-    }
-  }
-  transform_snapshot_.clear();
+  // Return to the authoring scene captured at StartSimulation: restores any
+  // transforms/materials scripts changed, removes entities they spawned and
+  // re-creates entities they destroyed (editor-only helpers are preserved).
+  RestorePlaySnapshot();
 
-  simulating_ = false;
-  LOG_INFO("Scene") << "Physics simulation stopped and initial transforms restored";
+  LOG_INFO("Scene") << "Physics simulation stopped and play snapshot restored";
 }
 
 void Scene::UpdateCameraControllers(float delta_time, const glm::vec2 &mouse_delta, bool look_active) {

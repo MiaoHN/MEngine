@@ -174,6 +174,134 @@ void CameraFromJson(const json &j, Camera &camera) {
   camera.rotation        = Vec3FromJson(j.value("rotation", json()));
 }
 
+/// @brief Serializes a single content entity to its JSON form. Used both by
+/// SaveScene and by the Play-mode snapshot.
+json EntityToJson(Entity &entity) {
+  const auto &tag = entity.GetComponent<Tag>();
+
+  json e;
+  e["tag"] = tag.tag;
+
+  if (entity.HasComponent<Transform>()) {
+    const auto &t = entity.GetComponent<Transform>();
+    json        j;
+    j["translation"] = Vec3ToJson(t.translation);
+    j["rotation"]    = Vec3ToJson(t.rotation);
+    j["scale"]       = Vec3ToJson(t.scale);
+    e["transform"]   = j;
+  }
+
+  if (entity.HasComponent<MeshComponent>()) {
+    const auto &mesh = entity.GetComponent<MeshComponent>();
+    json        j;
+    j["source"]   = mesh.mesh ? mesh.mesh->GetSource() : "";
+    j["material"] = MaterialToJson(mesh.material);
+    e["mesh"]     = j;
+  }
+
+  if (entity.HasComponent<CameraComponent>()) {
+    const auto &component = entity.GetComponent<CameraComponent>();
+    json        j         = CameraToJson(component.camera);
+    j["primary"]          = component.primary;
+    e["camera"]           = j;
+  }
+
+  if (entity.HasComponent<RigidBodyComponent>()) {
+    const auto &component = entity.GetComponent<RigidBodyComponent>();
+    json        j;
+    j["type"]        = component.type == RigidBodyComponent::Type::Static ? "static" : "dynamic";
+    j["friction"]    = component.friction;
+    j["restitution"] = component.restitution;
+    e["rigid_body"]  = j;
+  }
+
+  if (entity.HasComponent<ColliderComponent>()) {
+    const auto &component = entity.GetComponent<ColliderComponent>();
+    json        j;
+    j["shape"]        = component.shape == ColliderComponent::Shape::Sphere ? "sphere" : "box";
+    j["half_extents"] = Vec3ToJson(component.box_half_extents);
+    j["radius"]       = component.sphere_radius;
+    j["offset"]       = Vec3ToJson(component.offset);
+    e["collider"]     = j;
+  }
+
+  if (entity.HasComponent<CameraController>()) {
+    const auto &component = entity.GetComponent<CameraController>();
+    json        j;
+    j["move_speed"]       = component.move_speed;
+    j["look_sensitivity"] = component.look_sensitivity;
+    e["camera_controller"] = j;
+  }
+
+  if (entity.HasComponent<LuaScriptComponent>()) {
+    e["lua_script"] = entity.GetComponent<LuaScriptComponent>().path;
+  }
+
+  return e;
+}
+
+/// @brief Creates an entity in `scene` from its serialized JSON form.
+void LoadEntityFromJson(Scene &scene, const json &e) {
+  Entity entity = scene.CreateEntity(e.value("tag", "Unnamed Entity"));
+
+  if (e.contains("transform")) {
+    const auto &j = e["transform"];
+    auto       &t = entity.AddComponent<Transform>();
+    t.translation = Vec3FromJson(j.value("translation", json()));
+    t.rotation    = Vec3FromJson(j.value("rotation", json()));
+    t.scale       = Vec3FromJson(j.value("scale", json()), glm::vec3(1.0f));
+  }
+
+  if (e.contains("mesh")) {
+    const auto &j    = e["mesh"];
+    Ref<Mesh>   mesh = MeshFromSource(j.value("source", ""));
+    if (mesh) {
+      entity.AddComponent<MeshComponent>(mesh, MaterialFromJson(j.value("material", json())));
+    }
+  }
+
+  if (e.contains("camera")) {
+    const auto &j         = e["camera"];
+    CameraComponent component;
+    CameraFromJson(j, component.camera);
+    component.primary = j.value("primary", false);
+    entity.AddComponent<CameraComponent>(component);
+  }
+
+  if (e.contains("rigid_body")) {
+    const auto &j = e["rigid_body"];
+    RigidBodyComponent component;
+    component.type        = j.value("type", "dynamic") == "static" ? RigidBodyComponent::Type::Static
+                                                                   : RigidBodyComponent::Type::Dynamic;
+    component.friction    = j.value("friction", 0.5f);
+    component.restitution = j.value("restitution", 0.0f);
+    entity.AddComponent<RigidBodyComponent>(component);
+  }
+
+  if (e.contains("collider")) {
+    const auto &j = e["collider"];
+    ColliderComponent component;
+    component.shape             = j.value("shape", "box") == "sphere" ? ColliderComponent::Shape::Sphere
+                                                                      : ColliderComponent::Shape::Box;
+    component.box_half_extents  = Vec3FromJson(j.value("half_extents", json()), glm::vec3(0.5f));
+    component.sphere_radius     = j.value("radius", 0.5f);
+    component.offset            = Vec3FromJson(j.value("offset", json()));
+    entity.AddComponent<ColliderComponent>(component);
+  }
+
+  if (e.contains("camera_controller")) {
+    const auto &j = e["camera_controller"];
+    CameraController component;
+    component.move_speed       = j.value("move_speed", 5.0f);
+    component.look_sensitivity = j.value("look_sensitivity", 0.15f);
+    entity.AddComponent<CameraController>(component);
+  }
+
+  if (e.contains("lua_script") && e["lua_script"].is_string()) {
+    entity.AddComponent<LuaScriptComponent>(e["lua_script"].get<std::string>());
+  }
+}
+
 }  // namespace
 
 void Scene::SaveScene(const std::string &path) {
@@ -247,66 +375,7 @@ void Scene::SaveScene(const std::string &path) {
     for (auto &entity : entities_) {
       const auto &tag = entity.GetComponent<Tag>();
       if (tag.editor_only) continue;
-
-      json e;
-      e["tag"] = tag.tag;
-
-      if (entity.HasComponent<Transform>()) {
-        const auto &t = entity.GetComponent<Transform>();
-        json        j;
-        j["translation"] = Vec3ToJson(t.translation);
-        j["rotation"]    = Vec3ToJson(t.rotation);
-        j["scale"]       = Vec3ToJson(t.scale);
-        e["transform"]   = j;
-      }
-
-      if (entity.HasComponent<MeshComponent>()) {
-        const auto &mesh = entity.GetComponent<MeshComponent>();
-        json        j;
-        j["source"]   = mesh.mesh ? mesh.mesh->GetSource() : "";
-        j["material"] = MaterialToJson(mesh.material);
-        e["mesh"]     = j;
-      }
-
-      if (entity.HasComponent<CameraComponent>()) {
-        const auto &component = entity.GetComponent<CameraComponent>();
-        json        j         = CameraToJson(component.camera);
-        j["primary"]          = component.primary;
-        e["camera"]           = j;
-      }
-
-      if (entity.HasComponent<RigidBodyComponent>()) {
-        const auto &component = entity.GetComponent<RigidBodyComponent>();
-        json        j;
-        j["type"]        = component.type == RigidBodyComponent::Type::Static ? "static" : "dynamic";
-        j["friction"]    = component.friction;
-        j["restitution"] = component.restitution;
-        e["rigid_body"]  = j;
-      }
-
-      if (entity.HasComponent<ColliderComponent>()) {
-        const auto &component = entity.GetComponent<ColliderComponent>();
-        json        j;
-        j["shape"]         = component.shape == ColliderComponent::Shape::Sphere ? "sphere" : "box";
-        j["half_extents"]  = Vec3ToJson(component.box_half_extents);
-        j["radius"]        = component.sphere_radius;
-        j["offset"]        = Vec3ToJson(component.offset);
-        e["collider"]      = j;
-      }
-
-      if (entity.HasComponent<CameraController>()) {
-        const auto &component = entity.GetComponent<CameraController>();
-        json        j;
-        j["move_speed"]        = component.move_speed;
-        j["look_sensitivity"]  = component.look_sensitivity;
-        e["camera_controller"] = j;
-      }
-
-      if (entity.HasComponent<LuaScriptComponent>()) {
-        e["lua_script"] = entity.GetComponent<LuaScriptComponent>().path;
-      }
-
-      entity_array.push_back(e);
+      entity_array.push_back(EntityToJson(entity));
     }
     root["entities"] = entity_array;
   }
@@ -395,64 +464,7 @@ void Scene::LoadScene(const std::string &path) {
   // Entities.
   if (root.contains("entities") && root["entities"].is_array()) {
     for (const auto &e : root["entities"]) {
-      Entity entity = CreateEntity(e.value("tag", "Unnamed Entity"));
-
-      if (e.contains("transform")) {
-        const auto &j = e["transform"];
-        auto       &t = entity.AddComponent<Transform>();
-        t.translation = Vec3FromJson(j.value("translation", json()));
-        t.rotation    = Vec3FromJson(j.value("rotation", json()));
-        t.scale       = Vec3FromJson(j.value("scale", json()), glm::vec3(1.0f));
-      }
-
-      if (e.contains("mesh")) {
-        const auto &j    = e["mesh"];
-        Ref<Mesh>   mesh = MeshFromSource(j.value("source", ""));
-        if (mesh) {
-          entity.AddComponent<MeshComponent>(mesh, MaterialFromJson(j.value("material", json())));
-        }
-      }
-
-      if (e.contains("camera")) {
-        const auto &j         = e["camera"];
-        CameraComponent component;
-        CameraFromJson(j, component.camera);
-        component.primary = j.value("primary", false);
-        entity.AddComponent<CameraComponent>(component);
-      }
-
-      if (e.contains("rigid_body")) {
-        const auto &j = e["rigid_body"];
-        RigidBodyComponent component;
-        component.type        = j.value("type", "dynamic") == "static" ? RigidBodyComponent::Type::Static
-                                                                       : RigidBodyComponent::Type::Dynamic;
-        component.friction    = j.value("friction", 0.5f);
-        component.restitution = j.value("restitution", 0.0f);
-        entity.AddComponent<RigidBodyComponent>(component);
-      }
-
-      if (e.contains("collider")) {
-        const auto &j = e["collider"];
-        ColliderComponent component;
-        component.shape             = j.value("shape", "box") == "sphere" ? ColliderComponent::Shape::Sphere
-                                                                          : ColliderComponent::Shape::Box;
-        component.box_half_extents  = Vec3FromJson(j.value("half_extents", json()), glm::vec3(0.5f));
-        component.sphere_radius     = j.value("radius", 0.5f);
-        component.offset            = Vec3FromJson(j.value("offset", json()));
-        entity.AddComponent<ColliderComponent>(component);
-      }
-
-      if (e.contains("camera_controller")) {
-        const auto &j = e["camera_controller"];
-        CameraController component;
-        component.move_speed       = j.value("move_speed", 5.0f);
-        component.look_sensitivity = j.value("look_sensitivity", 0.15f);
-        entity.AddComponent<CameraController>(component);
-      }
-
-      if (e.contains("lua_script") && e["lua_script"].is_string()) {
-        entity.AddComponent<LuaScriptComponent>(e["lua_script"].get<std::string>());
-      }
+      LoadEntityFromJson(*this, e);
     }
   }
 
@@ -463,6 +475,52 @@ void Scene::LoadScene(const std::string &path) {
   }
 
   LOG_INFO("Scene") << "Loaded scene from " << path << " (" << entities_.size() << " entities)";
+}
+
+void Scene::CapturePlaySnapshot() {
+  json entity_array = json::array();
+  for (auto &entity : entities_) {
+    const auto &tag = entity.GetComponent<Tag>();
+    if (tag.editor_only) continue;
+    entity_array.push_back(EntityToJson(entity));
+  }
+  play_snapshot_ = entity_array.dump();
+  LOG_DEBUG("Scene") << "Captured play snapshot (" << entity_array.size() << " entities)";
+}
+
+void Scene::RestorePlaySnapshot() {
+  if (play_snapshot_.empty()) return;
+
+  json entity_array;
+  try {
+    entity_array = json::parse(play_snapshot_);
+  } catch (...) {
+    LOG_ERROR("Scene") << "Failed to parse play snapshot; scene left as-is";
+    play_snapshot_.clear();
+    return;
+  }
+
+  // Remove every content entity currently present (editor-only helpers such as
+  // the grid are kept). This also drops anything scripts spawned during Play
+  // and re-creates anything they destroyed.
+  std::vector<entt::entity> to_destroy;
+  for (auto &entity : entities_) {
+    const auto *tag = entity.HasComponent<Tag>() ? &entity.GetComponent<Tag>() : nullptr;
+    if (tag && tag->editor_only) continue;
+    to_destroy.push_back(entity.GetHandle());
+  }
+  for (const entt::entity handle : to_destroy) {
+    DestroyEntity(Entity(handle, &registry_));
+  }
+
+  if (entity_array.is_array()) {
+    for (const auto &e : entity_array) {
+      LoadEntityFromJson(*this, e);
+    }
+  }
+
+  LOG_INFO("Scene") << "Restored play snapshot (" << to_destroy.size() << " -> " << entities_.size() << " entities)";
+  play_snapshot_.clear();
 }
 
 }  // namespace MEngine
