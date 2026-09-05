@@ -1,5 +1,10 @@
 #pragma once
 
+// Core aggregator header. NOTE: `Ref`/`CreateRef` live in core/base.hpp; the
+// imgui / GLFW / glm includes below are still here so existing TUs keep
+// compiling, but new code should include exactly what it needs (see P1 in
+// docs/DEV-PLAN.md — this coupling is being pruned).
+
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <filesystem>
@@ -7,7 +12,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -24,16 +28,5 @@
 #undef ERROR
 #endif
 
+#include "core/base.hpp"
 #include "core/logger.hpp"
-
-namespace MEngine {
-
-template <typename T>
-using Ref = std::shared_ptr<T>;
-
-template <typename T, typename... Args>
-constexpr Ref<T> CreateRef(Args &&...args) {
-  return std::make_shared<T>(std::forward<Args>(args)...);
-}
-
-}  // namespace MEngine
