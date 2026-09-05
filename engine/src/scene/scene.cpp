@@ -82,11 +82,29 @@ Frustum ExtractFrustum(const glm::mat4 &proj_view) {
 }
 
 
+/// @brief True when the (non-empty) environment variable is set. Uses the
+/// MSVC-safe `_dupenv_s` on Windows to avoid the `std::getenv` deprecation
+/// warning under clang-cl's MSVC-compatible CRT.
+bool EnvVarPresent(const char *name) {
+#if defined(_WIN32)
+  char  *buffer = nullptr;
+  size_t len    = 0;
+  if (_dupenv_s(&buffer, &len, name) == 0) {
+    const bool present = buffer != nullptr && buffer[0] != '\0';
+    free(buffer);
+    return present;
+  }
+  return false;
+#else
+  return std::getenv(name) != nullptr;
+#endif
+}
+
 /// @brief Verification hook: when MENGINE_NO_BATCH is set, the main pass
 /// draws every entity separately (batch size 1). Rendering output must be
 /// pixel-identical to the batched path — used by unattended pixel tests.
 bool BatchDisabledByEnv() {
-  static const bool disabled = std::getenv("MENGINE_NO_BATCH") != nullptr;
+  static const bool disabled = EnvVarPresent("MENGINE_NO_BATCH");
   return disabled;
 }
 

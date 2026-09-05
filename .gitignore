@@ -15,3 +15,9 @@ cmake-build-*/
 .idea/
 
 .cache/
+# Unattended render-test / capture byproducts
+*.ppm
+*.tmp
+capture_*
+.workbuddy/
+

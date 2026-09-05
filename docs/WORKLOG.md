@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-09-05 — 全项目审查（另一模型合并 P3/P5 后）
+
+- **做了什么**：对 `refractor` 上另一模型新增的渲染/P5 提交做全量检查。
+  1. 阅读其 docs（PERFORMANCE.md / WORKLOG / DEV-PLAN）与 `tools/run_smoke.py`，确认记录与
+     实际提交一致；PERFORMANCE.md/WORKLOG 均为有效 UTF-8（终端乱码只是控制台代码页显示问题）。
+  2. 构建：`windows-clang-debug` / `windows-clang-release` 全链通过。
+  3. 修复 1 个编译警告：`scene.cpp` 中 `std::getenv` 在 Windows CRT 被标记 deprecated →
+     改为 `_dupenv_s`（跨平台保留 `std::getenv`）。
+  4. 冒烟：`python tools/run_smoke.py` → **8/8 PASS**（physics 20s、stress_cull 统计断言
+     dc=5 inst=5 culled+visible=1600、editor 冒烟）。
+  5. 清理：删除约 30 个未跟踪产物（根目录 *.ppm/*.bmp/capture_*/*.tmp 与实验场景
+     cullx_*/g*/twocubes、`.workbuddy/`），并扩展 `.gitignore`（*.ppm/*.tmp/capture_*/.workbuddy/）。
+     确认冒烟/PERFORMANCE 引用的场景均为已跟踪文件，无需未跟踪文件参与复现。
+- **结论/发现**：
+  - P3 渲染优化（剔除+实例化+材质内容批处理+uniform 缓存+CullMode+像素捕获对照）与 P5
+    （stress 场景/PERFORMANCE/run_smoke）实现完整且经过无人值守验证。
+  - 遗留路线图（未实现）：P3.5 Vulkan 完善、P3.6 多线程渲染、P4 Editor 面板化拆分与
+    Script 编辑器（Tab+CJK+高亮）——另一模型在 WORKLOG 中已注明“超大体量，建议单独会话”。
+  - 性能数据在 Intel UHD + 隐藏窗口无 vsync 下采集，属参考值。
+- **下一步**：如要继续完成路线图，从 P3.5 Vulkan 或 P4 Editor 拆分/脚本编辑器（CJK+高亮+Tab）
+  开始；每阶段一个会话 + WORKLOG 记录。
+
+---
+
 ## 2026-09-05 — P5 压测与冒烟交付（PERFORMANCE.md + stress 场景 + run_smoke）
 
 - **分支**：`refractor`；commit：P5 交付批次（eff3eba/151dd1e 后续）
