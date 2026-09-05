@@ -88,6 +88,9 @@ class Editor : public Application {
   bool show_colliders_       = true;
   bool show_script_editor_   = true;
   bool show_timeline_        = true;
+  /// @brief Auto-Key toggle: gizmo moves on an already-animated entity record
+  /// keys at the current playhead (like Blender auto-keyframe / Unity record).
+  bool auto_key_ = true;
 
   ImGuiID dockspace_id_ = 0;
 
@@ -128,6 +131,11 @@ class Editor : public Application {
   /// @brief Deep-copies `source` and its whole child subtree. The copy is
   /// parented under `parent_copy` (entt::null = root) when `source` had one.
   Entity DuplicateEntitySubtree(Entity source, entt::entity parent_copy);
+  /// @brief Auto-Key: when enabled and the entity is already animated, records
+  /// any gizmo-changed Transform channel as a key at the current playhead time.
+  /// Only fires in Edit mode while the timeline is not playing.
+  void AutoKeyGizmoEdit(Entity entity, const glm::vec3 &prev_translation, const glm::vec3 &prev_rotation,
+                        const glm::vec3 &prev_scale);
   void ApplyDefaultLayout(ImGuiID dockspace_id);
   void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
   void DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);

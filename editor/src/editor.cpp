@@ -2146,12 +2146,15 @@ void Editor::ShowImGuiTimeline() {
   PROFILER_FUNCTION();
   ImGui::Begin("Timeline");
 
-  const float duration = active_scene_->GetAnimationDuration();
+  const float duration    = active_scene_->GetAnimationDuration();
+  // The scrub range always has a usable length, so the playhead can move even
+  // before/with a single key (when a lone t=0 key would keep duration == 0).
+  const float timeline_len = std::max(duration, 1.0f);
 
   // --- Transport controls ---------------------------------------------------
   const bool playing = active_scene_->IsAnimationPlaying();
   if (ImGui::Button(playing ? "Pause" : "Play")) {
-    if (!playing && duration <= 0.0f) {
+    if (!playing && !active_scene_->HasAnyAnimation()) {
       LOG_INFO("Editor") << "Timeline: nothing animated yet — add keyframes to an entity first";
     } else {
       active_scene_->SetAnimationPlaying(!playing);
@@ -2171,27 +2174,27 @@ void Editor::ShowImGuiTimeline() {
     active_scene_->SetAnimationLoop(loop);
   }
   ImGui::SameLine();
-  ImGui::Text("t = %.2f / %.2f s", active_scene_->GetAnimationTime(), duration);
+  if (ImGui::Checkbox("Auto-Key", &auto_key_)) {
+    // Auto-Key records gizmo moves on animated entities at the current playhead.
+  }
+  ImGui::SameLine();
+  ImGui::Text("t = %.2f / %.2f s", active_scene_->GetAnimationTime(), timeline_len);
 
   // --- Playhead scrubber (drag or type an exact time) -----------------------
   ImGui::SetNextItemWidth(-1.0f);
   float time = active_scene_->GetAnimationTime();
-  if (duration > 0.0f) {
-    if (ImGui::DragFloat("##TimelineScrub", &time, 0.01f, 0.0f, duration, "t = %.2f / %.2f s",
-                         ImGuiSliderFlags_AlwaysClamp)) {
-      active_scene_->SetAnimationTime(time);
-    }
-  } else {
-    ImGui::BeginDisabled();
-    ImGui::DragFloat("##TimelineScrub", &time, 0.01f, 0.0f, 1.0f, "t = %.2f / 0.00 s");
-    ImGui::EndDisabled();
+  if (ImGui::DragFloat("##TimelineScrub", &time, 0.01f, 0.0f, timeline_len, "t = %.2f / %.2f s",
+                       ImGuiSliderFlags_AlwaysClamp)) {
+    active_scene_->SetAnimationTime(time);
   }
 
   ImGui::Separator();
 
   if (!active_scene_->HasAnyAnimation()) {
-    ImGui::TextWrapped("No keyframes yet. Select an entity, move it with the gizmo, then press a Key button — "
-                       "type a time (default: playhead) before pressing Key to place it elsewhere.");
+    ImGui::TextWrapped("Workflow: 1) put the playhead at t=0 and press a Key button below "
+                       "(creates the first key). 2) Drag/type the playhead to a LATER time, then move the "
+                       "entity with the gizmo — Auto-Key records it there. Keys never overwrite each other "
+                       "unless they land on the exact same time.");
   }
 
   // --- Selected-entity keyframe editor ---------------------------------------
@@ -2800,6 +2803,12 @@ void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {
     return;
   }
 
+  // Remember the pre-edit pose so Auto-Key can see which channels changed.
+  auto       &transform = selected_entity_.GetComponent<Transform>();
+  const glm::vec3 prev_t = transform.translation;
+  const glm::vec3 prev_r = transform.rotation;
+  const glm::vec3 prev_s = transform.scale;
+
   // Manipulate the entity's world transform so the gizmo appears at its true
   // world location even when it is a child; the result is written back as a
   // local TRS (relative to the parent) by SetLocalTransformFromWorld.
@@ -2813,6 +2822,46 @@ void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {
 
   if (ImGuizmo::IsUsing()) {
     active_scene_->SetLocalTransformFromWorld(selected_entity_.GetHandle(), model);
+    AutoKeyGizmoEdit(selected_entity_, prev_t, prev_r, prev_s);
+  }
+}
+
+void Editor::AutoKeyGizmoEdit(Entity entity, const glm::vec3 &prev_translation, const glm::vec3 &prev_rotation,
+                              const glm::vec3 &prev_scale) {
+  // Auto-Key only touches entities that are ALREADY animated (so plain scene
+  // arranging never sprinkles stray keyframes on fresh objects), and only in
+  // Edit mode while the timeline is not playing.
+  if (!auto_key_ || !entity.HasComponent<Transform>() || !entity.HasComponent<AnimationComponent>()) {
+    return;
+  }
+  if (game_mode_ != GameMode::Edit || active_scene_->IsAnimationPlaying()) {
+    return;
+  }
+
+  auto       &transform = entity.GetComponent<Transform>();
+  auto       &anim      = entity.GetComponent<AnimationComponent>();
+  const float time      = active_scene_->GetAnimationTime();
+
+  // Inserts/updates the key for one channel at the current playhead time.
+  const auto put = [time](std::vector<Keyframe> &keys, const glm::vec3 &value) {
+    const auto it = std::find_if(keys.begin(), keys.end(),
+                                 [&](const Keyframe &k) { return std::abs(k.time - time) < 1e-4f; });
+    if (it != keys.end()) {
+      it->value = value;
+    } else {
+      keys.push_back(Keyframe(time, value));
+      std::sort(keys.begin(), keys.end(), [](const Keyframe &a, const Keyframe &b) { return a.time < b.time; });
+    }
+  };
+
+  if (transform.translation != prev_translation) {
+    put(anim.translation_keys, transform.translation);
+  }
+  if (transform.rotation != prev_rotation) {
+    put(anim.rotation_keys, transform.rotation);
+  }
+  if (transform.scale != prev_scale) {
+    put(anim.scale_keys, transform.scale);
   }
 }
 

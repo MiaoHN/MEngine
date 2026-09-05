@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-06 — Editor Timeline：可移动 playhead + Auto-Key（修复“第二个关键帧又落在 t=0 覆盖第一个”）
+
+- **用户反馈**：建了第一个关键帧后移动物体，再按 Key，第二个关键帧仍落在 t=0 把第一个覆盖了（并疑惑“牵扯到碰撞箱，真实引擎怎么处理”）。
+- **根因（工作流/UX，非引擎 bug）**：关键帧永远记录在“当前 playhead”；只有一个 t=0 关键帧时 `duration=0` → playhead 被禁用锁在 0 → 用户无法把时间走到下个时刻，于是每次 Key 都在 0。这与真实引擎一致：关键帧属于“当前时间游标”，要在不同时间打不同关键帧，必须先把游标移到那个时间（Unity/Blender/UE 都是这样；再加“auto-key 记录”把位移动作录制到当前帧）。
+- **改动**（editor.cpp 仅 UI）：
+  - 时间轴长度 = `max(duration, 1.0)`：**playhead 从一开就可拖/可输入**（即使只有一个 t=0 键），能走到任意时间再加第二个键。
+  - 新增 **Auto-Key** 开关（默认开）：选中实体**已有 AnimationComponent** 时，Edit 模式下用 gizmo 移动/旋转/缩放会**在当前 playhead 自动记录**改动的通道（同一时刻=覆盖/更新；不同于时刻则新增）——还原 Blender auto-keyframe / Unity record 的体验；不会给普通未动画物体乱打键。
+  - Play 条件改用 `HasAnyAnimation()`；面板顶部提示更新为“第 1 步放 t0 打第一键 → 第 2 步把 playhead 拖到更晚时间再用 gizmo 移动”。
+- **验证**：debug/release 全链零警告；`tools/run_smoke.py` ALL PASS（交互流程需在编辑器确认）。
+- **关于“动画 + 碰撞箱”**：见回复说明——真实引擎做法是让带碰撞体的动画物体用 **kinematic（运动学）刚体**，动画每帧写 Transform，引擎据此移动碰撞体去推动动态物体；静态/动态刚体由物理模拟移动，不应直接叠动画。engine 目前刚体只有 Static/Dynamic，kinematic-follow 作为后续项（需 PhysicsWorld 支持 Kinematic + 每步 MoveKinematic）。
+
+---
+
 ## 2026-09-06 — Editor Timeline：关键帧时间戳可直接编辑（修复“改不了时间戳”）
 
 - **用户反馈**：Timeline 里“改不了动画的时间戳”——初版只能把关键帧加到“当前 playhead”，没有地方改/输入某个关键帧的时间；且无关键帧时 duration=0、scrub 被禁用。
