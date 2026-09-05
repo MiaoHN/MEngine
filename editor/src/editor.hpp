@@ -13,6 +13,10 @@
 
 #include "mengine.hpp"
 
+#include <ImGuizmo.h>
+
+#include "editor_camera.hpp"
+
 using namespace MEngine;
 
 class Editor : public Application {
@@ -27,9 +31,14 @@ class Editor : public Application {
   void BeginImGui();
   void EndImGui();
 
+  void ShowImGuiContentBrowser();
   void ShowImGuiScene();
   void ShowImGuiViewport();
   void ShowImGuiProperties();
+  void ShowImGuiLighting();
+  void ShowImGuiRendering();
+  void ShowImGuiLog();
+  void ShowImGuiInformation();
 
   template <typename T>
   void DisplayAddComponentEntry(const std::string &entryName);
@@ -49,7 +58,7 @@ class Editor : public Application {
 
   std::shared_ptr<ScriptEngine> script_engine_;
 
-  std::shared_ptr<Camera2D> editor_camera_info_;
+  EditorCamera editor_camera_;
 
   std::filesystem::path base_directory_;
   std::filesystem::path current_directory_;
@@ -57,8 +66,36 @@ class Editor : public Application {
   std::shared_ptr<Texture> directory_icon_;
   std::shared_ptr<Texture> file_icon_;
 
-  ShaderLibrary  shader_library_;
-  TextureLibrary texture_library_;
+  std::unordered_map<std::string, Ref<Texture>> thumbnail_cache_;
+
+  Entity        grid_entity_;
+  Ref<Material> default_material_;
+
+  std::vector<PointLight> point_lights_;
+
+  ImGuizmo::OPERATION gizmo_operation_ = ImGuizmo::TRANSLATE;
+
+  bool show_content_browser_ = true;
+  bool show_scene_           = true;
+  bool show_viewport_        = true;
+  bool show_properties_      = true;
+  bool show_lighting_        = true;
+  bool show_rendering_       = true;
+  bool show_log_             = true;
+  bool show_information_     = true;
+
+  ImGuiID dockspace_id_ = 0;
+
+  ImFont *mono_font_ = nullptr;
+
+  Entity CreateEntityWithUniqueName(const std::string &base_name);
+  void CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh);
+  void CreateCameraEntity();
+  void CreateModelEntity(const std::filesystem::path &path);
+  void DuplicateSelectedEntity();
+  void ApplyDefaultLayout(ImGuiID dockspace_id);
+  void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
+  void DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
 };
 
 ::MEngine::Application *CreateApplication();

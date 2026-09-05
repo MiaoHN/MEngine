@@ -88,7 +88,7 @@ void Texture::Unbind() const { backend_->Unbind(); }
 
 void Texture::SetSubTexture(int frame) { backend_->SetSubTexture(frame, h_frames_, v_frames_, width_, height_); }
 
-const unsigned int Texture::GetID() const { return backend_ ? backend_->GetID() : 0; }
+unsigned int Texture::GetID() const { return backend_ ? backend_->GetID() : 0; }
 
 Ref<Texture> Texture::Create(const std::string &path) { return CreateRef<Texture>(path); }
 
@@ -111,6 +111,7 @@ void TextureLibrary::Add(const Ref<Texture> &texture) {
 Ref<Texture> TextureLibrary::Load(const std::string &name, const std::string &path) {
   auto texture = CreateRef<Texture>(name, path);
   Add(texture);
+  LOG_DEBUG("TextureLibrary") << "Loaded texture '" << name << "'";
   return texture;
 }
 

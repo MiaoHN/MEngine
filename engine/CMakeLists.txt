@@ -9,7 +9,16 @@ set(SOURCE_CORE
 set(SOURCE_RENDER
   src/render/shader.cpp
   src/render/texture.cpp
+  src/render/asset_manager.cpp
+  src/render/mesh.cpp
+  src/render/model_loader.cpp
+  src/render/gltf_loader.cpp
   src/render/renderer.cpp
+  src/render/shadow_map.cpp
+  src/render/cube_shadow_map.cpp
+  src/render/post_processing.cpp
+  src/render/skybox.cpp
+  src/render/ssao.cpp
   src/render/render_pipeline.cpp
   src/render/render_pass.cpp
   src/render/frame_buffer.cpp
@@ -37,17 +46,29 @@ add_library(engine
   ${PROJECT_SOURCE_DIR}/deps/glad/src/glad.c
 )
 
+# Third-party includes are SYSTEM so warnings inside their headers are
+# suppressed; only the engine's own headers stay non-SYSTEM.
 target_include_directories(engine
   PRIVATE
+  ${PROJECT_SOURCE_DIR}/engine/src
+)
+
+target_include_directories(engine SYSTEM PRIVATE
   ${PROJECT_SOURCE_DIR}/deps/entt/single_include
   ${PROJECT_SOURCE_DIR}/deps/glm
   ${PROJECT_SOURCE_DIR}/deps/glad/include
   ${PROJECT_SOURCE_DIR}/deps/stb
   ${PROJECT_SOURCE_DIR}/deps/lua
-  ${PROJECT_SOURCE_DIR}/engine/src
+  ${PROJECT_SOURCE_DIR}/deps/tinygltf
+  ${PROJECT_SOURCE_DIR}/deps/nlohmann
 )
 
-target_compile_definitions(engine PUBLIC _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+# _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING is an MSVC/STL-only define;
+# keep it PUBLIC so consumers using the MSVC STL inherit it, but never emit it
+# on GCC/Clang (where it is meaningless).
+if(MSVC)
+  target_compile_definitions(engine PUBLIC _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING)
+endif()
 
 if(Vulkan_FOUND)
   target_compile_definitions(engine PRIVATE MENGINE_HAS_VULKAN=1)
@@ -58,7 +79,10 @@ target_link_libraries(engine
   lua
   imgui
   ImGuizmo
+  Threads::Threads
 )
+
+mengine_enable_warnings(engine)
 
 if(Vulkan_FOUND)
   target_link_libraries(engine Vulkan::Vulkan)

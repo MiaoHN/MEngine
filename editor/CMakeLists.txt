@@ -4,6 +4,11 @@ add_executable(editor
 
 target_include_directories(editor
   PRIVATE
+  ${PROJECT_SOURCE_DIR}/engine/src
+  ${PROJECT_SOURCE_DIR}/editor/src
+)
+
+target_include_directories(editor SYSTEM PRIVATE
   ${PROJECT_SOURCE_DIR}/deps/entt/single_include
   ${PROJECT_SOURCE_DIR}/deps/glm
   ${PROJECT_SOURCE_DIR}/deps/glad/include
@@ -11,13 +16,13 @@ target_include_directories(editor
   ${PROJECT_SOURCE_DIR}/deps/imgui
   ${PROJECT_SOURCE_DIR}/deps/imgui/backends
   ${PROJECT_SOURCE_DIR}/deps/ImGuizmo
-  ${PROJECT_SOURCE_DIR}/engine/src
-  ${PROJECT_SOURCE_DIR}/editor/src
 )
 
 target_link_libraries(editor
   engine
 )
+
+mengine_enable_warnings(editor)
 
 add_custom_command(TARGET editor POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -26,7 +31,19 @@ add_custom_command(TARGET editor POST_BUILD
 )
 
 add_custom_command(TARGET editor POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${PROJECT_SOURCE_DIR}/assets
+  $<TARGET_FILE_DIR:editor>/assets
+)
+
+add_custom_command(TARGET editor POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
   ${CMAKE_CURRENT_SOURCE_DIR}/res/imgui.ini
   $<TARGET_FILE_DIR:editor>/imgui.ini
+)
+
+add_custom_command(TARGET editor POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+  ${PROJECT_SOURCE_DIR}/deps/imgui/misc/fonts
+  $<TARGET_FILE_DIR:editor>/res/fonts
 )

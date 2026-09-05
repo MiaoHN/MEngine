@@ -18,8 +18,14 @@ void OpenGLRHI::SetupWindowHints() const {
 bool OpenGLRHI::Initialize(GLFWwindow *window) {
   glfwMakeContextCurrent(window);
   if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
+    LOG_ERROR("RHI") << "Failed to load OpenGL function pointers via GLAD";
     return false;
   }
+
+  // Seamless cubemap sampling avoids visible seams between cube-map faces
+  // (skybox and point-light shadow maps).
+  glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+  LOG_DEBUG("RHI") << "Enabled seamless cubemap sampling";
 
   LOG_INFO("RHI") << "OpenGL Version: " << glGetString(GL_VERSION);
   LOG_INFO("RHI") << "GLSL Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION);
@@ -41,7 +47,11 @@ void OpenGLRHI::BeginFrame(const glm::vec4 &clear_color) const {
 void OpenGLRHI::EndFrame(GLFWwindow *window) const { glfwSwapBuffers(window); }
 
 bool OpenGLRHI::InitializeImGuiBackend(GLFWwindow *window) {
-  return ImGui_ImplGlfw_InitForOpenGL(window, true) && ImGui_ImplOpenGL3_Init("#version 330");
+  const bool ok = ImGui_ImplGlfw_InitForOpenGL(window, true) && ImGui_ImplOpenGL3_Init("#version 330");
+  if (ok) {
+    LOG_DEBUG("RHI") << "ImGui OpenGL3 backend initialized";
+  }
+  return ok;
 }
 
 void OpenGLRHI::ShutdownImGuiBackend() const {
@@ -58,6 +68,10 @@ void OpenGLRHI::RenderImGuiDrawData(ImDrawData *draw_data) const { ImGui_ImplOpe
 
 void OpenGLRHI::DrawIndexedTriangles(int index_count) const {
   glDrawElements(GL_TRIANGLES, index_count, GL_UNSIGNED_INT, nullptr);
+}
+
+void OpenGLRHI::SetWireframe(bool wireframe) const {
+  glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
 }
 
 unsigned int OpenGLRHI::CreateFramebuffer() const {

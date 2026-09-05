@@ -132,7 +132,6 @@ void VulkanRHI::BeginFrame(const glm::vec4 &clear_color) const {
     }
   }
 
-  const uint32_t pixel_count = static_cast<uint32_t>(cpu_framebuffer_.size());
   const uint32_t clear_r = static_cast<uint32_t>(std::clamp(clear_color_.r, 0.0f, 1.0f) * 255.0f);
   const uint32_t clear_g = static_cast<uint32_t>(std::clamp(clear_color_.g, 0.0f, 1.0f) * 255.0f);
   const uint32_t clear_b = static_cast<uint32_t>(std::clamp(clear_color_.b, 0.0f, 1.0f) * 255.0f);
@@ -343,6 +342,10 @@ void VulkanRHI::RenderImGuiDrawData(ImDrawData *draw_data) const {
 #endif
 }
 
+void VulkanRHI::SetWireframe(bool wireframe) const {
+  (void)wireframe;  // Wireframe rasterization is not implemented for the Vulkan path yet.
+}
+
 void VulkanRHI::DrawIndexedTriangles(int index_count) const {
 #if defined(MENGINE_HAS_VULKAN)
   if (!frame_begun_ || cpu_framebuffer_.empty()) {
@@ -364,9 +367,6 @@ void VulkanRHI::DrawIndexedTriangles(int index_count) const {
   }
 
   const size_t stride = 5 * sizeof(float);
-  if (stride == 0) {
-    return;
-  }
 
   struct VertexData {
     glm::vec4 clip;

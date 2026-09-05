@@ -69,6 +69,7 @@ class VulkanFrameBufferBackend final : public IFrameBufferBackend {
   void Clear() const override;
   void Resize(int width, int height) override;
   unsigned int GetTextureId() const override { return 0; }
+  unsigned int GetFrameBufferId() const override { return 0; }
 };
 
 class VulkanVertexArrayBackend final : public IVertexArrayBackend {

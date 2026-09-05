@@ -6,6 +6,9 @@
 using namespace MEngine;
 
 int main(int argc, char const *argv[]) {
+  (void)argc;
+  (void)argv;
+
   LOG_INFO("MAIN") << "Application started";
 
   Application *app = CreateApplication();

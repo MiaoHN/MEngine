@@ -33,4 +33,6 @@ void FrameBuffer::Resize(int width, int height) {
 
 unsigned int FrameBuffer::GetTextureId() const { return backend_->GetTextureId(); }
 
+unsigned int FrameBuffer::GetFrameBufferId() const { return backend_->GetFrameBufferId(); }
+
 }  // namespace MEngine
