@@ -33,8 +33,9 @@ namespace {
 
 #if defined(_WIN32)
 /// @brief Shows the native "Open" dialog; returns true and fills `out_path`
-/// when the user picks a file.
-bool NativeOpenFileDialog(std::string &out_path) {
+/// when the user picks a file. `initial_dir` (optional) is where the dialog
+/// starts browsing.
+bool NativeOpenFileDialog(std::string &out_path, const std::string &initial_dir) {
   char file_buffer[MAX_PATH] = {};
   OPENFILENAMEA ofn{};
   ofn.lStructSize     = sizeof(ofn);
@@ -42,7 +43,7 @@ bool NativeOpenFileDialog(std::string &out_path) {
   ofn.lpstrFile       = file_buffer;
   ofn.nMaxFile        = static_cast<DWORD>(sizeof(file_buffer));
   ofn.lpstrTitle      = "Open Scene";
-  ofn.lpstrInitialDir = nullptr;
+  ofn.lpstrInitialDir = initial_dir.empty() ? nullptr : initial_dir.c_str();
   ofn.Flags           = OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
   if (GetOpenFileNameA(&ofn)) {
     out_path = file_buffer;
@@ -52,8 +53,9 @@ bool NativeOpenFileDialog(std::string &out_path) {
 }
 
 /// @brief Shows the native "Save As" dialog; returns true and fills `out_path`
-/// when the user confirms a file name.
-bool NativeSaveFileDialog(std::string &out_path) {
+/// when the user confirms a file name. `initial_dir` (optional) is where the
+/// dialog starts browsing.
+bool NativeSaveFileDialog(std::string &out_path, const std::string &initial_dir) {
   char file_buffer[MAX_PATH] = {};
   OPENFILENAMEA ofn{};
   ofn.lStructSize     = sizeof(ofn);
@@ -61,7 +63,7 @@ bool NativeSaveFileDialog(std::string &out_path) {
   ofn.lpstrFile       = file_buffer;
   ofn.nMaxFile        = static_cast<DWORD>(sizeof(file_buffer));
   ofn.lpstrTitle      = "Save Scene As";
-  ofn.lpstrInitialDir = nullptr;
+  ofn.lpstrInitialDir = initial_dir.empty() ? nullptr : initial_dir.c_str();
   ofn.lpstrDefExt     = "scene";
   ofn.Flags           = OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
   if (GetSaveFileNameA(&ofn)) {
@@ -71,9 +73,25 @@ bool NativeSaveFileDialog(std::string &out_path) {
   return false;
 }
 #else
-bool NativeOpenFileDialog(std::string &) { return false; }
-bool NativeSaveFileDialog(std::string &) { return false; }
+bool NativeOpenFileDialog(std::string &, const std::string &) { return false; }
+bool NativeSaveFileDialog(std::string &, const std::string &) { return false; }
 #endif
+
+/// @brief Resolves the folder a scene dialog should open in: the folder of the
+/// currently open scene when present, else the asset `scenes/` folder.
+std::string SceneDialogInitialDir(const std::filesystem::path &asset_root, const std::string &current_scene) {
+  if (!current_scene.empty()) {
+    const std::filesystem::path parent = std::filesystem::path(current_scene).parent_path();
+    if (!parent.empty() && std::filesystem::is_directory(parent)) {
+      return parent.string();
+    }
+  }
+  const std::filesystem::path scenes = asset_root / "scenes";
+  if (std::filesystem::is_directory(scenes)) {
+    return scenes.string();
+  }
+  return std::string();
+}
 
 /// @brief Portable environment-variable read. Uses _dupenv_s on Windows where
 /// std::getenv is marked deprecated under clang-cl.
@@ -2179,7 +2197,7 @@ void Editor::NewScene() {
 
 void Editor::OpenSceneDialog() {
   std::string path;
-  if (!NativeOpenFileDialog(path)) {
+  if (!NativeOpenFileDialog(path, SceneDialogInitialDir(base_directory_, current_scene_path_))) {
     return;  // cancelled
   }
   OpenScenePath(path);
@@ -2209,7 +2227,7 @@ void Editor::SaveCurrentScene() {
 
 void Editor::SaveSceneAsDialog() {
   std::string path;
-  if (!NativeSaveFileDialog(path)) {
+  if (!NativeSaveFileDialog(path, SceneDialogInitialDir(base_directory_, current_scene_path_))) {
     return;  // cancelled
   }
   static const char *kExt = ".scene";
