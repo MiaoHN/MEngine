@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "main_script": "scripts/physics_test.lua",
+  "entities": [
+    {
+      "tag": "Ground",
+      "transform": { "translation": [0, -0.5, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1] },
+      "rigid_body": { "type": "static", "friction": 0.5, "restitution": 0.1 },
+      "collider": { "shape": "box", "half_extents": [8, 0.5, 8], "radius": 0.5, "offset": [0, 0, 0] }
+    },
+    {
+      "tag": "Capsule",
+      "transform": { "translation": [3, 7, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1] },
+      "rigid_body": { "type": "dynamic", "friction": 0.3, "restitution": 0.5, "continuous_collision": true },
+      "collider": { "shape": "capsule", "radius": 0.4, "half_height": 0.6, "offset": [0, 0, 0] },
+      "lua_script": "scripts/impact.lua"
+    },
+    {
+      "tag": "Cylinder",
+      "transform": { "translation": [-3, 7, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1] },
+      "rigid_body": { "type": "dynamic", "friction": 0.3, "restitution": 0.4 },
+      "collider": { "shape": "cylinder", "radius": 0.5, "half_height": 0.6, "offset": [0, 0, 0] },
+      "lua_script": "scripts/impact.lua"
+    },
+    {
+      "tag": "Compound",
+      "transform": { "translation": [0, 8, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1] },
+      "rigid_body": { "type": "dynamic", "friction": 0.4, "restitution": 0.2 },
+      "collider_group": [
+        { "shape": "box", "half_extents": [0.6, 0.2, 0.3], "offset": [0.7, 0, 0] },
+        { "shape": "box", "half_extents": [0.6, 0.2, 0.3], "offset": [-0.7, 0, 0] },
+        { "shape": "sphere", "radius": 0.25, "offset": [0, 0.6, 0] }
+      ],
+      "lua_script": "scripts/impact.lua"
+    },
+    {
+      "tag": "Sensor",
+      "transform": { "translation": [0, 4, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1] },
+      "rigid_body": { "type": "static", "friction": 0.5, "restitution": 0, "sensor": true },
+      "collider": { "shape": "sphere", "radius": 2.2, "offset": [0, 0, 0] },
+      "lua_script": "scripts/sensor.lua"
+    }
+  ]
+}
