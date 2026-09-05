@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <thread>
 
+#include <Jolt/Core/Factory.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/RegisterTypes.h>
 
 #include "core/logger.hpp"
 
@@ -21,11 +23,16 @@ constexpr int kMaxPhysicsBarriers    = 8;
 }  // namespace
 
 PhysicsWorld::PhysicsWorld() {
-  // Jolt's default allocator must be registered exactly once per process.
-  static bool allocator_registered = false;
-  if (!allocator_registered) {
+  // Jolt's default allocator, object factory and type registry must all be
+  // initialized exactly once per process. The type registry also installs the
+  // shape-vs-shape collision functions — without it the narrow phase crashes
+  // on the first contact.
+  static bool jolt_registered = false;
+  if (!jolt_registered) {
     JPH::RegisterDefaultAllocator();
-    allocator_registered = true;
+    JPH::Factory::sInstance = new JPH::Factory();
+    JPH::RegisterTypes();
+    jolt_registered = true;
   }
 
   temp_allocator_ = std::make_unique<JPH::TempAllocatorMalloc>();
@@ -55,24 +62,28 @@ void PhysicsWorld::Update(float delta_time) {
 JPH::BodyID PhysicsWorld::CreateBoxBody(const glm::vec3 &position, const glm::quat &rotation,
                                         const glm::vec3 &half_extents, bool is_dynamic, float friction,
                                         float restitution) {
-  JPH::BoxShapeSettings     shape_settings(ToJolt(half_extents));
-  JPH::BodyCreationSettings body_settings(&shape_settings, ToJolt(position), ToJolt(rotation),
+  // NOTE: pass a heap-allocated concrete shape. BodyCreationSettings takes a
+  // ref-counted ownership of it and releases it on destruction — passing the
+  // address of a stack-allocated ShapeSettings would make Release() delete
+  // the stack object (crash).
+  JPH::BodyCreationSettings body_settings(new JPH::BoxShape(ToJolt(half_extents)), ToJolt(position), ToJolt(rotation),
                                           is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
                                           is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
   body_settings.mFriction    = friction;
   body_settings.mRestitution = restitution;
-  return physics_system_.GetBodyInterface().CreateBody(body_settings)->GetID();
+  return physics_system_.GetBodyInterface().CreateAndAddBody(
+      body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
 }
 
 JPH::BodyID PhysicsWorld::CreateSphereBody(const glm::vec3 &position, const glm::quat &rotation, float radius,
                                            bool is_dynamic, float friction, float restitution) {
-  JPH::SphereShapeSettings   shape_settings(radius);
-  JPH::BodyCreationSettings  body_settings(&shape_settings, ToJolt(position), ToJolt(rotation),
-                                           is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
-                                           is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
+  JPH::BodyCreationSettings body_settings(new JPH::SphereShape(radius), ToJolt(position), ToJolt(rotation),
+                                          is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
+                                          is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
   body_settings.mFriction    = friction;
   body_settings.mRestitution = restitution;
-  return physics_system_.GetBodyInterface().CreateBody(body_settings)->GetID();
+  return physics_system_.GetBodyInterface().CreateAndAddBody(
+      body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
 }
 
 void PhysicsWorld::DestroyBody(JPH::BodyID body_id) {

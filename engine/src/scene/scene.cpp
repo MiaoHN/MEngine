@@ -53,6 +53,10 @@ void Scene::StartSimulation() {
       body_id = physics_world_->CreateBoxBody(position, rotation, collider.box_half_extents, is_dynamic,
                                               rigid_body.friction, rigid_body.restitution);
     }
+    if (body_id.IsInvalid()) {
+      LOG_WARN("Scene") << "Failed to create physics body for '" << entity.GetComponent<Tag>().tag << "'";
+      continue;
+    }
     body_ids_[entity.GetHandle()] = body_id;
   }
 
