@@ -1,5 +1,3 @@
-#include <imgui.h>
-
 #include "core/application.hpp"
 #include "core/logger.hpp"
 #include "render/asset_manager.hpp"
@@ -25,10 +23,8 @@ Application::Application(GraphicsAPI api) : graphics_api_(api) {
 
   LOG_INFO("Application") << "Application started";
 
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  ImGui::SetCurrentContext(ImGui::GetCurrentContext());
-  ImGui::StyleColorsDark();
+  // NOTE: ImGui context ownership lives with the UI application (Editor), not
+  // with the engine Application, so the engine itself never needs Dear ImGui.
 
   prev_time_   = static_cast<float>(glfwGetTime());
   frame_time_  = static_cast<float>(glfwGetTime());
