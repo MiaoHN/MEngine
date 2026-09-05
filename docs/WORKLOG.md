@@ -5,6 +5,33 @@
 
 ---
 
+## 2026-09-05 — P1 收尾 + P2 起步（多碰撞盒/复合体）
+
+- **分支**：`refractor`；commit：`6bc53b5`(refactor core: 移出 ImGui context)、`2e5b058`(physics: capsule/cylinder)、`6258bc8`(physics: compound collider group)
+- **做了什么**：
+  1. P1：`Application` 不再创建/持有 ImGui context（Editor 自己建），引擎核心彻底不再直接依赖 imgui；
+     连同 `base.hpp`/common.hpp 去 imgui，完成 core 层 UI 解耦的主体（GLFW/glm 显式化仍在 TODO）。
+  2. P2-A 常用形状：ColliderComponent 增加 Capsule/Cylinder（PhysicsWorld 新增
+     CreateCapsuleBody/CreateCylinderBody；Scene 建体分发；序列化 round-trip；
+     Editor 面板四种形状 + gizmo 外接盒近似；Lua add_component('collider','capsule'/'cylinder',r,half_h)）。
+  3. P2-B **多碰撞盒/复合体**：新增 `ColliderGroupComponent`（可存多个 ColliderShapeData）。
+     - `PhysicsWorld::CreateBody` 用 `StaticCompoundShapeSettings` 把多个形状合成一个体
+       （每个形状带 local offset；body 中心=实体 transform）。
+     - Scene：建体/移除判定纳入 collider group；复合体的写回不再减 primary offset；
+       body 同步覆盖 group 实体。
+     - 序列化保存/读取 `collider_group`（形状数组）；Editor 增加 “Collider Group”
+       组件入口 + 检视面板（添加/删除/编辑每个形状）；Lua 增加
+       has_component / add_component('collider_group', shape, …) / remove_component。
+     - 顺带修复：加载场景时 ColliderComponent 未重新 AddComponent 的回归。
+- **验证**：`windows-clang-debug` 与 `windows-clang-release` 全链编译通过。
+- **遇到的问题**：Jolt `CompoundShapeSettings` 是抽象基类，需改用具体 `StaticCompoundShapeSettings`；
+  局部 constexpr 数组不能隐式捕获于无捕获 lambda。
+- **下一步（P2-C…）**：CCD/阻尼/重力缩放/sleep 配置；Raycast/ShapeCast/Overlap 查询 + Sensor
+  (OnTrigger*)；`physics_test` 场景与脚本；随后 P3 渲染 / P3.5 Vulkan / P3.6 多线程 / P4 Editor /
+  P5 压测。细节与进度会持续记录于此。
+
+---
+
 ## 2026-09-05 — P1 续：core 去 imgui 依赖 + Ref 抽 base.hpp
 
 - **分支**：`refractor`；commit：`134dee4`、`0523051`（另有前面 `docs…`/`7145267`）
