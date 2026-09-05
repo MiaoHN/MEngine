@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-05 — Editor/Engine：父子层级 + 场景树（父实体移动子实体跟随）
+
+- **需求**：用户确认“先实现父子层级场景树”，为后续 Editor 关键帧动画 / glTF 骨骼动画铺路（此前 `Transform` 无 parent/child，渲染把本地矩阵当世界矩阵用）。
+- **引擎改动**（scene/component.hpp、scene.hpp/.cpp、scene_serializer.cpp）：
+  - 新增 `RelationshipComponent{ entt::entity parent }`（entt 引入 component.hpp）；`Scene::SetParent(child,parent)`（拒绝自环/子树回环，parent=null 即解除）、`GetParent/HasChildren/GetChildren/IsDescendantOf/GetWorldTransform/GetWorldPosition/SetLocalTransformFromWorld`（glm::decompose 求逆父矩阵）。
+  - `DestroyEntity` 改为**级联删除整棵子树**（后序遍历收集，子先于父），Lua `destroy_entity` 与内容清理复用同一路径。
+  - `RenderMeshes` 模型矩阵改为 `GetWorldTransform`（阴影/主 pass 共用，父缩放/旋转/平移自动传给子）。
+  - 物理：有父实体的刚体在**世界位姿**建体；`WriteBackTransforms` 把模拟出的世界位姿写回父系本地 TRS（保留子自身 scale）；根实体路径保持与旧版逐位一致（无回归）。
+  - 序列化：`entities` 数组按创建序写入，可选 `parent`（数组内父索引，父为 editor-only 时省略）；加载两遍（先建全部再回链），**旧场景无 `parent` 字段 → 全部为根，完全向后兼容**。
+- **编辑器改动**（editor.cpp/.hpp）：Scene 面板改为**可折叠树**（根节点 + 递归子树）；右键节点 Create Child/Delete/Duplicate/Unparent；**拖拽重父化**（节点 = 设为子，列表下方空区 = 解除）；Duplicate 深拷贝整棵子树并保持父链；Gizmo 作用于**世界矩阵**再写回本地 TRS；`F` 聚焦、Collider 线框改用世界变换。
+- **验证**：
+  - 像素探针：父在 (0,0,0)/(5,0,0) 两种摆放下，子实体（本地 (2,3,0) / (-3,3,0)）与世界 (2,3,0) 的根立方体**逐像素一致（mean diff 0.000）**→ 层级组合正确。
+  - Editor 文件自检 8/8 PASS，新增 **“Save/reopen 保留 parent-child links”** 检查；`tools/run_smoke.py` ALL PASS；debug/release 全链零警告零错误。
+- **已知边界（本阶段接受，已在记忆记录）**：Camera/灯光组件自身仍是世界系（父化相机暂不生效，属后续动画阶段）；重父化默认保留本地 TRS（世界位置会跳到新父局部）；非均匀父缩放下 decompose 求本地旋转是近似。
+- **下一步**：Editor 关键帧时间轴动画（AnimationComponent + 时间轴 UI + Play/沙盒回放 + 序列化），或先做 P4 Script 编辑器完善。
+
+---
+
 ## 2026-09-05 — 重写 SSAO：修复“开 SSAO 球比方块暗”的伪影（commit 9bf0436 之后）
 
 - **用户反馈**：`test_02.scene` 只有正方体+球、无脚本，开 SSAO 后球仍比方块暗；要求“正经修一下 / 重写”。
