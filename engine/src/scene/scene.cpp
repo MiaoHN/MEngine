@@ -1,5 +1,8 @@
 #include "scene/scene.hpp"
 
+#include <algorithm>
+#include <limits>
+
 #include <glm/gtx/euler_angles.hpp>
 
 #include "core/input.hpp"
@@ -7,6 +10,45 @@
 #include "scene/component.hpp"
 
 namespace MEngine {
+
+namespace {
+
+/// @brief True when the entity should take part in lighting/shadow passes: it
+/// has a valid mesh and is not an editor-only helper (e.g. the grid).
+bool IsRenderable(Entity &entity) {
+  if (entity.HasComponent<Tag>() && entity.GetComponent<Tag>().editor_only) {
+    return false;
+  }
+  return entity.HasComponent<MeshComponent>() && entity.GetComponent<MeshComponent>().mesh != nullptr;
+}
+
+/// @brief Computes the world-space AABB of every renderable mesh entity.
+bool ComputeSceneBounds(std::vector<Entity> &entities, glm::vec3 &out_min, glm::vec3 &out_max) {
+  bool     initialized = false;
+  glm::vec3 min_v(std::numeric_limits<float>::max());
+  glm::vec3 max_v(std::numeric_limits<float>::lowest());
+
+  for (auto &entity : entities) {
+    if (!entity.HasComponent<MeshComponent>() || !entity.GetComponent<MeshComponent>().mesh) continue;
+    if (entity.HasComponent<Tag>() && entity.GetComponent<Tag>().editor_only) continue;
+
+    const glm::mat4 model =
+        entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
+    for (const auto &vertex : entity.GetComponent<MeshComponent>().mesh->GetVertices()) {
+      const glm::vec3 world = glm::vec3(model * glm::vec4(vertex.position, 1.0f));
+      min_v                  = glm::min(min_v, world);
+      max_v                  = glm::max(max_v, world);
+      initialized            = true;
+    }
+  }
+
+  if (!initialized) return false;
+  out_min = min_v;
+  out_max = max_v;
+  return true;
+}
+
+}  // namespace
 
 Scene::Scene() {
   default_camera_info_                = CreateRef<Camera>();
@@ -227,17 +269,29 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   const glm::mat4  render_proj   = taa_enabled ? renderer_->GetJitteredProjection(proj) : proj;
   const glm::mat4  proj_view     = render_proj * view;
 
-  // Directional shadow mapping: models are normalized to a ~1 unit radius by
-  // the caller, so a fixed 2-unit orthographic shadow volume covers them.
-  const auto      &light          = renderer_->GetLight();
-  const glm::mat4 light_view_proj = light.GetLightSpaceMatrix(glm::vec3(0.0f), 2.0f);
+  // Directional shadow mapping: fit the orthographic shadow volume to the
+  // scene's world-space bounds so every object casts a shadow instead of being
+  // clipped by a fixed-size frustum.
+  const auto &light = renderer_->GetLight();
+  glm::mat4   light_view_proj;
+  {
+    glm::vec3 scene_min;
+    glm::vec3 scene_max;
+    if (ComputeSceneBounds(entities, scene_min, scene_max)) {
+      const glm::vec3 scene_center = (scene_min + scene_max) * 0.5f;
+      const float     scene_radius = std::max(glm::length(scene_max - scene_min) * 0.5f, 0.5f);
+      light_view_proj              = light.GetLightSpaceMatrix(scene_center, scene_radius);
+    } else {
+      light_view_proj = light.GetLightSpaceMatrix(glm::vec3(0.0f), 2.0f);
+    }
+  }
 
   renderer_->BeginShadowPass(light_view_proj);
   for (auto &entity : entities) {
-    auto &component = entity.GetComponent<MeshComponent>();
-    if (!component.mesh) {
+    if (!IsRenderable(entity)) {
       continue;
     }
+    auto &component = entity.GetComponent<MeshComponent>();
     const glm::mat4 model =
         entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
     renderer_->DrawMeshShadow(component.mesh, model, light_view_proj);
@@ -259,10 +313,10 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
       for (int face = 0; face < 6; ++face) {
         renderer_->BindPointShadowFace(shadow_index, face, transforms[face]);
         for (auto &entity : entities) {
-          auto &component = entity.GetComponent<MeshComponent>();
-          if (!component.mesh) {
+          if (!IsRenderable(entity)) {
             continue;
           }
+          auto &component = entity.GetComponent<MeshComponent>();
           const glm::mat4 model =
               entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
           renderer_->DrawMeshPointShadow(component.mesh, model);
