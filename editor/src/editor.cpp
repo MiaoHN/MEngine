@@ -538,9 +538,13 @@ void Editor::OnUpdate(float dt) {
   // Advance the physics simulation and Lua scripts while in Play mode.
   // StepSimulation runs physics, collision dispatch and OnFixedUpdate together
   // on a fixed step; Update drives per-frame OnStart/OnUpdate afterwards.
+  // (StepSimulation also advances the animation timeline while simulating.)
   if (game_mode_ == GameMode::Play) {
     active_scene_->StepSimulation(dt);
     active_scene_->GetScriptEngine().Update(dt);
+  } else if (active_scene_->IsAnimationPlaying()) {
+    // Edit-mode timeline playback: drive the animated entities every frame.
+    active_scene_->AdvanceAnimation(dt);
   }
 
   // Render the 3D scene into the viewport framebuffer (Edit = editor camera,
@@ -621,6 +625,7 @@ void Editor::OnUpdate(float dt) {
       ImGui::MenuItem("Log", nullptr, &show_log_);
       ImGui::MenuItem("Information", nullptr, &show_information_);
       ImGui::MenuItem("Script Editor", nullptr, &show_script_editor_);
+      ImGui::MenuItem("Timeline", nullptr, &show_timeline_);
       ImGui::Separator();
       if (ImGui::MenuItem("Reset Layout")) {
         ApplyDefaultLayout(dockspace_id_);
@@ -641,6 +646,7 @@ void Editor::OnUpdate(float dt) {
   if (show_information_) ShowImGuiInformation();
 
   if (show_script_editor_) ShowImGuiScriptEditor();
+  if (show_timeline_) ShowImGuiTimeline();
 
   // Close the "DockSpace Demo" host window opened in BeginImGui().
   ImGui::End();
@@ -2136,6 +2142,161 @@ void Editor::ShowImGuiScriptEditor() {
   ImGui::End();
 }
 
+void Editor::ShowImGuiTimeline() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Timeline");
+
+  const float duration = active_scene_->GetAnimationDuration();
+
+  // --- Transport controls ---------------------------------------------------
+  const bool playing = active_scene_->IsAnimationPlaying();
+  if (ImGui::Button(playing ? "Pause" : "Play")) {
+    if (!playing && duration <= 0.0f) {
+      LOG_INFO("Editor") << "Timeline: nothing animated yet — add keyframes to an entity first";
+    } else {
+      active_scene_->SetAnimationPlaying(!playing);
+      if (!playing && active_scene_->GetAnimationTime() >= duration - 1e-3f) {
+        active_scene_->ResetAnimation();  // replay from the start
+      }
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Stop")) {
+    active_scene_->SetAnimationPlaying(false);
+    active_scene_->ResetAnimation();
+  }
+  ImGui::SameLine();
+  bool loop = active_scene_->GetAnimationLoop();
+  if (ImGui::Checkbox("Loop", &loop)) {
+    active_scene_->SetAnimationLoop(loop);
+  }
+  ImGui::SameLine();
+  ImGui::Text("t = %.2f / %.2f s", active_scene_->GetAnimationTime(), duration);
+
+  // --- Playhead scrubber ----------------------------------------------------
+  ImGui::SetNextItemWidth(-1.0f);
+  float time = active_scene_->GetAnimationTime();
+  if (duration > 0.0f) {
+    if (ImGui::SliderFloat("##TimelineScrub", &time, 0.0f, duration, "%.2f s")) {
+      active_scene_->SetAnimationTime(time);
+    }
+  } else {
+    ImGui::BeginDisabled();
+    ImGui::SliderFloat("##TimelineScrub", &time, 0.0f, 1.0f, "%.2f s");
+    ImGui::EndDisabled();
+  }
+
+  ImGui::Separator();
+
+  if (!active_scene_->HasAnyAnimation()) {
+    ImGui::TextWrapped("No keyframes yet. Select an entity, move it with the gizmo, "
+                       "set the playhead, then press a Key button below.");
+  }
+
+  // --- Selected-entity keyframe editor ---------------------------------------
+  const bool has_target = selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_ &&
+                          selected_entity_.HasComponent<Transform>();
+  if (!has_target) {
+    ImGui::TextDisabled("Select an entity with a Transform to edit its keyframes.");
+    ImGui::End();
+    return;
+  }
+
+  Entity &target = selected_entity_;
+  auto   &transform = target.GetComponent<Transform>();
+  if (target.HasComponent<Tag>()) {
+    ImGui::Text("Entity: %s", target.GetComponent<Tag>().tag.c_str());
+  }
+  const float t = active_scene_->GetAnimationTime();
+
+  AnimationComponent *anim = target.HasComponent<AnimationComponent>()
+                                 ? &target.GetComponent<AnimationComponent>()
+                                 : nullptr;
+
+  // The component is only created when the user actually presses a Key button,
+  // never by merely selecting an entity / looking at this panel.
+  auto ensure_anim = [&]() -> AnimationComponent & {
+    if (anim == nullptr) {
+      target.AddComponent<AnimationComponent>();
+      anim = &target.GetComponent<AnimationComponent>();
+    }
+    return *anim;
+  };
+
+  using ChannelMember = std::vector<Keyframe> AnimationComponent::*;
+  const auto add_key = [&](ChannelMember member, const glm::vec3 &value) {
+    auto       &a    = ensure_anim();
+    auto       &keys = a.*member;
+    const auto  it   = std::find_if(keys.begin(), keys.end(),
+                                    [&](const Keyframe &k) { return std::abs(k.time - t) < 1e-4f; });
+    if (it != keys.end()) {
+      it->value = value;
+    } else {
+      keys.push_back(Keyframe(t, value));
+      std::sort(keys.begin(), keys.end(), [](const Keyframe &x, const Keyframe &y) { return x.time < y.time; });
+    }
+    active_scene_->SetAnimationTime(t);  // show the recorded pose under the playhead
+  };
+
+  // Draws one channel row: [Key] then its keyframe list (click = jump, x = delete).
+  const auto draw_channel = [&](const char *label, ChannelMember member, const glm::vec3 &current) {
+    ImGui::TextUnformatted(label);
+    ImGui::SameLine();
+    if (ImGui::SmallButton(("Key##" + std::string(label)).c_str())) {
+      add_key(member, current);
+    }
+    const size_t count = anim != nullptr ? (anim->*member).size() : 0;
+    ImGui::SameLine();
+    ImGui::TextDisabled("(%zu)", count);
+
+    if (anim == nullptr) {
+      return;
+    }
+    auto &keys = anim->*member;
+    std::vector<size_t> to_remove;
+    for (size_t i = 0; i < keys.size(); ++i) {
+      ImGui::PushID(static_cast<int>(label[0]) * 131 + static_cast<int>(i));
+      char text[96];
+      std::snprintf(text, sizeof(text), "t=%.2f  (%.2f, %.2f, %.2f)", keys[i].time, keys[i].value.x,
+                    keys[i].value.y, keys[i].value.z);
+      if (ImGui::SmallButton("x##del")) {
+        to_remove.push_back(i);
+      }
+      ImGui::SameLine();
+      if (ImGui::Selectable(text)) {
+        active_scene_->SetAnimationTime(keys[i].time);
+      }
+      ImGui::PopID();
+    }
+    for (auto it = to_remove.rbegin(); it != to_remove.rend(); ++it) {
+      keys.erase(keys.begin() + static_cast<std::ptrdiff_t>(*it));
+    }
+  };
+
+  draw_channel("Translation", &AnimationComponent::translation_keys, transform.translation);
+  draw_channel("Rotation", &AnimationComponent::rotation_keys, transform.rotation);
+  draw_channel("Scale", &AnimationComponent::scale_keys, transform.scale);
+
+  if (anim != nullptr && anim->Empty()) {
+    // No keys left on any channel -> drop the now-useless component.
+    target.RemoveComponent<AnimationComponent>();
+    anim = nullptr;
+  }
+
+  ImGui::Separator();
+  if (anim != nullptr && ImGui::Button("Remove Animation")) {
+    target.RemoveComponent<AnimationComponent>();
+    anim = nullptr;
+    LOG_INFO("Editor") << "Removed animation from '" << target.GetComponent<Tag>().tag << "'";
+  }
+  if (anim != nullptr && !anim->Empty()) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("duration %.2f s", anim->Duration());
+  }
+
+  ImGui::End();
+}
+
 Entity Editor::CreateEntityWithUniqueName(const std::string &base_name) {
   const auto name_taken = [&](const std::string &candidate) {
     for (auto &entity : active_scene_->GetAllEntities()) {
@@ -2447,6 +2608,7 @@ void Editor::RunSceneFileSelftest(const std::string &path) {
   check(!current_scene_path_.empty() && current_scene_path_ == path, "OpenScenePath records the scene path");
   const size_t opened_content = content_count();
   const size_t opened_links   = link_count();
+  const bool   opened_anim    = active_scene_->HasAnyAnimation();
   check(opened_content > 0, "OpenSceneFile loaded content entities");
 
   // 3. Save + reopen round-trip must reproduce the same content count.
@@ -2458,6 +2620,7 @@ void Editor::RunSceneFileSelftest(const std::string &path) {
   OpenScenePath(tmp_path);
   check(content_count() == opened_content, "Save/reopen round-trip preserves content count");
   check(link_count() == opened_links, "Save/reopen round-trip preserves parent-child links");
+  check(active_scene_->HasAnyAnimation() == opened_anim, "Save/reopen round-trip preserves animation");
   std::error_code ec;
   std::filesystem::remove(tmp_path, ec);
 
@@ -2539,6 +2702,9 @@ Entity Editor::DuplicateEntitySubtree(Entity source, entt::entity parent_copy) {
   if (source.HasComponent<CameraComponent>()) {
     duplicate.AddComponent<CameraComponent>(source.GetComponent<CameraComponent>());
   }
+  if (source.HasComponent<AnimationComponent>()) {
+    duplicate.AddComponent<AnimationComponent>(source.GetComponent<AnimationComponent>());
+  }
 
   if (parent_copy != entt::null) {
     active_scene_->SetParent(duplicate.GetHandle(), parent_copy);
@@ -2573,6 +2739,7 @@ void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
 
   ImGui::DockBuilderDockWindow("Content Browser", dock_bottom);
   ImGui::DockBuilderDockWindow("Log", dock_bottom);
+  ImGui::DockBuilderDockWindow("Timeline", dock_bottom);
 
   // Central area: the Viewport keeps most of the space, with the Script Editor
   // docked beside it so code and the game view stay visible together.

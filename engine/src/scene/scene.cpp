@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -166,6 +167,32 @@ bool AABBInsideFrustum(const Frustum &f, const glm::vec3 &world_min, const glm::
     }
   }
   return true;
+}
+
+/// @brief Samples a time-sorted keyframe channel at `time` (seconds). Returns
+/// false and leaves `out` untouched when the channel is empty. Before the
+/// first key and after the last key the track clamps to the end values.
+bool SampleKeyframeTrack(const std::vector<Keyframe> &keys, float time, glm::vec3 &out) {
+  if (keys.empty()) {
+    return false;
+  }
+  if (keys.size() == 1 || time <= keys.front().time) {
+    out = keys.front().value;
+    return true;
+  }
+  if (time >= keys.back().time) {
+    out = keys.back().value;
+    return true;
+  }
+  for (size_t i = 0; i + 1 < keys.size(); ++i) {
+    if (time >= keys[i].time && time <= keys[i + 1].time) {
+      const float span = keys[i + 1].time - keys[i].time;
+      const float t    = span > 1e-6f ? (time - keys[i].time) / span : 0.0f;
+      out              = glm::mix(keys[i].value, keys[i + 1].value, t);
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace}  // namespace
@@ -358,6 +385,87 @@ void Scene::SetLocalTransformFromWorld(entt::entity entity, const glm::mat4 &wor
     transform->rotation    = glm::degrees(glm::eulerAngles(rotation));
     transform->scale       = scale;
   }
+}
+
+// --- Keyframe animation timeline -------------------------------------------
+
+bool Scene::HasAnyAnimation() const {
+  for (const auto &entity : entities_) {
+    const auto *anim = registry_.try_get<AnimationComponent>(entity.GetHandle());
+    if (anim != nullptr && !anim->Empty()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+float Scene::GetAnimationDuration() const {
+  float duration = 0.0f;
+  for (const auto &entity : entities_) {
+    const auto *anim = registry_.try_get<AnimationComponent>(entity.GetHandle());
+    if (anim != nullptr) {
+      duration = std::max(duration, anim->Duration());
+    }
+  }
+  return duration;
+}
+
+void Scene::ApplyAnimations() {
+  for (const auto &entity : entities_) {
+    const auto *tag = registry_.try_get<Tag>(entity.GetHandle());
+    if (tag != nullptr && tag->editor_only) {
+      continue;  // never animate editor helpers (e.g. the grid)
+    }
+    const auto *anim = registry_.try_get<AnimationComponent>(entity.GetHandle());
+    if (anim == nullptr || anim->Empty()) {
+      continue;
+    }
+    auto *transform = registry_.try_get<Transform>(entity.GetHandle());
+    if (transform == nullptr) {
+      continue;
+    }
+    glm::vec3 value;
+    if (SampleKeyframeTrack(anim->translation_keys, anim_time_, value)) {
+      transform->translation = value;
+    }
+    if (SampleKeyframeTrack(anim->rotation_keys, anim_time_, value)) {
+      transform->rotation = value;
+    }
+    if (SampleKeyframeTrack(anim->scale_keys, anim_time_, value)) {
+      transform->scale = value;
+    }
+  }
+}
+
+void Scene::SetAnimationTime(float time) {
+  const float duration = GetAnimationDuration();
+  anim_time_           = duration > 0.0f ? std::max(0.0f, std::min(time, duration)) : 0.0f;
+  ApplyAnimations();
+}
+
+void Scene::AdvanceAnimation(float dt) {
+  if (dt <= 0.0f) {
+    return;
+  }
+  const float duration = GetAnimationDuration();
+  if (duration <= 0.0f) {
+    anim_time_ = 0.0f;
+    return;
+  }
+  if (anim_loop_) {
+    SetAnimationTime(std::fmod(anim_time_ + dt, duration));
+  } else {
+    const float next = anim_time_ + dt;
+    if (next >= duration) {
+      anim_playing_ = false;
+    }
+    SetAnimationTime(next);
+  }
+}
+
+void Scene::ResetAnimation() {
+  anim_time_ = 0.0f;
+  ApplyAnimations();
 }
 
 void Scene::RefreshEntityBody(entt::entity handle) {
@@ -553,6 +661,17 @@ void Scene::StartSimulation() {
   sim_accumulator_ = 0.0f;
   simulating_      = true;
 
+  // Start any keyframe animation from t = 0 so every Play run is deterministic.
+  // The t = 0 pose is applied BEFORE the snapshot is captured, so stopping the
+  // simulation returns to the authored start pose.
+  anim_time_ = 0.0f;
+  if (HasAnyAnimation()) {
+    anim_playing_ = true;
+    ApplyAnimations();
+  } else {
+    anim_playing_ = false;
+  }
+
   // Remember the authoring scene so StopSimulation can restore it exactly.
   CapturePlaySnapshot();
 
@@ -587,6 +706,12 @@ void Scene::StepSimulation(float delta_time) {
   }
   if (steps >= kMaxSteps) {
     sim_accumulator_ = 0.0f;  // drop the excess after a hitch
+  }
+
+  // Drive keyframe animation once per rendered frame (after physics has
+  // written its bodies back, so animation is the final authority on the pose).
+  if (anim_playing_) {
+    AdvanceAnimation(delta_time);
   }
 }
 
@@ -721,6 +846,9 @@ void Scene::StopSimulation() {
   // re-creates entities they destroyed (editor-only helpers are preserved).
   RestorePlaySnapshot();
 
+  anim_time_    = 0.0f;
+  anim_playing_ = false;
+
   LOG_INFO("Scene") << "Physics simulation stopped and play snapshot restored";
 }
 
@@ -734,7 +862,9 @@ void Scene::StopSimulationIfRunning() {
   body_id_to_entity_.clear();
   sim_accumulator_ = 0.0f;
   play_snapshot_.clear();
-  simulating_ = false;
+  simulating_      = false;
+  anim_time_       = 0.0f;
+  anim_playing_    = false;
 }
 
 void Scene::UpdateCameraControllers(float delta_time, const glm::vec2 &mouse_delta, bool look_active) {

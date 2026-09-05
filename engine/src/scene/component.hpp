@@ -16,6 +16,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -83,6 +84,47 @@ struct RelationshipComponent {
 
   RelationshipComponent() = default;
   explicit RelationshipComponent(entt::entity parent) : parent(parent) {}
+};
+
+/// @brief One (time, value) sample on a transform animation channel. `time` is
+/// in seconds on the scene's animation timeline (see Scene::SetAnimationTime).
+struct Keyframe {
+  float     time  = 0.0f;
+  glm::vec3 value{0.0f};
+
+  Keyframe() = default;
+  Keyframe(float time, const glm::vec3 &value) : time(time), value(value) {}
+};
+
+/// @brief Keyframe transform animation for an entity. Each channel is a sorted
+/// list of keyframes; while the scene timeline plays, non-empty channels drive
+/// the corresponding `Transform` field (empty channels leave it untouched).
+/// Rotation keyframes store degrees as XYZ Euler angles to match `Transform`.
+/// Looping is a scene-wide timeline setting (Scene::SetAnimationLoop), not a
+/// per-entity property, so every animated entity shares one clock.
+struct AnimationComponent {
+  std::vector<Keyframe> translation_keys;
+  std::vector<Keyframe> rotation_keys;  // degrees, XYZ Euler
+  std::vector<Keyframe> scale_keys;
+
+  AnimationComponent() = default;
+
+  /// @brief True when no channel carries any keyframe.
+  [[nodiscard]] bool Empty() const {
+    return translation_keys.empty() && rotation_keys.empty() && scale_keys.empty();
+  }
+
+  /// @brief Length of the longest channel (seconds). 0 when there are no keys.
+  [[nodiscard]] float Duration() const {
+    float duration = 0.0f;
+    const auto last_time = [](const std::vector<Keyframe> &keys) {
+      return keys.empty() ? 0.0f : keys.back().time;
+    };
+    duration = std::max(duration, last_time(translation_keys));
+    duration = std::max(duration, last_time(rotation_keys));
+    duration = std::max(duration, last_time(scale_keys));
+    return duration;
+  }
 };
 
 /**

@@ -315,6 +315,25 @@ json EntityToJson(Entity &entity, int parent_index = -1) {
     e["lua_script"] = entity.GetComponent<LuaScriptComponent>().path;
   }
 
+  if (entity.HasComponent<AnimationComponent>()) {
+    const auto &a = entity.GetComponent<AnimationComponent>();
+    json        j;
+    const auto write_channel = [](json &target, const char *name, const std::vector<Keyframe> &keys) {
+      json arr = json::array();
+      for (const auto &k : keys) {
+        json kk;
+        kk["time"]  = k.time;
+        kk["value"] = Vec3ToJson(k.value);
+        arr.push_back(std::move(kk));
+      }
+      target[name] = std::move(arr);
+    };
+    write_channel(j, "translation", a.translation_keys);
+    write_channel(j, "rotation", a.rotation_keys);
+    write_channel(j, "scale", a.scale_keys);
+    e["animation"] = std::move(j);
+  }
+
   return e;
 }
 
@@ -422,6 +441,29 @@ Entity LoadEntityFromJson(Scene &scene, const json &e) {
     entity.AddComponent<LuaScriptComponent>(e["lua_script"].get<std::string>());
   }
 
+  if (e.contains("animation") && e["animation"].is_object()) {
+    const auto &j = e["animation"];
+    const auto read_channel = [](const json &src, const char *name) {
+      std::vector<Keyframe> out;
+      if (src.contains(name) && src[name].is_array()) {
+        for (const auto &kk : src[name]) {
+          Keyframe key;
+          key.time  = kk.value("time", 0.0f);
+          key.value = Vec3FromJson(kk.value("value", json()));
+          out.push_back(key);
+        }
+      }
+      return out;
+    };
+    AnimationComponent animation;
+    animation.translation_keys = read_channel(j, "translation");
+    animation.rotation_keys    = read_channel(j, "rotation");
+    animation.scale_keys       = read_channel(j, "scale");
+    if (!animation.Empty()) {
+      entity.AddComponent<AnimationComponent>(std::move(animation));
+    }
+  }
+
   return entity;
 }
 
@@ -518,6 +560,14 @@ void Scene::SaveScene(const std::string &path) {
     root["render"]       = j;
   }
 
+  // Scene-level animation timeline settings (persisted so standalone playback
+  // matches the editor's Loop toggle).
+  if (HasAnyAnimation()) {
+    json j;
+    j["loop"] = anim_loop_;
+    root["animation"] = std::move(j);
+  }
+
   if (!main_script_.empty()) {
     root["main_script"] = main_script_;
   }
@@ -577,6 +627,8 @@ void Scene::LoadScene(const std::string &path) {
   entities_.clear();
   renderer_->ClearPointLights();
   renderer_->ClearSpotLights();
+  anim_time_    = 0.0f;
+  anim_playing_ = false;
 
   // Directional light.
   if (root.contains("directional_light")) {
@@ -626,6 +678,10 @@ void Scene::LoadScene(const std::string &path) {
     SetTAAEnabled(j.value("taa", true));
     SetIblIntensity(j.value("ibl_intensity", 0.8f));
     SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
+  }
+
+  if (root.contains("animation") && root["animation"].is_object()) {
+    anim_loop_ = root["animation"].value("loop", true);
   }
 
   // Entities.
@@ -707,6 +763,8 @@ void Scene::ClearContent() {
   physics_world_->ResetContacts();
   renderer_->ClearPointLights();
   renderer_->ClearSpotLights();
+  anim_time_    = 0.0f;
+  anim_playing_ = false;
   RemoveContentEntities();
   LOG_INFO("Scene") << "New (empty) scene created — content cleared, editor helpers kept";
 }
@@ -732,6 +790,8 @@ bool Scene::OpenSceneFile(const std::string &path) {
   physics_world_->ResetContacts();
   renderer_->ClearPointLights();
   renderer_->ClearSpotLights();
+  anim_time_    = 0.0f;
+  anim_playing_ = false;
   RemoveContentEntities();
 
   // Directional light.
@@ -782,6 +842,10 @@ bool Scene::OpenSceneFile(const std::string &path) {
     SetTAAEnabled(j.value("taa", true));
     SetIblIntensity(j.value("ibl_intensity", 0.8f));
     SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
+  }
+
+  if (root.contains("animation") && root["animation"].is_object()) {
+    anim_loop_ = root["animation"].value("loop", true);
   }
 
   // Entities.

@@ -40,6 +40,7 @@ class Editor : public Application {
   void ShowImGuiLog();
   void ShowImGuiInformation();
   void ShowImGuiScriptEditor();
+  void ShowImGuiTimeline();
 
   template <typename T>
   void DisplayAddComponentEntry(const std::string &entryName);
@@ -86,6 +87,7 @@ class Editor : public Application {
   bool show_information_     = true;
   bool show_colliders_       = true;
   bool show_script_editor_   = true;
+  bool show_timeline_        = true;
 
   ImGuiID dockspace_id_ = 0;
 

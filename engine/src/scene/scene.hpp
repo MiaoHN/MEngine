@@ -81,6 +81,42 @@ class Scene {
   /// that must keep a world pose stable). No-op without a Transform.
   void SetLocalTransformFromWorld(entt::entity entity, const glm::mat4 &world);
 
+  // --- Keyframe animation timeline (scene-wide) -----------------------------
+  // The scene has one shared clock. `SetAnimationTime` scrubs/previews a pose
+  // by sampling every entity's AnimationComponent into its local Transform.
+  // Play mode auto-plays any animated scene from t = 0 (see StartSimulation).
+
+  /// @brief Sets the shared timeline cursor to `time` seconds (clamped to the
+  /// scene's animation duration) and applies the sampled pose to every
+  /// animated entity. This is how the editor previews / scrubs poses.
+  void SetAnimationTime(float time);
+
+  /// @brief Current scene animation time in seconds.
+  [[nodiscard]] float GetAnimationTime() const { return anim_time_; }
+
+  /// @brief Longest animation duration across all animated entities (0 when
+  /// the scene has no animation).
+  [[nodiscard]] float GetAnimationDuration() const;
+
+  /// @brief True when at least one entity has a non-empty AnimationComponent.
+  [[nodiscard]] bool HasAnyAnimation() const;
+
+  /// @brief Advances the shared clock by `dt` and applies the new pose.
+  /// Respects the loop setting (wraps) or stops at the end when not looping.
+  void AdvanceAnimation(float dt);
+
+  /// @brief Starts/stops Edit-mode timeline playback. Play mode automatically
+  /// plays any animated scene regardless of this flag.
+  void SetAnimationPlaying(bool playing) { anim_playing_ = playing; }
+  [[nodiscard]] bool IsAnimationPlaying() const { return anim_playing_; }
+
+  /// @brief Whether the clock wraps (true) or clamps-and-stops at the end.
+  void SetAnimationLoop(bool loop) { anim_loop_ = loop; }
+  [[nodiscard]] bool GetAnimationLoop() const { return anim_loop_; }
+
+  /// @brief Rewinds the clock to 0 and applies the t = 0 pose.
+  void ResetAnimation();
+
   template <typename... Components>
   auto GetAllEntitiesWith() {
     auto                view = registry_.view<Components...>();
@@ -244,6 +280,15 @@ class Scene {
 
   Ref<PhysicsWorld> physics_world_;
   bool              simulating_ = false;
+
+  /// @brief Shared keyframe-animation timeline clock and playback state.
+  float anim_time_    = 0.0f;
+  bool  anim_playing_ = false;
+  bool  anim_loop_    = true;
+
+  /// @brief Samples every entity's AnimationComponent at anim_time_ into its
+  /// local Transform.
+  void ApplyAnimations();
 
   /// @brief Accumulator for the fixed-step simulation (physics + OnFixedUpdate
   /// + collision dispatch all advance at kFixedTimeStep).
