@@ -569,7 +569,6 @@ void Editor::OnUpdate(float dt) {
         SaveSceneAsDialog();
       }
       ImGui::Separator();
-      const std::string scene_label = current_scene_path_.empty() ? std::string("New scene") : current_scene_path_;
       if (ImGui::MenuItem("Close Scene")) {
         ExitGameModeForFileOp();
         NewScene();
