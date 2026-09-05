@@ -2,6 +2,7 @@
 
 #include <glm/gtx/euler_angles.hpp>
 
+#include "core/input.hpp"
 #include "render/renderer.hpp"
 #include "scene/component.hpp"
 
@@ -106,6 +107,40 @@ void Scene::StopSimulation() {
 
   simulating_ = false;
   LOG_INFO("Scene") << "Physics simulation stopped and initial transforms restored";
+}
+
+void Scene::UpdateCameraControllers(float delta_time, const glm::vec2 &mouse_delta, bool look_active) {
+  for (auto &entity : GetAllEntitiesWith<CameraController, CameraComponent>()) {
+    auto   &controller = entity.GetComponent<CameraController>();
+    auto   &component  = entity.GetComponent<CameraComponent>();
+    Camera &camera     = component.camera;
+
+    // Look around (yaw on Y, pitch on X); clamp pitch so the camera never
+    // flips upside down.
+    if (look_active) {
+      camera.rotation.x -= mouse_delta.y * controller.look_sensitivity;
+      camera.rotation.y -= mouse_delta.x * controller.look_sensitivity;
+      camera.rotation.x  = glm::clamp(camera.rotation.x, -89.0f, 89.0f);
+    }
+
+    // Free-fly movement along the camera's local axes.
+    float forward = 0.0f;
+    float right   = 0.0f;
+    float up      = 0.0f;
+    if (Input::IsKeyPressed(GLFW_KEY_W)) forward += 1.0f;
+    if (Input::IsKeyPressed(GLFW_KEY_S)) forward -= 1.0f;
+    if (Input::IsKeyPressed(GLFW_KEY_D)) right += 1.0f;
+    if (Input::IsKeyPressed(GLFW_KEY_A)) right -= 1.0f;
+    if (Input::IsKeyPressed(GLFW_KEY_E)) up += 1.0f;
+    if (Input::IsKeyPressed(GLFW_KEY_Q)) up -= 1.0f;
+
+    if (forward != 0.0f || right != 0.0f || up != 0.0f) {
+      const glm::vec3 f = camera.GetForward();
+      const glm::vec3 r = glm::normalize(glm::cross(f, glm::vec3(0.0f, 1.0f, 0.0f)));
+      const glm::vec3 u = glm::vec3(0.0f, 1.0f, 0.0f);
+      camera.position += (f * forward + r * right + u * up) * controller.move_speed * delta_time;
+    }
+  }
 }
 
 void Scene::OnUpdateEditor(const Camera &camera) { Render(camera); }

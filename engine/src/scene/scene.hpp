@@ -146,6 +146,12 @@ class Scene {
 
   [[nodiscard]] PhysicsWorld &GetPhysicsWorld() { return *physics_world_; }
 
+  /// @brief Moves/rotates every entity with a CameraController + CameraComponent
+  /// using WASD/QE keys and the given mouse delta. `look_active` enables
+  /// right-drag look; the pitch is clamped to avoid flipping. Call during Play
+  /// mode only.
+  void UpdateCameraControllers(float delta_time, const glm::vec2 &mouse_delta, bool look_active);
+
  private:
   entt::registry registry_;
 

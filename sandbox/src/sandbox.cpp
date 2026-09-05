@@ -3,6 +3,7 @@
 #include <cmath>
 #include <limits>
 
+#include "core/input.hpp"
 #include "render/asset_manager.hpp"
 #include "render/model_loader.hpp"
 #include "utils/profiler.h"
@@ -130,6 +131,8 @@ void Sandbox::OnUpdate(float dt) {
 
   if (running_loaded_scene_) {
     active_scene_->StepSimulation(dt);
+    active_scene_->UpdateCameraControllers(dt, Input::GetMouseDelta(),
+                                           Input::IsMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT));
     if (active_scene_->HasPrimaryCamera()) {
       active_scene_->RenderFromPrimaryCamera();
     } else {

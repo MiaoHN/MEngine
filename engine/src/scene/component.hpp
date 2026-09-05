@@ -40,6 +40,16 @@ struct CameraComponent {
   explicit CameraComponent(const Camera &camera) : camera(camera) {}
 };
 
+/// @brief Makes a camera entity user-controllable during Play mode (free-fly).
+/// Attach alongside `CameraComponent`; WASD/QE move the camera and holding the
+/// right mouse button + dragging looks around.
+struct CameraController {
+  float move_speed       = 5.0f;    // world units per second
+  float look_sensitivity = 0.15f;   // degrees per pixel of mouse movement
+
+  CameraController() = default;
+};
+
 struct Transform {
   glm::vec3 translation = {0.0f, 0.0f, 0.0f};
   glm::vec3 rotation    = {0.0f, 0.0f, 0.0f};

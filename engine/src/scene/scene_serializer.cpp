@@ -290,6 +290,14 @@ void Scene::SaveScene(const std::string &path) {
         e["collider"]      = j;
       }
 
+      if (entity.HasComponent<CameraController>()) {
+        const auto &component = entity.GetComponent<CameraController>();
+        json        j;
+        j["move_speed"]        = component.move_speed;
+        j["look_sensitivity"]  = component.look_sensitivity;
+        e["camera_controller"] = j;
+      }
+
       entity_array.push_back(e);
     }
     root["entities"] = entity_array;
@@ -418,6 +426,14 @@ void Scene::LoadScene(const std::string &path) {
         component.sphere_radius     = j.value("radius", 0.5f);
         component.offset            = Vec3FromJson(j.value("offset", json()));
         entity.AddComponent<ColliderComponent>(component);
+      }
+
+      if (e.contains("camera_controller")) {
+        const auto &j = e["camera_controller"];
+        CameraController component;
+        component.move_speed       = j.value("move_speed", 5.0f);
+        component.look_sensitivity = j.value("look_sensitivity", 0.15f);
+        entity.AddComponent<CameraController>(component);
       }
     }
   }

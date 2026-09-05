@@ -792,6 +792,13 @@ void Editor::ShowImGuiViewport() {
     }
   }
 
+  // Scene camera controllers while hovering the viewport (Play mode only).
+  if (hovered && game_mode_ == GameMode::Play) {
+    const ImGuiIO &io = ImGui::GetIO();
+    active_scene_->UpdateCameraControllers(io.DeltaTime, glm::vec2(io.MouseDelta.x, io.MouseDelta.y),
+                                           io.MouseDown[ImGuiMouseButton_Right]);
+  }
+
   if (game_mode_ == GameMode::Edit) {
     ShowGizmo(image_pos, image_area);
     DrawCameraGizmos(image_pos, image_area);
@@ -861,6 +868,7 @@ void Editor::ShowImGuiProperties() {
       DisplayAddComponentEntry<Transform>("Transform");
       DisplayAddComponentEntry<MeshComponent>("Mesh");
       DisplayAddComponentEntry<CameraComponent>("Camera");
+      DisplayAddComponentEntry<CameraController>("Camera Controller");
       DisplayAddComponentEntry<RigidBodyComponent>("Rigid Body");
       DisplayAddComponentEntry<ColliderComponent>("Collider");
 
@@ -1039,6 +1047,11 @@ void Editor::ShowImGuiProperties() {
         DrawVec3Control("Half Extents", component.box_half_extents, 1.0f);
       }
       DrawVec3Control("Offset", component.offset, 1.0f);
+    });
+
+    DrawComponent<CameraController>("Camera Controller", selected_entity_, [](auto &component) {
+      ImGui::DragFloat("Move Speed", &component.move_speed, 0.1f, 0.0f, 100.0f);
+      ImGui::DragFloat("Look Sensitivity", &component.look_sensitivity, 0.01f, 0.0f, 2.0f);
     });
   } else {
     ImGui::TextDisabled("Select an entity in the Scene panel to edit its properties.");
@@ -1484,7 +1497,16 @@ void Editor::CreatePhysicsDemo() {
     sphere.AddComponent<ColliderComponent>(collider);
   }
 
-  LOG_INFO("Editor") << "Physics demo scene created (ground + box stack + sphere)";
+  // A free-fly player camera for Play mode: WASD/QE move, right-drag looks.
+  Entity camera = active_scene_->CreateEntity("Player Camera");
+  CameraComponent camera_component;
+  camera_component.camera.position = glm::vec3(8.0f, 5.0f, 8.0f);
+  camera_component.camera.LookAt(glm::vec3(0.0f, 2.0f, 0.0f));
+  camera_component.primary = true;
+  camera.AddComponent<CameraComponent>(camera_component);
+  camera.AddComponent<CameraController>();
+
+  LOG_INFO("Editor") << "Physics demo scene created (ground + box stack + sphere + player camera)";
 }
 
 void Editor::SetGridVisible(bool visible) {
