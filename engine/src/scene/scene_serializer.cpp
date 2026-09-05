@@ -560,7 +560,7 @@ void Scene::LoadScene(const std::string &path) {
     SetGodRaysStrength(j.value("god_rays", 0.06f));
     SetSSAOEnabled(j.value("ssao", true));
     SetTAAEnabled(j.value("taa", true));
-    SetIblIntensity(j.value("ibl_intensity", 0.4f));
+    SetIblIntensity(j.value("ibl_intensity", 0.8f));
     SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
   }
 
@@ -711,7 +711,7 @@ bool Scene::OpenSceneFile(const std::string &path) {
     SetGodRaysStrength(j.value("god_rays", 0.06f));
     SetSSAOEnabled(j.value("ssao", true));
     SetTAAEnabled(j.value("taa", true));
-    SetIblIntensity(j.value("ibl_intensity", 0.4f));
+    SetIblIntensity(j.value("ibl_intensity", 0.8f));
     SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
   }
 

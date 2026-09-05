@@ -407,9 +407,11 @@ void Editor::Initialize() {
 
 active_scene_ = std::make_shared<Scene>();
 
-  // Tune lighting to match the sandbox's validated look: lower IBL ambient so
-  // meshes don't read as self-emissive, softer shadows, and gentler bloom.
-  active_scene_->SetIblIntensity(0.4f);
+  // Default editor lighting: gentle bloom/shadow and an IBL ambient of 0.8
+  // (Renderer's own default is 1.0) so surfaces with a lot of non-sun-facing
+  // area - e.g. spheres - do not read as dark next to sun-lit cube tops.
+  // Per-scene "Rendering -> IBL Intensity" overrides this saved value.
+  active_scene_->SetIblIntensity(0.8f);
   active_scene_->SetExposure(1.1f);
   active_scene_->SetBloomStrength(0.015f);
   active_scene_->SetShadowPcfRadius(4.0f);
