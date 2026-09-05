@@ -19,6 +19,7 @@
   3. Editor 支持 `--scene <path>` 启动即打开场景（Edit 模式，镜像 File→Open），便于无人值守复现/回归。
   4. 新增 `tools/ppm_to_png.py`（纯标准库 P6→PNG），便于查看 `--capture-frame` 截图。
 - **验证（无头+像素）**：cube/sphere/plane 外部视角渲染正常；内部视角帧像素与改动前一致且更干净（共面输家面被剔除）；editor 默认场景截图正常、网格可见；`python tools/run_smoke.py --preset windows-clang-debug` → **8/8 PASS**；debug/release 全链零警告。
+- **补充修复（同批，commit `463999b`）**：用户反馈“正方体顶/底面的方向不对”。复核 `Mesh::CreateCube` 六面绕序：+X/-X/+Z/-Z 正确，但 **+Y(顶) 几何法线为 -Y、-Y(底) 为 +Y**（内法线）——以前 `CullMode::None` 无所谓；默认背面剔除后从外部看顶/底被剔成“开口/方向不对”。已反转这两面的角点顺序，使外法线正确为 +Y/-Y；从正上方/正下方/侧面截图均为实心面，`tools/run_smoke.py` 8/8 PASS。
 - **说明/下一步**：以上处理的是“面/像素级遮挡”。若还要**跳过整棵被完全遮挡物体的 draw（对象级遮挡剔除/早期-Z）**，那是独立的大特性（HZB 或 occlusion query），见 DEV-PLAN P3 延伸；需要时再单独做。
 
 ---
