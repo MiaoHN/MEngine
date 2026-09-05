@@ -350,8 +350,8 @@ int Entity_AddComponent(lua_State *L) {
     RigidBodyComponent rb;
     rb.type        = (type == "static") ? RigidBodyComponent::Type::Static : RigidBodyComponent::Type::Dynamic;
     rb.friction    = static_cast<float>(luaL_optnumber(L, 4, 0.5));
-    rb.restitution = static_cast<float>(luaL_optnumber(L, 5, 0.0));
-    if (!reg.all_of<RigidBodyComponent>(ud->id)) {
+    rb.restitution = static_cast<float>(luaL_optnumber(L, 5, 0.0));    rb.continuous_collision = lua_toboolean(L, 6);
+    rb.is_sensor             = lua_toboolean(L, 7);    if (!reg.all_of<RigidBodyComponent>(ud->id)) {
       reg.emplace<RigidBodyComponent>(ud->id, rb);
     } else {
       reg.get<RigidBodyComponent>(ud->id) = rb;

@@ -94,6 +94,8 @@ struct RigidBodyComponent {
   Type  type        = Type::Dynamic;
   float friction    = 0.5f;
   float restitution = 0.0f;
+  bool  continuous_collision = false;  // CCD (Jolt LinearCast) — prevents tunneling of fast bodies
+  bool  is_sensor             = false;  // trigger: no collision response, contact events still fire
 
   RigidBodyComponent() = default;
   explicit RigidBodyComponent(Type type) : type(type) {}

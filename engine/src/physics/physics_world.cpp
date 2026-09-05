@@ -63,9 +63,17 @@ void PhysicsWorld::Update(float delta_time) {
   physics_system_.Update(clamped_dt, 1, temp_allocator_.get(), job_system_.get());
 }
 
+namespace {
+/// @brief Applies sensor/CCD flags to a body-creation settings object.
+void ConfigureBodySettings(JPH::BodyCreationSettings &settings, bool is_sensor, bool continuous_collision) {
+  settings.mIsSensor      = is_sensor;
+  settings.mMotionQuality = continuous_collision ? JPH::EMotionQuality::LinearCast : JPH::EMotionQuality::Discrete;
+}
+}  // namespace
+
 JPH::BodyID PhysicsWorld::CreateBoxBody(const glm::vec3 &position, const glm::quat &rotation,
                                         const glm::vec3 &half_extents, bool is_dynamic, float friction,
-                                        float restitution) {
+                                        float restitution, bool is_sensor, bool continuous_collision) {
   // NOTE: pass a heap-allocated concrete shape. BodyCreationSettings takes a
   // ref-counted ownership of it and releases it on destruction — passing the
   // address of a stack-allocated ShapeSettings would make Release() delete
@@ -75,23 +83,27 @@ JPH::BodyID PhysicsWorld::CreateBoxBody(const glm::vec3 &position, const glm::qu
                                           is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
   body_settings.mFriction    = friction;
   body_settings.mRestitution = restitution;
+  ConfigureBodySettings(body_settings, is_sensor, continuous_collision);
   return physics_system_.GetBodyInterface().CreateAndAddBody(
       body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
 }
 
 JPH::BodyID PhysicsWorld::CreateSphereBody(const glm::vec3 &position, const glm::quat &rotation, float radius,
-                                           bool is_dynamic, float friction, float restitution) {
+                                           bool is_dynamic, float friction, float restitution, bool is_sensor,
+                                           bool continuous_collision) {
   JPH::BodyCreationSettings body_settings(new JPH::SphereShape(radius), ToJolt(position), ToJolt(rotation),
                                           is_dynamic ? JPH::EMotionType::Dynamic : JPH::EMotionType::Static,
                                           is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
   body_settings.mFriction    = friction;
   body_settings.mRestitution = restitution;
+  ConfigureBodySettings(body_settings, is_sensor, continuous_collision);
   return physics_system_.GetBodyInterface().CreateAndAddBody(
       body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
 }
 
 JPH::BodyID PhysicsWorld::CreateCapsuleBody(const glm::vec3 &position, const glm::quat &rotation, float half_height,
-                                            float radius, bool is_dynamic, float friction, float restitution) {
+                                            float radius, bool is_dynamic, float friction, float restitution,
+                                            bool is_sensor, bool continuous_collision) {
   // Jolt CapsuleShape is oriented along the local Y axis; match that convention.
   JPH::BodyCreationSettings body_settings(new JPH::CapsuleShape(half_height, radius), ToJolt(position),
                                           ToJolt(rotation),
@@ -99,12 +111,14 @@ JPH::BodyID PhysicsWorld::CreateCapsuleBody(const glm::vec3 &position, const glm
                                           is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
   body_settings.mFriction    = friction;
   body_settings.mRestitution = restitution;
+  ConfigureBodySettings(body_settings, is_sensor, continuous_collision);
   return physics_system_.GetBodyInterface().CreateAndAddBody(
       body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
 }
 
 JPH::BodyID PhysicsWorld::CreateCylinderBody(const glm::vec3 &position, const glm::quat &rotation, float half_height,
-                                             float radius, bool is_dynamic, float friction, float restitution) {
+                                             float radius, bool is_dynamic, float friction, float restitution,
+                                             bool is_sensor, bool continuous_collision) {
   // Jolt CylinderShape is oriented along the local Y axis; match that convention.
   JPH::BodyCreationSettings body_settings(new JPH::CylinderShape(half_height, radius), ToJolt(position),
                                           ToJolt(rotation),
@@ -112,12 +126,14 @@ JPH::BodyID PhysicsWorld::CreateCylinderBody(const glm::vec3 &position, const gl
                                           is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
   body_settings.mFriction    = friction;
   body_settings.mRestitution = restitution;
+  ConfigureBodySettings(body_settings, is_sensor, continuous_collision);
   return physics_system_.GetBodyInterface().CreateAndAddBody(
       body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
 }
 
 JPH::BodyID PhysicsWorld::CreateBody(const glm::vec3 &position, const glm::quat &rotation, bool is_dynamic,
-                                     float friction, float restitution, const std::vector<ColliderShapeDesc> &shapes) {
+                                     float friction, float restitution, const std::vector<ColliderShapeDesc> &shapes,
+                                     bool is_sensor, bool continuous_collision) {
   if (shapes.empty()) return {};
 
   // Build a compound (Jolt merges a single shape into a trivial compound too;
@@ -155,6 +171,7 @@ JPH::BodyID PhysicsWorld::CreateBody(const glm::vec3 &position, const glm::quat 
                                           is_dynamic ? JPH::ObjectLayer(1) : JPH::ObjectLayer(0));
   body_settings.mFriction    = friction;
   body_settings.mRestitution = restitution;
+  ConfigureBodySettings(body_settings, is_sensor, continuous_collision);
   return physics_system_.GetBodyInterface().CreateAndAddBody(
       body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
 }

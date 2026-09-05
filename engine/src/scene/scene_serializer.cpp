@@ -212,6 +212,8 @@ json EntityToJson(Entity &entity) {
     j["type"]        = component.type == RigidBodyComponent::Type::Static ? "static" : "dynamic";
     j["friction"]    = component.friction;
     j["restitution"] = component.restitution;
+    j["continuous_collision"] = component.continuous_collision;
+    j["sensor"]                = component.is_sensor;
     e["rigid_body"]  = j;
   }
 
@@ -326,6 +328,8 @@ void LoadEntityFromJson(Scene &scene, const json &e) {
                                                                    : RigidBodyComponent::Type::Dynamic;
     component.friction    = j.value("friction", 0.5f);
     component.restitution = j.value("restitution", 0.0f);
+    component.continuous_collision = j.value("continuous_collision", false);
+    component.is_sensor             = j.value("sensor", false);
     entity.AddComponent<RigidBodyComponent>(component);
   }
 

@@ -1121,6 +1121,8 @@ void Editor::ShowImGuiProperties() {
       }
       ImGui::SliderFloat("Friction", &component.friction, 0.0f, 1.0f);
       ImGui::SliderFloat("Restitution", &component.restitution, 0.0f, 1.0f);
+      ImGui::Checkbox("Continuous (CCD)", &component.continuous_collision);
+      ImGui::Checkbox("Sensor (trigger)", &component.is_sensor);
     });
 
     DrawComponent<ColliderComponent>("Collider", selected_entity_, [](auto &component) {
