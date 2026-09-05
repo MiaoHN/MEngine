@@ -102,6 +102,7 @@ class Editor : public Application {
   void DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
   void DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
   void SetGridVisible(bool visible);
+  void LaunchStandalone();
 };
 
 ::MEngine::Application *CreateApplication();

@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
+#include <thread>
 
 #include "render/asset_manager.hpp"
 #include "render/model_loader.hpp"
@@ -89,6 +91,10 @@ bool LoadModelAsset(const std::filesystem::path &path, Ref<Mesh> &mesh, Ref<Mate
       mat->SetShader(AssetManager::Instance().GetShader("pbr"));
       material = mat;
     }
+  }
+
+  if (mesh) {
+    mesh->SetSource(path.string());
   }
 
   return mesh != nullptr;
@@ -317,6 +323,7 @@ void Editor::Initialize() {
   grid_material_->SetShader(AssetManager::Instance().GetShader("grid"));
   grid_mesh_   = Mesh::CreatePlane(500.0f);
   grid_entity_ = active_scene_->CreateEntity("Grid");
+  grid_entity_.GetComponent<Tag>().editor_only = true;
   grid_entity_.AddComponent<Transform>();
   grid_entity_.AddComponent<MeshComponent>(grid_mesh_, grid_material_);
 
@@ -708,6 +715,13 @@ void Editor::ShowImGuiViewport() {
       active_scene_->StopSimulation();
       SetGridVisible(true);
     }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Launch")) {
+    LaunchStandalone();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Run the scene standalone in a new window");
   }
   ImGui::EndChild();
 
@@ -1484,6 +1498,38 @@ void Editor::SetGridVisible(bool visible) {
   } else if (!visible && has_mesh) {
     grid_entity_.RemoveComponent<MeshComponent>();
   }
+}
+
+void Editor::LaunchStandalone() {
+  // Save the scene into the shared build-tree root, next to the sandbox
+  // executable, then run the sandbox in a new process (new window).
+  std::error_code            ec;
+  const std::filesystem::path build_root = std::filesystem::absolute("..", ec);
+  if (ec) {
+    LOG_ERROR("Editor") << "Failed to resolve build directory for standalone launch";
+    return;
+  }
+
+  // Return to the resting Edit state first so the saved scene has the initial
+  // transforms rather than mid-simulation poses.
+  if (game_mode_ == GameMode::Play) {
+    game_mode_ = GameMode::Edit;
+    active_scene_->StopSimulation();
+    SetGridVisible(true);
+  }
+
+  const std::filesystem::path scene_path  = build_root / "play_scene.json";
+  const std::filesystem::path sandbox_exe = build_root / "sandbox" / "sandbox.exe";
+
+  active_scene_->SaveScene(scene_path.string());
+
+  const std::string command = "\"" + sandbox_exe.string() + "\" --scene \"" + scene_path.string() + "\"";
+  // `cmd /c` strips the outermost quotes; wrap the whole command so the inner
+  // quotes around each path survive shell parsing.
+  const std::string cmd = "\"" + command + "\"";
+  LOG_INFO("Editor") << "Launching standalone sandbox: " << command;
+
+  std::thread([cmd]() { std::system(cmd.c_str()); }).detach();
 }
 
 void Editor::CreateModelEntity(const std::filesystem::path &path) {
