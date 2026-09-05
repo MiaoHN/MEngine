@@ -689,15 +689,10 @@ void Editor::ShowImGuiViewport() {
 
   const ImVec2 avail = ImGui::GetContentRegionAvail();
 
-  // Toolbar: gizmo operation + play/stop.
+  // Toolbar: fly/orbit toggle + play/stop. Gizmo operations live in an
+  // icon-button overlay at the bottom-left of the viewport image.
   constexpr float toolbar_height = 26.0f;
   ImGui::BeginChild("##ViewportToolbar", ImVec2(avail.x, toolbar_height));
-  if (ImGui::Button("Translate")) gizmo_operation_ = ImGuizmo::TRANSLATE;
-  ImGui::SameLine();
-  if (ImGui::Button("Rotate")) gizmo_operation_ = ImGuizmo::ROTATE;
-  ImGui::SameLine();
-  if (ImGui::Button("Scale")) gizmo_operation_ = ImGuizmo::SCALE;
-  ImGui::SameLine();
   if (ImGui::Button(editor_camera_.IsFlyMode() ? "Orbit" : "Fly")) {
     editor_camera_.SetFlyMode(!editor_camera_.IsFlyMode());
   }
@@ -788,6 +783,43 @@ void Editor::ShowImGuiViewport() {
     DrawCameraGizmos(image_pos, image_area);
     if (show_colliders_) {
       DrawColliderGizmos(image_pos, image_area);
+    }
+
+    // Bottom-left overlay: small icon-like buttons for the gizmo operation.
+    constexpr float btn_size = 24.0f;
+    constexpr float padding  = 8.0f;
+    ImGui::SetCursorScreenPos(ImVec2(image_pos.x + padding, image_pos.y + image_area.y - btn_size - padding));
+
+    struct GizmoButton {
+      const char         *label;
+      const char         *tooltip;
+      ImGuizmo::OPERATION operation;
+    };
+    const GizmoButton buttons[] = {
+        {"T", "Translate (W)", ImGuizmo::TRANSLATE},
+        {"R", "Rotate (E)", ImGuizmo::ROTATE},
+        {"S", "Scale (R)", ImGuizmo::SCALE},
+    };
+    for (const GizmoButton &button : buttons) {
+      ImGui::PushID(button.label);
+      const bool active = gizmo_operation_ == button.operation;
+      if (active) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.24f, 0.54f, 0.92f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.60f, 0.98f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.20f, 0.48f, 0.86f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+      }
+      if (ImGui::Button(button.label, ImVec2(btn_size, btn_size))) {
+        gizmo_operation_ = button.operation;
+      }
+      if (active) {
+        ImGui::PopStyleColor(4);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", button.tooltip);
+      }
+      ImGui::PopID();
+      ImGui::SameLine();
     }
   }
 
