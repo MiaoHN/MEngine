@@ -87,9 +87,14 @@ JPH::BodyID PhysicsWorld::CreateSphereBody(const glm::vec3 &position, const glm:
 }
 
 void PhysicsWorld::DestroyBody(JPH::BodyID body_id) {
-  if (!body_id.IsInvalid()) {
-    physics_system_.GetBodyInterface().DestroyBody(body_id);
-  }
+  if (body_id.IsInvalid()) return;
+
+  auto &body_interface = physics_system_.GetBodyInterface();
+  // A body must be removed from the broad phase and deactivated before it can
+  // be destroyed: destroying an active/in-broad-phase body trips a Jolt assert
+  // in debug and leaves dangling broad-phase pointers in release.
+  body_interface.RemoveBody(body_id);
+  body_interface.DestroyBody(body_id);
 }
 
 void PhysicsWorld::SetGravity(const glm::vec3 &gravity) { physics_system_.SetGravity(ToJolt(gravity)); }
