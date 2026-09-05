@@ -5,6 +5,35 @@
 
 ---
 
+## 2026-09-05 — P5 压测与冒烟交付（PERFORMANCE.md + stress 场景 + run_smoke）
+
+- **分支**：`refractor`；commit：P5 交付批次（eff3eba/151dd1e 后续）
+- **做了什么**：
+  1. 正式压测场景：`assets/scenes/stress_{1600→stress_cull,4096,10000}.scene`
+     （四色循环材质、单位立方体 XZ 平铺；python 脚本生成，格式与编辑器一致）。
+  2. `docs/PERFORMANCE.md`：环境、复现命令、release/debug 数据表、与
+     P3 前基线对比、结论与局限。
+  3. `tools/run_smoke.py`：无人值守回归冒烟（物理场景真时 20s 驱动 +
+     渲染统计断言 + editor exe 目录冒烟），退出码聚合。
+  4. DEV-PLAN 顶部进度标注 + docs/README.md 索引登记 PERFORMANCE.md。
+- **验证（无人值守）**：`python tools/run_smoke.py --preset windows-clang-debug`
+  → **8/8 PASS**（sensor enter / impact / 无错误 / dc=5 inst=5 culled+visible=1600 /
+  editor 初始化+RenderStats）。数据结论（release，隐藏窗口无 vsync）：
+  1600 实体 789 fps、4096 → 480 fps、10000 → 230 fps，每帧恒定 5 个
+  drawcall（1 阴影批 + 4 材质批）；10000 实体主 pass ≈1.1 ms、剔除 7840/2160。
+- **遇到的问题**：
+  1. 无 vsync 窗口帧率上千，固定“帧数预算”给物理的时间≈0（300 帧只有
+     0.15 s 模拟）→ 冒烟脚本改为**真实时长驱动**（20 s 墙钟）后 sensor/
+     impact 事件如期出现。
+  2. editor 从项目根启动会卡死在 ImGui 字体加载（`res/fonts` 相对 exe
+     目录；从项目根无此路径时 AddFontFromFileTTF 异常挂起）→ 冒烟与日常
+     使用均以 **exe 所在目录**为工作目录；已在冒烟脚本中固化该约定。
+- **下一步**：P3.5 Vulkan 补全、P3.6 多线程渲染、P4 Editor 面板化拆分
+  均为超大体量工程，已评估暂缓，保留 DEV-PLAN 路线图与 WORKLOG 断点；
+  建议按“每阶段一个独立会话”推进。
+
+---
+
 ## 2026-09-05 — P3 渲染优化主体完成（无人值守 + 像素级验证）
 
 - **分支**：`refractor`；commit：`76e8471`(stats+运行参数)、`384bdf2`(视锥剔除)、

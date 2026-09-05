@@ -7,6 +7,10 @@
 - 创建日期：2026-09-05
 - 工作分支：`refractor`（推进中）
 - 相关执行细节、遇到的问题与验证结果请见 [WORKLOG.md](./WORKLOG.md)。
+- **当前进度**：P0 ✅ / P1 ✅ / P2 ✅（Overlap 等可选项延后）/ **P3 ✅**
+  （stats+剔除+实例化+材质批处理+CullMode，像素级验证，见
+  [PERFORMANCE.md](./PERFORMANCE.md)）。P3.5 Vulkan、P3.6 多线程渲染、
+  P4 Editor 面板化重构为超大体量独立工程，暂缓开工（保留本计划作为路线图）。
 
 ---
 
