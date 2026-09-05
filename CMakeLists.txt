@@ -83,3 +83,14 @@ endif()
 if(MENGINE_BUILD_EDITOR)
   add_subdirectory(editor)
 endif()
+
+# Sync compile_commands.json into the top-level build directory so VS Code
+# (clangd / the C++ extension) can discover it for symbol lookup.
+add_custom_target(sync_compile_commands ALL
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/build
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_BINARY_DIR}/compile_commands.json
+    ${PROJECT_SOURCE_DIR}/build/compile_commands.json
+  COMMENT "Syncing compile_commands.json to build/"
+  VERBATIM
+)
