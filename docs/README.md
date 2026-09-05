@@ -14,6 +14,8 @@
 | [scene.md](./scene.md) | 场景层：ECS(EnTT)、Entity、组件、Scene、相机 |
 | [editor.md](./editor.md) | 编辑器应用：面板结构、渲染到纹理、交互 |
 | [roadmap.md](./roadmap.md) | 3D 图形引擎路线图：模型导入、3D 渲染、光照与后处理 |
+| [DEV-PLAN.md](./DEV-PLAN.md) | 整理重构专项：总计划、任务拆解、分支/提交地图与纪律 |
+| [WORKLOG.md](./WORKLOG.md) | 整理重构专项：逐条执行日志（做了什么/如何验证/问题与解决） |
 
 ## 项目速览
 
