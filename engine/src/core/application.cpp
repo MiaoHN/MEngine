@@ -1,4 +1,7 @@
 #include "core/application.hpp"
+
+#include <fstream>
+
 #include "core/logger.hpp"
 #include "render/asset_manager.hpp"
 #include "utils/profiler.h"
@@ -11,6 +14,8 @@ std::string Application::startup_scene_path_;
 GraphicsAPI Application::startup_api_ = GraphicsAPI::OpenGL;
 int         Application::max_frames_  = 0;  // 0 = run until the window closes
 bool        Application::window_hidden_ = false;
+int         Application::capture_frame_  = 0;  // 0 = disabled
+std::string Application::capture_out_path_ = "capture.ppm";
 
 Application *Application::GetInstance() { return s_app; }
 
@@ -98,10 +103,16 @@ void Application::OnUpdate(float dt) {
 
 void Application::Run() {
   PROFILER_FUNCTION();
+
+  // Total rendered frames (frame_count_ is the rolling FPS counter and resets
+  // every second — never use it for budgets or one-shot frame triggers).
+  int total_frames = 0;
+
   while (!glfwWindowShouldClose(window_)) {
     PROFILER_SCOPE("One Frame");
 
     const float dt = GetDeltaTime();
+    ++total_frames;
 
     rhi_->BeginFrame(glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
@@ -111,9 +122,34 @@ void Application::Run() {
 
     glfwPollEvents();
 
-    // Unattended runs: exit after the requested frame budget.
-    if (max_frames_ > 0 && frame_count_ >= max_frames_) {
-      LOG_INFO("Application") << "Frame budget reached (" << frame_count_ << " frames); exiting";
+    // Unattended verification: save the backbuffer as PPM on the requested
+    // frame (read before the swap, from the still-current default framebuffer).
+    if (capture_frame_ > 0 && total_frames == capture_frame_) {
+      int width = 0;
+      int height = 0;
+      glfwGetFramebufferSize(window_, &width, &height);
+      std::vector<unsigned char> rgb;
+      if (rhi_ && width > 0 && height > 0 && rhi_->ReadBackBuffer(width, height, rgb)) {
+        std::ofstream file(capture_out_path_, std::ios::binary);
+        if (file.is_open()) {
+          file << "P6\n" << width << " " << height << "\n255\n";
+          // OpenGL rows are bottom-up; flip so the PPM is top-down.
+          for (int row = height - 1; row >= 0; --row) {
+            file.write(reinterpret_cast<const char *>(rgb.data()) + static_cast<size_t>(row) * width * 3,
+                       static_cast<std::streamsize>(width) * 3);
+          }
+          LOG_INFO("Application") << "Captured frame " << capture_frame_ << " to " << capture_out_path_ << " ("
+                                  << width << "x" << height << ")";
+        } else {
+          LOG_ERROR("Application") << "Failed to open capture file " << capture_out_path_;
+        }
+      } else {
+        LOG_ERROR("Application") << "Backbuffer readback unavailable or failed";
+      }
+    }
+
+    if (max_frames_ > 0 && total_frames >= max_frames_) {
+      LOG_INFO("Application") << "Frame budget reached (" << total_frames << " frames); exiting";
       break;
     }
   }

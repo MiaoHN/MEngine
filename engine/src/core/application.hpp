@@ -88,6 +88,15 @@ class Application {
   static void SetWindowHidden(bool hidden) { window_hidden_ = hidden; }
   [[nodiscard]] static bool IsWindowHidden() { return window_hidden_; }
 
+  /// @brief Captures the backbuffer as PPM after frame `frame` (`--capture-frame
+  /// <n>`), writing to `out_path` (default "capture.ppm"). 0 disables capture.
+  static void SetCaptureFrame(int frame, const std::string &out_path) {
+    capture_frame_ = frame;
+    capture_out_path_ = out_path;
+  }
+  [[nodiscard]] static int GetCaptureFrame() { return capture_frame_; }
+  [[nodiscard]] static const std::string &GetCaptureOutPath() { return capture_out_path_; }
+
  protected:
   /**
    * @brief scene_ is a unique pointer to the Scene class.
@@ -121,6 +130,8 @@ class Application {
   static GraphicsAPI     startup_api_;
   static int             max_frames_;
   static bool            window_hidden_;
+  static int             capture_frame_;
+  static std::string     capture_out_path_;
 };
 
 }  // namespace MEngine

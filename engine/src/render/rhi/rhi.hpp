@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "core/common.hpp"
 
 // ImDrawData (from imgui.h) is only ever used behind a pointer in this
@@ -41,6 +43,10 @@ class IRHI {
 
   /// @brief Toggles wireframe rasterization for subsequent draw calls.
   virtual void SetWireframe(bool wireframe) const = 0;
+
+  /// @brief Reads the currently bound (default) framebuffer back to CPU as RGB.
+  /// Returns false when the backend cannot read pixels (e.g. the Vulkan stub).
+  virtual bool ReadBackBuffer(int width, int height, std::vector<unsigned char> &out_rgb) const = 0;
 
   virtual unsigned int CreateFramebuffer() const = 0;
 

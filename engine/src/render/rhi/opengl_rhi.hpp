@@ -26,6 +26,7 @@ class OpenGLRHI final : public IRHI {
 
   void DrawIndexedTriangles(int index_count) const override;
   void DrawIndexedInstanced(int index_count, int instance_count) const override;
+  bool ReadBackBuffer(int width, int height, std::vector<unsigned char> &out_rgb) const override;
 
   void SetWireframe(bool wireframe) const override;
 

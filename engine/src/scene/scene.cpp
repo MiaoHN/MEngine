@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 
 #include <glm/gtx/euler_angles.hpp>
@@ -80,6 +82,14 @@ Frustum ExtractFrustum(const glm::mat4 &proj_view) {
 }
 
 
+/// @brief Verification hook: when MENGINE_NO_BATCH is set, the main pass
+/// draws every entity separately (batch size 1). Rendering output must be
+/// pixel-identical to the batched path — used by unattended pixel tests.
+bool BatchDisabledByEnv() {
+  static const bool disabled = std::getenv("MENGINE_NO_BATCH") != nullptr;
+  return disabled;
+}
+
 /// @brief Total order over material content (pointer-free), used to make
 /// equal-content materials adjacent for batching.
 bool MaterialLessForBatching(const Ref<Material> &a, const Ref<Material> &b) {
@@ -99,8 +109,12 @@ bool MaterialLessForBatching(const Ref<Material> &a, const Ref<Material> &b) {
   if (a->GetAOMap() != b->GetAOMap()) return tex_cmp(a->GetAOMap(), b->GetAOMap());
   const glm::vec4 ca = a->GetBaseColorFactor();
   const glm::vec4 cb = b->GetBaseColorFactor();
-  if (ca != cb) return ca.r < cb.r || (ca.r == cb.r && (ca.g < cb.g || (ca.g == cb.g && (ca.b < cb.b ||
-                                   (ca.b == cb.b && ca.a < cb.a)))));
+  if (std::memcmp(&ca, &cb, sizeof(ca)) != 0) {
+    if (ca.r != cb.r) return ca.r < cb.r;
+    if (ca.g != cb.g) return ca.g < cb.g;
+    if (ca.b != cb.b) return ca.b < cb.b;
+    return ca.a < cb.a;
+  }
   if (a->GetMetallicFactor() != b->GetMetallicFactor()) return a->GetMetallicFactor() < b->GetMetallicFactor();
   if (a->GetRoughnessFactor() != b->GetRoughnessFactor()) return a->GetRoughnessFactor() < b->GetRoughnessFactor();
   return a->GetSpecularFactor() < b->GetSpecularFactor();
@@ -798,9 +812,10 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
       return MaterialLessForBatching(a->material, b->material);
     });
     std::vector<glm::mat4> batch;
+    const bool no_batch = BatchDisabledByEnv();
     for (size_t k = 0; k < visible.size();) {
       size_t j = k + 1;
-      while (j < visible.size() && visible[j]->mesh == visible[k]->mesh &&
+      while (!no_batch && j < visible.size() && visible[j]->mesh == visible[k]->mesh &&
              SameMaterialForBatching(visible[j]->material, visible[k]->material)) {
         ++j;
       }

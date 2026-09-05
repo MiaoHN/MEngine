@@ -500,6 +500,15 @@ void VulkanRHI::DrawIndexedTriangles(int index_count) const {
 #endif
 }
 
+bool VulkanRHI::ReadBackBuffer(int width, int height, std::vector<unsigned char> &out_rgb) const {
+  // The Vulkan path is a CPU-side placeholder; real readback needs a transfer
+  // queue and staging buffer.
+  (void)width;
+  (void)height;
+  out_rgb.clear();
+  return false;
+}
+
 unsigned int VulkanRHI::CreateFramebuffer() const { return 0; }
 
 void VulkanRHI::DestroyFramebuffer(unsigned int framebuffer) const { (void)framebuffer; }

@@ -31,6 +31,16 @@ void ParseCommandLine(int argc, char const *argv[]) {
       }
     } else if (arg == "--hidden") {
       Application::SetWindowHidden(true);
+    } else if (arg == "--capture-frame") {
+      const std::string frame = value_after(i++, "--capture-frame");
+      if (!frame.empty()) {
+        Application::SetCaptureFrame(std::max(0, std::atoi(frame.c_str())), Application::GetCaptureOutPath());
+      }
+    } else if (arg == "--capture-out") {
+      const std::string path = value_after(i++, "--capture-out");
+      if (!path.empty()) {
+        Application::SetCaptureFrame(Application::GetCaptureFrame(), path);
+      }
     }
   }
 }

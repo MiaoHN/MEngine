@@ -81,6 +81,14 @@ void OpenGLRHI::SetWireframe(bool wireframe) const {
   glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
 }
 
+bool OpenGLRHI::ReadBackBuffer(int width, int height, std::vector<unsigned char> &out_rgb) const {
+  out_rgb.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 3);
+  glPixelStorei(GL_PACK_ALIGNMENT, 1);
+  glReadBuffer(GL_BACK);
+  glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, out_rgb.data());
+  return true;
+}
+
 unsigned int OpenGLRHI::CreateFramebuffer() const {
   unsigned int framebuffer = 0;
   glGenFramebuffers(1, &framebuffer);
