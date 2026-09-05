@@ -23,33 +23,79 @@ bool IsRenderable(Entity &entity) {
   return entity.HasComponent<MeshComponent>() && entity.GetComponent<MeshComponent>().mesh != nullptr;
 }
 
-/// @brief Computes the world-space AABB of every renderable mesh entity.
-bool ComputeSceneBounds(std::vector<Entity> &entities, glm::vec3 &out_min, glm::vec3 &out_max) {
-  bool     initialized = false;
-  glm::vec3 min_v(std::numeric_limits<float>::max());
-  glm::vec3 max_v(std::numeric_limits<float>::lowest());
+/// @brief One mesh draw candidate with everything needed by every pass.
+/// Model matrices and world AABBs are computed once per frame and shared by
+/// the shadow / SSAO / main passes (CPU frustum culling reads the AABB).
+struct RenderItem {
+  entt::entity handle{entt::null};
+  Ref<Mesh>    mesh;
+  Ref<Material> material;  // may be null (shadow / SSAO passes ignore it)
+  glm::mat4    model{1.0f};
+  glm::vec3    world_min{0.0f};
+  glm::vec3    world_max{0.0f};
+  bool         has_bounds = false;
+};
 
-  for (auto &entity : entities) {
-    if (!entity.HasComponent<MeshComponent>() || !entity.GetComponent<MeshComponent>().mesh) continue;
-    if (entity.HasComponent<Tag>() && entity.GetComponent<Tag>().editor_only) continue;
-
-    const glm::mat4 model =
-        entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
-    for (const auto &vertex : entity.GetComponent<MeshComponent>().mesh->GetVertices()) {
-      const glm::vec3 world = glm::vec3(model * glm::vec4(vertex.position, 1.0f));
-      min_v                  = glm::min(min_v, world);
-      max_v                  = glm::max(max_v, world);
-      initialized            = true;
+/// @brief Transforms an object-space AABB into world space (8 corners).
+void TransformAABB(const glm::mat4 &model, const glm::vec3 &local_min, const glm::vec3 &local_max,
+                   glm::vec3 &world_min, glm::vec3 &world_max) {
+  world_min = glm::vec3(std::numeric_limits<float>::max());
+  world_max = glm::vec3(std::numeric_limits<float>::lowest());
+  const float xs[2] = {local_min.x, local_max.x};
+  const float ys[2] = {local_min.y, local_max.y};
+  const float zs[2] = {local_min.z, local_max.z};
+  for (const float x : xs) {
+    for (const float y : ys) {
+      for (const float z : zs) {
+        const glm::vec3 corner = glm::vec3(model * glm::vec4(x, y, z, 1.0f));
+        world_min              = glm::min(world_min, corner);
+        world_max              = glm::max(world_max, corner);
+      }
     }
   }
+}
 
-  if (!initialized) return false;
-  out_min = min_v;
-  out_max = max_v;
+/// @brief Six frustum planes extracted from a clip matrix (Gribb-Hartmann).
+/// A point is inside when dot(plane.xyz, p) + plane.w >= 0.
+struct Frustum {
+  glm::vec4 planes[6];
+};
+
+Frustum ExtractFrustum(const glm::mat4 &proj_view) {
+  const glm::mat4 t = glm::transpose(proj_view);
+  Frustum         f;
+  f.planes[0] = t[3] + t[0];  // left
+  f.planes[1] = t[3] - t[0];  // right
+  f.planes[2] = t[3] + t[1];  // bottom
+  f.planes[3] = t[3] - t[1];  // top
+  f.planes[4] = t[3] + t[2];  // near
+  f.planes[5] = t[3] - t[2];  // far
+  for (auto &plane : f.planes) {
+    const float len = glm::length(glm::vec3(plane));
+    if (len > 1e-8f) {
+      plane /= len;
+    }
+  }
+  return f;
+}
+
+/// @brief True when the AABB is at least partially inside the frustum.
+bool AABBInsideFrustum(const Frustum &f, const glm::vec3 &world_min, const glm::vec3 &world_max) {
+  for (const auto &plane : f.planes) {
+    const glm::vec3 n(plane);
+    // Corner closest to the plane along +n: if it is fully outside, the whole
+    // box is outside this plane (and thus outside the frustum).
+    const glm::vec3 p_pos(n.x >= 0.0f ? world_max.x : world_min.x,
+                          n.y >= 0.0f ? world_max.y : world_min.y,
+                          n.z >= 0.0f ? world_max.z : world_min.z);
+    if (glm::dot(n, p_pos) + plane.w < 0.0f) {
+      return false;
+    }
+  }
   return true;
 }
 
-}  // namespace
+}  // namespace}  // namespace
 
 Scene::Scene() {
   default_camera_info_                = CreateRef<Camera>();
@@ -512,50 +558,74 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     return static_cast<float>(std::chrono::duration<double, std::milli>(clock::now() - start).count());
   };
 
-  auto entities = GetAllEntitiesWith<MeshComponent>();
   renderer_->ResetFrameStats();
   for (float &t : pass_times_ms_) {
     t = 0.0f;
   }
-  if (entities.empty()) {
+
+  // Collect every renderable mesh entity once per frame: one model-matrix
+  // computation, one world AABB (from the mesh's cached object-space AABB)
+  // shared by the shadow/SSAO/main passes below.
+  std::vector<RenderItem> items;
+  items.reserve(16);
+  glm::vec3 scene_min(std::numeric_limits<float>::max());
+  glm::vec3 scene_max(std::numeric_limits<float>::lowest());
+  for (auto &entity : GetAllEntitiesWith<MeshComponent>()) {
+    if (!IsRenderable(entity)) {
+      continue;
+    }
+    auto &component = entity.GetComponent<MeshComponent>();
+    RenderItem item;
+    item.handle   = entity.GetHandle();
+    item.mesh     = component.mesh;
+    item.material = component.material;
+    item.model    = entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform()
+                                                     : glm::mat4(1.0f);
+    glm::vec3 local_min;
+    glm::vec3 local_max;
+    if (component.mesh && component.mesh->GetLocalBounds(local_min, local_max)) {
+      TransformAABB(item.model, local_min, local_max, item.world_min, item.world_max);
+      item.has_bounds = true;
+      scene_min       = glm::min(scene_min, item.world_min);
+      scene_max       = glm::max(scene_max, item.world_max);
+    }
+    items.push_back(std::move(item));
+  }
+
+  if (items.empty()) {
     return;
   }
 
   // TAA jitters the camera projection by a sub-pixel each frame; the main pass
   // and skybox use the jittered projection, then the TAA resolve blends it with
   // the history buffer before post-processing.
-  const bool       taa_enabled   = renderer_->IsTAAEnabled();
-  const glm::mat4  render_proj   = taa_enabled ? renderer_->GetJitteredProjection(proj) : proj;
-  const glm::mat4  proj_view     = render_proj * view;
+  const bool      taa_enabled = renderer_->IsTAAEnabled();
+  const glm::mat4 render_proj = taa_enabled ? renderer_->GetJitteredProjection(proj) : proj;
+  const glm::mat4 proj_view   = render_proj * view;
+
+  // Camera frustum used to cull the per-camera passes (main + SSAO). Shadow
+  // passes intentionally render everything: the light sees a different set.
+  const Frustum frustum = ExtractFrustum(proj_view);
 
   // Directional shadow mapping: fit the orthographic shadow volume to the
   // scene's world-space bounds so every object casts a shadow instead of being
   // clipped by a fixed-size frustum.
   const auto &light = renderer_->GetLight();
   glm::mat4   light_view_proj;
-  {
-    glm::vec3 scene_min;
-    glm::vec3 scene_max;
-    if (ComputeSceneBounds(entities, scene_min, scene_max)) {
-      const glm::vec3 scene_center = (scene_min + scene_max) * 0.5f;
-      const float     scene_radius = std::max(glm::length(scene_max - scene_min) * 0.5f, 0.5f);
-      light_view_proj              = light.GetLightSpaceMatrix(scene_center, scene_radius);
-    } else {
-      light_view_proj = light.GetLightSpaceMatrix(glm::vec3(0.0f), 2.0f);
-    }
+  if (scene_max.x > scene_min.x && scene_max.y > scene_min.y && scene_max.z > scene_min.z) {
+    const glm::vec3 scene_center = (scene_min + scene_max) * 0.5f;
+    const float     scene_radius = std::max(glm::length(scene_max - scene_min) * 0.5f, 0.5f);
+    light_view_proj              = light.GetLightSpaceMatrix(scene_center, scene_radius);
+  } else {
+    light_view_proj = light.GetLightSpaceMatrix(glm::vec3(0.0f), 2.0f);
   }
 
+  // Directional shadow pass.
   renderer_->BeginShadowPass(light_view_proj);
   {
     const auto t_start = clock::now();
-    for (auto &entity : entities) {
-      if (!IsRenderable(entity)) {
-        continue;
-      }
-      auto &component = entity.GetComponent<MeshComponent>();
-      const glm::mat4 model =
-          entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
-      renderer_->DrawMeshShadow(component.mesh, model, light_view_proj);
+    for (const auto &item : items) {
+      renderer_->DrawMeshShadow(item.mesh, item.model, light_view_proj);
     }
     renderer_->EndShadowPass();
     pass_times_ms_[0] = time_ms(t_start);
@@ -564,7 +634,7 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   // Omnidirectional (point light) shadow passes: one cube map per
   // shadow-casting point light, rendered face by face.
   {
-    const auto t_point_start = clock::now();
+    const auto        t_start = clock::now();
     const auto &point_lights = renderer_->GetPointLights();
     for (size_t i = 0; i < point_lights.size(); ++i) {
       const int shadow_index = renderer_->GetPointShadowIndex(static_cast<int>(i));
@@ -576,53 +646,49 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
       renderer_->BeginPointShadowPass(shadow_index, point_lights[i].position, point_lights[i].radius);
       for (int face = 0; face < 6; ++face) {
         renderer_->BindPointShadowFace(shadow_index, face, transforms[face]);
-        for (auto &entity : entities) {
-          if (!IsRenderable(entity)) {
-            continue;
-          }
-          auto &component = entity.GetComponent<MeshComponent>();
-          const glm::mat4 model =
-              entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
-          renderer_->DrawMeshPointShadow(component.mesh, model);
+        for (const auto &item : items) {
+          renderer_->DrawMeshPointShadow(item.mesh, item.model);
         }
       }
       renderer_->EndPointShadowPass(shadow_index);
     }
-    pass_times_ms_[1] = time_ms(t_point_start);
+    pass_times_ms_[1] = time_ms(t_start);
   }
 
   // SSAO geometry pass (view-space position + normal), then the AO passes.
+  // Uses the same camera-frustum culling as the main pass.
   const auto t_ssao_start = clock::now();
   if (renderer_->IsSSAOEnabled()) {
     renderer_->BeginSSAOPass(proj, view);
-    for (auto &entity : entities) {
-      auto &component = entity.GetComponent<MeshComponent>();
-      if (!component.mesh) {
+    for (const auto &item : items) {
+      if (item.has_bounds && !AABBInsideFrustum(frustum, item.world_min, item.world_max)) {
         continue;
       }
-      const glm::mat4 model =
-          entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
-      renderer_->DrawMeshSSAO(component.mesh, model);
+      renderer_->DrawMeshSSAO(item.mesh, item.model);
     }
     renderer_->EndSSAOPass();
     renderer_->GenerateSSAO(proj, view);
   }
   pass_times_ms_[2] = time_ms(t_ssao_start);
 
-  // Main pass into the HDR scene framebuffer.
-  renderer_->BeginScene();
+  // Main pass into the HDR scene framebuffer: camera-frustum culling plus the
+  // mesh+material requirement.
+  uint64_t visible_main = 0;
+  uint64_t culled_main  = 0;
   {
+    renderer_->BeginScene();
     const auto t_start = clock::now();
-    for (auto &entity : entities) {
-      auto &component = entity.GetComponent<MeshComponent>();
-      if (!component.mesh || !component.material) {
+    for (const auto &item : items) {
+      if (!item.material || !item.material->GetShader()) {
+        ++culled_main;  // counted as not drawn by the main pass
         continue;
       }
-
-      const glm::mat4 model =
-          entity.HasComponent<Transform>() ? entity.GetComponent<Transform>().GetTransform() : glm::mat4(1.0f);
-
-      renderer_->DrawMesh(component.mesh, component.material, model, proj_view, camera_pos, light_view_proj);
+      if (item.has_bounds && !AABBInsideFrustum(frustum, item.world_min, item.world_max)) {
+        ++culled_main;
+        continue;
+      }
+      ++visible_main;
+      renderer_->DrawMesh(item.mesh, item.material, item.model, proj_view, camera_pos, light_view_proj);
     }
     pass_times_ms_[3] = time_ms(t_start);
   }
@@ -645,21 +711,19 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     pass_times_ms_[5] = time_ms(t_start);
   }
 
-  // Periodic unattended-friendly summary of the frame's render work. Throttled
-  // by wall-clock time (steady clock) so short headless runs still emit rows.
-  {
-    static clock::time_point s_last_log = clock::now();
-    const float elapsed_s = static_cast<float>(
-        std::chrono::duration<double>(clock::now() - s_last_log).count());
-    if (elapsed_s >= 2.0f) {
-      s_last_log = clock::now();
-      const auto &stats = renderer_->GetFrameStats();
-      LOG_INFO("RenderStats") << "drawcalls=" << stats.draw_calls << " instanced=" << stats.instanced_draws
-                              << " triangles=" << stats.triangles << " culled=" << stats.culled_entities
-                              << " [ms] shadow=" << pass_times_ms_[0] << " point=" << pass_times_ms_[1]
-                              << " ssao=" << pass_times_ms_[2] << " main=" << pass_times_ms_[3]
-                              << " post=" << pass_times_ms_[5];
-    }
+  renderer_->RecordCulledEntities(culled_main);
+
+  // Periodic unattended-friendly summary of the frame's render work. One row
+  // every 120 rendered frames so even very short headless runs emit stats.
+  if (++stats_log_frames_ >= 120) {
+    stats_log_frames_ = 0;
+    const auto &stats = renderer_->GetFrameStats();
+    LOG_INFO("RenderStats") << "drawcalls=" << stats.draw_calls << " instanced=" << stats.instanced_draws
+                            << " triangles=" << stats.triangles << " culled=" << stats.culled_entities
+                            << " visible_main=" << visible_main
+                            << " [ms] shadow=" << pass_times_ms_[0] << " point=" << pass_times_ms_[1]
+                            << " ssao=" << pass_times_ms_[2] << " main=" << pass_times_ms_[3]
+                            << " post=" << pass_times_ms_[5];
   }
 }
 

@@ -31,6 +31,15 @@ class Mesh {
   [[nodiscard]] const std::vector<Vertex> &GetVertices() const { return vertices_; }
   [[nodiscard]] const std::vector<unsigned int> &GetIndices() const { return indices_; }
 
+  /// @brief Object-space AABB of the vertices (computed once at construction).
+  /// `out_min`/`out_max` are filled with the box corners; returns false when the
+  /// mesh has no vertices (callers should then treat it as always visible).
+  [[nodiscard]] bool GetLocalBounds(glm::vec3 &out_min, glm::vec3 &out_max) const {
+    out_min = local_min_;
+    out_max = local_max_;
+    return has_local_bounds_;
+  }
+
   static Ref<Mesh> Create(const std::vector<Vertex> &vertices, const std::vector<unsigned int> &indices);
 
   /// @brief Source description used by scene serialization: "cube", "plane"
@@ -55,6 +64,10 @@ class Mesh {
   int                         index_count_ = 0;
 
   std::string source_;
+
+  glm::vec3 local_min_{0.0f};
+  glm::vec3 local_max_{0.0f};
+  bool      has_local_bounds_ = false;
 };
 
 /// @brief Name-based mesh cache (mirrors ShaderLibrary / TextureLibrary).

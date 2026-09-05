@@ -12,6 +12,17 @@ Mesh::Mesh(const std::vector<Vertex> &vertices, const std::vector<unsigned int> 
   vao_ = CreateVertexArrayBackend();
   vao_->SetVertexBuffer(vertices_.data(), vertices_.size() * sizeof(Vertex), Vertex::GetLayout());
   vao_->SetIndexBuffer(indices_.data(), index_count_);
+
+  // Cache the object-space AABB for frustum culling.
+  if (!vertices_.empty()) {
+    local_min_        = vertices_.front().position;
+    local_max_        = local_min_;
+    for (const auto &vertex : vertices_) {
+      local_min_ = glm::min(local_min_, vertex.position);
+      local_max_ = glm::max(local_max_, vertex.position);
+    }
+    has_local_bounds_ = true;
+  }
 }
 
 Mesh::~Mesh() = default;

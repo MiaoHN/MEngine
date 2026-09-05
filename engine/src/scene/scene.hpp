@@ -244,6 +244,8 @@ class Scene {
 
   /// @brief Per-pass timings of the last rendered frame (ms).
   float pass_times_ms_[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  /// @brief Rendered-frame counter for the periodic render-stats log.
+  int stats_log_frames_ = 0;
 };
 
 }  // namespace MEngine
