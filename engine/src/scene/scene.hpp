@@ -178,6 +178,12 @@ class Scene {
   /// @brief True while the entity has a live physics body.
   [[nodiscard]] bool HasPhysicsBody(entt::entity handle);
 
+  /// @brief Casts a ray against the physics world and returns the handle of the
+  /// entity owning the closest hit body (entt::null when nothing is hit).
+  /// `out_distance` (optional) receives the hit distance from `origin`.
+  [[nodiscard]] entt::entity Raycast(const glm::vec3 &origin, const glm::vec3 &direction, float max_distance,
+                                     float *out_distance = nullptr) const;
+
   /// @brief Linear velocity of the entity's body (zero when it has none).
   glm::vec3 GetBodyVelocity(entt::entity handle);
 

@@ -5,6 +5,8 @@
 
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
@@ -174,6 +176,25 @@ JPH::BodyID PhysicsWorld::CreateBody(const glm::vec3 &position, const glm::quat 
   ConfigureBodySettings(body_settings, is_sensor, continuous_collision);
   return physics_system_.GetBodyInterface().CreateAndAddBody(
       body_settings, is_dynamic ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+}
+
+bool PhysicsWorld::Raycast(const glm::vec3 &origin, const glm::vec3 &direction, float max_distance,
+                           JPH::BodyID &out_body, float &out_distance) const {
+  const float dir_len = glm::length(direction);
+  if (dir_len < 1e-6f || max_distance <= 0.0f) return false;
+
+  // Direction scaled so the ray length == max_distance; Jolt returns a fraction
+  // in [0,1] of that length.
+  const JPH::Vec3 dir = ToJolt(direction / dir_len) * max_distance;
+  const JPH::RRayCast ray(JPH::RVec3(static_cast<double>(origin.x), static_cast<double>(origin.y),
+                                     static_cast<double>(origin.z)),
+                          dir);
+
+  JPH::RayCastResult hit;
+  if (!physics_system_.GetNarrowPhaseQuery().CastRay(ray, hit)) return false;
+  out_body     = hit.mBodyID;
+  out_distance = hit.mFraction * max_distance;
+  return true;
 }
 
 void PhysicsWorld::DestroyBody(JPH::BodyID body_id) {

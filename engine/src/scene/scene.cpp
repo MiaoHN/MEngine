@@ -197,6 +197,18 @@ bool Scene::HasPhysicsBody(entt::entity handle) {
   return simulating_ && body_ids_.count(handle) != 0;
 }
 
+entt::entity Scene::Raycast(const glm::vec3 &origin, const glm::vec3 &direction, float max_distance,
+                            float *out_distance) const {
+  JPH::BodyID body;
+  float       distance = 0.0f;
+  if (!physics_world_->Raycast(origin, direction, max_distance, body, distance)) return entt::null;
+
+  const auto it = body_id_to_entity_.find(body.GetIndexAndSequenceNumber());
+  if (it == body_id_to_entity_.end()) return entt::null;
+  if (out_distance) *out_distance = distance;
+  return it->second;
+}
+
 glm::vec3 Scene::GetBodyVelocity(entt::entity handle) {
   if (!simulating_) return glm::vec3(0.0f);
   const auto it = body_ids_.find(handle);

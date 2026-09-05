@@ -85,6 +85,11 @@ class PhysicsWorld {
                          float restitution, const std::vector<ColliderShapeDesc> &shapes, bool is_sensor = false,
                          bool continuous_collision = false);
 
+  /// @brief Casts a ray and reports the closest hit (any body). Returns false
+  /// when nothing was hit. `out_distance` is the distance from the origin.
+  bool Raycast(const glm::vec3 &origin, const glm::vec3 &direction, float max_distance, JPH::BodyID &out_body,
+               float &out_distance) const;
+
   /// @brief Removes a body from the world (no-op for an invalid id).
   void DestroyBody(JPH::BodyID body_id);
 

@@ -163,6 +163,26 @@ int Api_GetEntities(lua_State *L) {
   return 1;
 }
 
+int Api_Raycast(lua_State *L) {
+  Scene *scene = GetLuaScene(L);
+  const glm::vec3 origin(static_cast<float>(luaL_checknumber(L, 1)),
+                         static_cast<float>(luaL_checknumber(L, 2)),
+                         static_cast<float>(luaL_checknumber(L, 3)));
+  const glm::vec3 dir(static_cast<float>(luaL_checknumber(L, 4)), static_cast<float>(luaL_checknumber(L, 5)),
+                      static_cast<float>(luaL_checknumber(L, 6)));
+  const float max_distance = static_cast<float>(luaL_optnumber(L, 7, 1000.0));
+  float       distance     = 0.0f;
+  const entt::entity hit = scene->Raycast(origin, dir, max_distance, &distance);
+  if (hit == entt::null) {
+    lua_pushnil(L);
+    lua_pushnil(L);
+    return 2;
+  }
+  PushEntity(L, scene, hit);
+  lua_pushnumber(L, distance);
+  return 2;
+}
+
 // --- entity object methods -------------------------------------------------
 
 int Entity_GetName(lua_State *L) {
@@ -645,6 +665,8 @@ void ScriptEngine::RegisterApi() {
   lua_setfield(L_, -2, "destroy_entity");
   lua_pushcfunction(L_, Api_GetEntities);
   lua_setfield(L_, -2, "get_entities");
+  lua_pushcfunction(L_, Api_Raycast);
+  lua_setfield(L_, -2, "raycast");
   lua_setglobal(L_, "MEngine");
 }
 
