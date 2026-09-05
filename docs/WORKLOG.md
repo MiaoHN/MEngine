@@ -5,7 +5,14 @@
 
 ---
 
-## 2026-09-05 — 复现“test_01 里球暗”：根因是默认 IBL 过低（commit ba62b7b）
+## 2026-09-05 — 重写 SSAO：修复“开 SSAO 球比方块暗”的伪影（commit 9bf0436 之后）
+
+- **用户反馈**：`test_02.scene` 只有正方体+球、无脚本，开 SSAO 后球仍比方块暗；要求“正经修一下 / 重写”。
+- **根因**：旧 SSAO 链（`ssao` + `ssao_blur` 两张纹理，blur 后绑定）产出的 AO 是常数（实测 0.625），且 blur 通道让 AO 丢失空间差异；叠加在环境光上把凸曲面（球）整体压暗，平面（方块顶）反而少受影响。像素级验证：球心 AO=0.625、屏幕亮度 ON<OFF。
+- **改动**：重写为**单张半分辨率 AO 纹理**：新增 `assets/shaders/ssao2_{vert,frag}.glsl`（LearnOpenGL 式半球核采样；无几何处跳过、`sample_depth >= sample_pos.z + bias` 才算遮挡、背景直接 1.0、清除时 clear=1.0）；`ssao.hpp/.cpp` 去掉 blur FBO/纹理/着色器，`Generate()` 只做几何+AO 两趟，`BindTexture(7)` 直接绑 AO 纹理；`assets/manifest.json` 增加 `ssao2` 条目；参数 `radius=0.3, bias=0.025`。
+- **验证**：`_verify_fix.py` 像素测量——**球心 ssao ON=OFF=192.2**（不再被压暗）；`tools/run_smoke.py` 8/8 PASS；debug/release 全链构建通过。
+- **已知残余（可接受）**：平面上仍有轻微 ~9% 环境光衰减（AO≈0.914，与 radius/bias 无关，属视空间 SSAO 相机俯仰下的切向采样常见小瑕疵）；球/凸面伪影已消除。接触阴影在俯视角度较弱，后续可视需要再调。
+- **经验**：着色器探针改 `FragColor` 后**必须加 `return`**，否则原输出行会覆盖探针颜色，导致测到的是天空而非物体；下结论前先用校准曲线把屏幕值映射回线性值。
 
 - **用户反馈（截图）**：同一帧里正方体都亮、球(及其投下的圆影)明显发暗，“就是有问题”。要求直接跑 `assets/scenes/test_01.scene`（未跟踪文件，用户另存）。
 - **复现与量化**：跑真实 `test_01`（静态俯视 + Play 时 `main.lua` 发射 Ball）均复现“球比同材质方块暗”。同构图像素测量（IBL=0.4）：**球心 185 vs 方块顶 205**；把 IBL 提到 1.0：**球心 221 vs 方块顶 215**（球反超）。
