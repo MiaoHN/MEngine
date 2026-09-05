@@ -15,7 +15,83 @@
 #include "render/model_loader.hpp"
 #include "utils/profiler.h"
 
+// Native scene open/save dialogs. Windows only; other platforms currently fall
+// back to a no-op (returning false == "cancelled"). NOMINMAX keeps windows.h
+// from #defining min/max and breaking std algorithms below.
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <commdlg.h>
+#ifdef ERROR
+#undef ERROR
+#endif
+#endif
+
 namespace {
+
+#if defined(_WIN32)
+/// @brief Shows the native "Open" dialog; returns true and fills `out_path`
+/// when the user picks a file.
+bool NativeOpenFileDialog(std::string &out_path) {
+  char file_buffer[MAX_PATH] = {};
+  OPENFILENAMEA ofn{};
+  ofn.lStructSize     = sizeof(ofn);
+  ofn.lpstrFilter     = "MEngine Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0\0";
+  ofn.lpstrFile       = file_buffer;
+  ofn.nMaxFile        = static_cast<DWORD>(sizeof(file_buffer));
+  ofn.lpstrTitle      = "Open Scene";
+  ofn.lpstrInitialDir = nullptr;
+  ofn.Flags           = OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+  if (GetOpenFileNameA(&ofn)) {
+    out_path = file_buffer;
+    return true;
+  }
+  return false;
+}
+
+/// @brief Shows the native "Save As" dialog; returns true and fills `out_path`
+/// when the user confirms a file name.
+bool NativeSaveFileDialog(std::string &out_path) {
+  char file_buffer[MAX_PATH] = {};
+  OPENFILENAMEA ofn{};
+  ofn.lStructSize     = sizeof(ofn);
+  ofn.lpstrFilter     = "MEngine Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0\0";
+  ofn.lpstrFile       = file_buffer;
+  ofn.nMaxFile        = static_cast<DWORD>(sizeof(file_buffer));
+  ofn.lpstrTitle      = "Save Scene As";
+  ofn.lpstrInitialDir = nullptr;
+  ofn.lpstrDefExt     = "scene";
+  ofn.Flags           = OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+  if (GetSaveFileNameA(&ofn)) {
+    out_path = file_buffer;
+    return true;
+  }
+  return false;
+}
+#else
+bool NativeOpenFileDialog(std::string &) { return false; }
+bool NativeSaveFileDialog(std::string &) { return false; }
+#endif
+
+/// @brief Portable environment-variable read. Uses _dupenv_s on Windows where
+/// std::getenv is marked deprecated under clang-cl.
+std::string GetEnvVar(const char *name) {
+#if defined(_WIN32)
+  char  *buffer = nullptr;
+  size_t length = 0;
+  if (_dupenv_s(&buffer, &length, name) == 0 && buffer) {
+    std::string value = buffer;
+    free(buffer);
+    return value;
+  }
+  return std::string();
+#else
+  const char *value = std::getenv(name);
+  return value ? std::string(value) : std::string();
+#endif
+}
 
 Ref<Material> CreateDefaultMaterial() {
   auto material = CreateRef<Material>();
@@ -400,6 +476,16 @@ default_material_ = CreateDefaultMaterial();
 void Editor::OnUpdate(float dt) {
   PROFILER_FUNCTION();
 
+  // Unattended verification of the File-menu scene ops. Enabled with
+  // MENGINE_EDITOR_SELFTEST_SCENE=<path>; runs once on the first frame and
+  // restores the default demo scene afterwards so interactive use is unaffected.
+  static bool        scene_selftest_done = false;
+  const std::string  selftest_scene      = GetEnvVar("MENGINE_EDITOR_SELFTEST_SCENE");
+  if (!selftest_scene.empty() && !scene_selftest_done) {
+    scene_selftest_done = true;
+    RunSceneFileSelftest(selftest_scene);
+  }
+
   if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
     glfwSetWindowShouldClose(window_, true);
   }
@@ -455,12 +541,43 @@ void Editor::OnUpdate(float dt) {
     if (ImGui::IsKeyPressed(ImGuiKey_D) && ImGui::GetIO().KeyCtrl) {
       DuplicateSelectedEntity();
     }
+    if (ImGui::IsKeyPressed(ImGuiKey_N) && ImGui::GetIO().KeyCtrl) {
+      NewScene();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_O) && ImGui::GetIO().KeyCtrl) {
+      OpenSceneDialog();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_S) && ImGui::GetIO().KeyCtrl) {
+      SaveCurrentScene();
+    }
   }
 
-  bool open = false;
   if (ImGui::BeginMenuBar()) {
     if (ImGui::BeginMenu("File")) {
-      ImGui::MenuItem("Open", nullptr, &open);
+      if (ImGui::MenuItem("New Scene", "Ctrl+N")) {
+        NewScene();
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Open Scene...", "Ctrl+O")) {
+        OpenSceneDialog();
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Save", "Ctrl+S")) {
+        SaveCurrentScene();
+      }
+      if (ImGui::MenuItem("Save Scene As...", nullptr)) {
+        SaveSceneAsDialog();
+      }
+      ImGui::Separator();
+      const std::string scene_label = current_scene_path_.empty() ? std::string("New scene") : current_scene_path_;
+      if (ImGui::MenuItem("Close Scene")) {
+        ExitGameModeForFileOp();
+        NewScene();
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Exit")) {
+        glfwSetWindowShouldClose(window_, GLFW_TRUE);
+      }
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View")) {
@@ -2035,6 +2152,134 @@ void Editor::LaunchStandalone() {
   LOG_INFO("Editor") << "Launching standalone sandbox: " << command;
 
   std::thread([cmd]() { std::system(cmd.c_str()); }).detach();
+}
+
+void Editor::ExitGameModeForFileOp() {
+  // Mirror the Play-mode Stop handler: fire OnDestroy hooks while entities are
+  // still alive, then restore the authoring scene. No-op in Edit mode.
+  if (game_mode_ != GameMode::Play) {
+    return;
+  }
+  game_mode_ = GameMode::Edit;
+  active_scene_->GetScriptEngine().Clear();
+  active_scene_->StopSimulation();
+  SetGridVisible(true);
+  if (selected_entity_.GetHandle() != entt::null &&
+      !active_scene_->GetRegistry().valid(selected_entity_.GetHandle())) {
+    selected_entity_ = Entity();
+  }
+}
+
+void Editor::NewScene() {
+  ExitGameModeForFileOp();
+  active_scene_->ClearContent();
+  current_scene_path_.clear();
+  selected_entity_ = Entity();
+  LOG_INFO("Editor") << "Started a new (empty) scene";
+}
+
+void Editor::OpenSceneDialog() {
+  std::string path;
+  if (!NativeOpenFileDialog(path)) {
+    return;  // cancelled
+  }
+  OpenScenePath(path);
+}
+
+void Editor::OpenScenePath(const std::string &path) {
+  ExitGameModeForFileOp();
+  if (!active_scene_->OpenSceneFile(path)) {
+    LOG_ERROR("Editor") << "Failed to open scene: " << path;
+    return;
+  }
+  current_scene_path_ = path;
+  selected_entity_    = Entity();
+  SetGridVisible(true);
+  LOG_INFO("Editor") << "Opened scene: " << path;
+}
+
+void Editor::SaveCurrentScene() {
+  if (current_scene_path_.empty()) {
+    SaveSceneAsDialog();
+    return;
+  }
+  ExitGameModeForFileOp();
+  active_scene_->SaveScene(current_scene_path_);
+  LOG_INFO("Editor") << "Saved scene: " << current_scene_path_;
+}
+
+void Editor::SaveSceneAsDialog() {
+  std::string path;
+  if (!NativeSaveFileDialog(path)) {
+    return;  // cancelled
+  }
+  static const char *kExt = ".scene";
+  if (path.size() < 6 || path.compare(path.size() - 6, 6, kExt) != 0) {
+    path += kExt;
+  }
+  ExitGameModeForFileOp();
+  active_scene_->SaveScene(path);
+  current_scene_path_ = path;
+  LOG_INFO("Editor") << "Saved scene as: " << path;
+}
+
+void Editor::RunSceneFileSelftest(const std::string &path) {
+  // Count content entities (skip the editor-only grid helper).
+  const auto content_count = [&]() {
+    size_t n = 0;
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (entity == grid_entity_) continue;
+      const auto *tag = entity.HasComponent<Tag>() ? &entity.GetComponent<Tag>() : nullptr;
+      if (tag && tag->editor_only) continue;
+      ++n;
+    }
+    return n;
+  };
+  const auto has_grid = [&]() {
+    return grid_entity_.GetHandle() != entt::null &&
+           active_scene_->GetRegistry().valid(grid_entity_.GetHandle());
+  };
+
+  bool ok = true;
+  const auto check = [&](bool cond, const char *what) {
+    ok = ok && cond;
+    LOG_INFO("Editor") << (cond ? "[selftest] PASS  " : "[selftest] FAIL  ") << what;
+  };
+
+  LOG_INFO("Editor") << "[selftest] scene-file ops begin (open: " << path << ")";
+
+  const size_t base_content = content_count();
+
+  // 1. New Scene must clear all content but keep the grid.
+  NewScene();
+  check(content_count() == 0, "NewScene clears content");
+  check(has_grid(), "NewScene keeps the editor grid");
+
+  // 2. Open Scene must load content (and remember the path).
+  OpenScenePath(path);
+  check(!current_scene_path_.empty() && current_scene_path_ == path, "OpenScenePath records the scene path");
+  const size_t opened_content = content_count();
+  check(opened_content > 0, "OpenSceneFile loaded content entities");
+
+  // 3. Save + reopen round-trip must reproduce the same content count.
+  const std::string tmp_path = "editor_selftest_tmp.scene";
+  ExitGameModeForFileOp();
+  active_scene_->SaveScene(tmp_path);
+  check(std::filesystem::exists(tmp_path), "SaveScene wrote a .scene file");
+  NewScene();
+  OpenScenePath(tmp_path);
+  check(content_count() == opened_content, "Save/reopen round-trip preserves content count");
+  std::error_code ec;
+  std::filesystem::remove(tmp_path, ec);
+
+  // 4. Restore the default demo scene so interactive use still has content.
+  NewScene();
+  CreatePhysicsDemo();
+  active_scene_->SetMainScript("scripts/main.lua");
+  current_scene_path_.clear();
+
+  LOG_INFO("Editor") << "[selftest] scene-file ops " << (ok ? "PASSED" : "FAILED") << " (base=" << base_content
+                     << " opened=" << opened_content << ")";
 }
 
 void Editor::CreateModelEntity(const std::filesystem::path &path) {

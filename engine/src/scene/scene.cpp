@@ -519,6 +519,19 @@ void Scene::StopSimulation() {
   LOG_INFO("Scene") << "Physics simulation stopped and play snapshot restored";
 }
 
+void Scene::StopSimulationIfRunning() {
+  if (!simulating_) return;
+
+  for (auto &[handle, body_id] : body_ids_) {
+    physics_world_->DestroyBody(body_id);
+  }
+  body_ids_.clear();
+  body_id_to_entity_.clear();
+  sim_accumulator_ = 0.0f;
+  play_snapshot_.clear();
+  simulating_ = false;
+}
+
 void Scene::UpdateCameraControllers(float delta_time, const glm::vec2 &mouse_delta, bool look_active) {
   for (auto &entity : GetAllEntitiesWith<CameraController, CameraComponent>()) {
     auto   &controller = entity.GetComponent<CameraController>();

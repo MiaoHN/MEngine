@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-09-05 — Editor File 菜单：新建/打开/关闭/保存场景
+
+- **分支**：`refractor`；commit：`editor:` File menu scene new/open/close/save（本记录后提交）
+- **做了什么**：
+  1. `Scene` 新增内容管理（scene.hpp/.cpp/scene_serializer.cpp）：
+     `ClearContent()`（停模拟→清脚本/主脚本→清渲染光源→移除内容实体，保留编辑器网格）、
+     `OpenSceneFile(path)`（读取并套用 方向光/点光/聚光/渲染设置 + 实体 + main_script，
+     不启动脚本，返回是否成功）、`StopSimulationIfRunning()` 与
+     `RemoveContentEntities()`（抽出后供 `RestorePlaySnapshot` 复用）。
+  2. Editor 顶部 **File 菜单**（editor.hpp/.cpp）：New Scene(Ctrl+N) / Open Scene…(Ctrl+O) /
+     Save(Ctrl+S) / Save Scene As… / Close Scene / Exit。Windows 用原生对话框
+     （`commdlg` `GetOpenFileNameA/GetSaveFileNameA`，`.scene` 过滤器）；非 Windows 编译走
+     no-op 桩（返回“取消”）。打开/保存前统一 `ExitGameModeForFileOp()` 先回 Edit 静止态
+     （Clear 脚本→StopSimulation→显示网格），避免把 Play 中间态写入文件。
+  3. 隐藏自检：设 `MENGINE_EDITOR_SELFTEST_SCENE=<path>` 后，首帧自动跑
+     New→Open→Save→重开 往返校验（内容实体数、网格保留、路径记录），结束恢复默认演示场景，
+     供无人值守回归。
+- **验证**：`windows-clang-debug`/`windows-clang-release` 全链编译零警告；
+  editor 无头 `--frames 400 --hidden` 正常退出；方法级自检 **7/7 PASS**
+  （new 清空 / 网格保留 / open 记录路径 / open 载入实体 / 写盘 / 往返实体数一致）。
+- **遇到的问题**：
+  1. windows.h 的 `ERROR`/`min`/`max` 宏 → `NOMINMAX` + `#undef ERROR`（编辑器 TU 内收敛）。
+  2. `std::getenv` 在 Windows clang-cl 被标记 deprecated → 加 `_dupenv_s` 便携封装。
+  3. `Scene` 无 `HasEntity` → 改用 `GetRegistry().valid()`。
+  4. 原生对话框无法在无头模式下点击 → 用环境变量驱动“方法级自检”替代 UI 点击。
+- **下一步**：P4 其余 —— 场景“另存为”未保存变更提示、Content Browser 双击 `.scene` 打开、
+  Editor 面板化拆分 + Script Editor 以 Viewport 同窗 Tab 呈现（等宽+CJK+高亮）。
+
+---
+
 ## 2026-09-05 — 全项目审查（另一模型合并 P3/P5 后）
 
 - **做了什么**：对 `refractor` 上另一模型新增的渲染/P5 提交做全量检查。

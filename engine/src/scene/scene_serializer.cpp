@@ -606,6 +606,20 @@ void Scene::RestorePlaySnapshot() {
   // Remove every content entity currently present (editor-only helpers such as
   // the grid are kept). This also drops anything scripts spawned during Play
   // and re-creates anything they destroyed.
+  RemoveContentEntities();
+
+  const size_t restored = entity_array.is_array() ? entity_array.size() : 0;
+  if (entity_array.is_array()) {
+    for (const auto &e : entity_array) {
+      LoadEntityFromJson(*this, e);
+    }
+  }
+
+  LOG_INFO("Scene") << "Restored play snapshot (" << restored << " content entities)";
+  play_snapshot_.clear();
+}
+
+void Scene::RemoveContentEntities() {
   std::vector<entt::entity> to_destroy;
   for (auto &entity : entities_) {
     const auto *tag = entity.HasComponent<Tag>() ? &entity.GetComponent<Tag>() : nullptr;
@@ -615,15 +629,102 @@ void Scene::RestorePlaySnapshot() {
   for (const entt::entity handle : to_destroy) {
     DestroyEntity(Entity(handle, &registry_));
   }
+}
 
-  if (entity_array.is_array()) {
-    for (const auto &e : entity_array) {
+void Scene::ClearContent() {
+  StopSimulationIfRunning();
+  script_engine_->Clear();
+  main_script_.clear();
+  physics_world_->ResetContacts();
+  renderer_->ClearPointLights();
+  renderer_->ClearSpotLights();
+  RemoveContentEntities();
+  LOG_INFO("Scene") << "New (empty) scene created — content cleared, editor helpers kept";
+}
+
+bool Scene::OpenSceneFile(const std::string &path) {
+  std::ifstream in(path);
+  if (!in) {
+    LOG_ERROR("Scene") << "Failed to open scene file: " << path;
+    return false;
+  }
+
+  json root;
+  try {
+    in >> root;
+  } catch (...) {
+    LOG_ERROR("Scene") << "Failed to parse scene file: " << path;
+    return false;
+  }
+
+  StopSimulationIfRunning();
+  script_engine_->Clear();
+  main_script_.clear();
+  physics_world_->ResetContacts();
+  renderer_->ClearPointLights();
+  renderer_->ClearSpotLights();
+  RemoveContentEntities();
+
+  // Directional light.
+  if (root.contains("directional_light")) {
+    const auto &j = root["directional_light"];
+    renderer_->GetLight().direction = Vec3FromJson(j.value("direction", json()), glm::vec3(-0.3f, -1.0f, -0.4f));
+    renderer_->GetLight().color     = Vec3FromJson(j.value("color", json()), glm::vec3(2.5f));
+  }
+
+  // Point lights.
+  if (root.contains("point_lights") && root["point_lights"].is_array()) {
+    for (const auto &j : root["point_lights"]) {
+      PointLight light;
+      light.position     = Vec3FromJson(j.value("position", json()));
+      light.color        = Vec3FromJson(j.value("color", json()), glm::vec3(1.0f));
+      light.intensity    = j.value("intensity", 1.0f);
+      light.radius       = j.value("radius", 4.0f);
+      light.casts_shadow = j.value("casts_shadow", false);
+      renderer_->AddPointLight(light);
+    }
+  }
+
+  // Spot lights.
+  if (root.contains("spot_lights") && root["spot_lights"].is_array()) {
+    for (const auto &j : root["spot_lights"]) {
+      SpotLight light;
+      light.position     = Vec3FromJson(j.value("position", json()));
+      light.direction    = Vec3FromJson(j.value("direction", json()), glm::vec3(0.0f, -1.0f, 0.0f));
+      light.color        = Vec3FromJson(j.value("color", json()), glm::vec3(1.0f));
+      light.intensity    = j.value("intensity", 1.0f);
+      light.range        = j.value("range", 8.0f);
+      light.cutoff       = j.value("cutoff", light.cutoff);
+      light.outer_cutoff = j.value("outer_cutoff", light.outer_cutoff);
+      renderer_->AddSpotLight(light);
+    }
+  }
+
+  // Render settings.
+  if (root.contains("render")) {
+    const auto &j = root["render"];
+    SetRenderMode(RenderModeFromString(j.value("render_mode", "lit")));
+    SetExposure(j.value("exposure", 1.0f));
+    SetBloomEnabled(j.value("bloom_enabled", false));
+    SetBloomStrength(j.value("bloom_strength", 0.015f));
+    SetBloomThreshold(j.value("bloom_threshold", 1.0f));
+    SetGodRaysStrength(j.value("god_rays", 0.06f));
+    SetSSAOEnabled(j.value("ssao", true));
+    SetTAAEnabled(j.value("taa", true));
+    SetIblIntensity(j.value("ibl_intensity", 0.4f));
+    SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
+  }
+
+  // Entities.
+  if (root.contains("entities") && root["entities"].is_array()) {
+    for (const auto &e : root["entities"]) {
       LoadEntityFromJson(*this, e);
     }
   }
 
-  LOG_INFO("Scene") << "Restored play snapshot (" << to_destroy.size() << " -> " << entities_.size() << " entities)";
-  play_snapshot_.clear();
+  main_script_ = root.value("main_script", "");
+  LOG_INFO("Scene") << "Opened scene file " << path << " (" << entities_.size() << " entities)";
+  return true;
 }
 
 }  // namespace MEngine

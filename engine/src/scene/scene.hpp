@@ -75,6 +75,17 @@ class Scene {
   void LoadScene(const std::string &path);
   void SaveScene(const std::string &path);
 
+  /// @brief Starts a brand-new scene: stops any running simulation, clears the
+  /// content entities (editor-only helpers such as the grid are kept), resets
+  /// the script engine and the main-script path.
+  void ClearContent();
+
+  /// @brief Replaces the scene content with the entities / settings of a
+  /// `.scene` file, keeping editor-only helpers intact. Returns false when the
+  /// file could not be read or parsed. Does not start scripts (the caller runs
+  /// them on Play).
+  bool OpenSceneFile(const std::string &path);
+
   Ref<Camera> GetDefaultCameraInfo() { return default_camera_info_; }
 
   void OnUpdateEditor(const Camera &camera);
@@ -232,6 +243,13 @@ class Scene {
   /// @brief Replaces every content entity with the captured snapshot, leaving
   /// editor-only entities (e.g. the grid) untouched.
   void RestorePlaySnapshot();
+
+  /// @brief Stops the simulation (destroys bodies) if running.
+  void StopSimulationIfRunning();
+
+  /// @brief Destroys every content (non-editor-only) entity, keeping
+  /// editor-only helpers (e.g. the grid).
+  void RemoveContentEntities();
 
   /// @brief Synchronizes Jolt bodies with the RigidBody/Collider components
   /// (used to pick up entities spawned or re-configured at runtime).

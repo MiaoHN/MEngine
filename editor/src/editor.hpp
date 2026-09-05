@@ -126,6 +126,34 @@ class Editor : public Application {
   void DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
   void SetGridVisible(bool visible);
   void LaunchStandalone();
+
+  // --- Scene file management (File menu) ------------------------------------
+  std::string current_scene_path_;  ///< absolute path of the open `.scene` file, empty for an unsaved new scene
+
+  /// @brief Stops any running simulation and clears script / selection state so
+  /// a scene-file operation can safely replace the content. Mirror of the
+  /// Play-mode Stop handler.
+  void ExitGameModeForFileOp();
+
+  /// @brief Starts a brand-new, empty scene.
+  void NewScene();
+
+  /// @brief Shows the native "Open Scene" dialog and loads the chosen file.
+  void OpenSceneDialog();
+
+  /// @brief Loads `path` (stops Play first if running).
+  void OpenScenePath(const std::string &path);
+
+  /// @brief Saves to current_scene_path_, or shows "Save As" when none is set.
+  void SaveCurrentScene();
+
+  /// @brief Shows the native "Save Scene As" dialog and saves.
+  void SaveSceneAsDialog();
+
+  /// @brief Unattended verification of the File-menu scene ops: new / open /
+  /// save round-trip. Driven by MENGINE_EDITOR_SELFTEST_SCENE=<path>; logs a
+  /// PASS/FAIL summary and restores the default demo scene afterwards.
+  void RunSceneFileSelftest(const std::string &path);
 };
 
 ::MEngine::Application *CreateApplication();
