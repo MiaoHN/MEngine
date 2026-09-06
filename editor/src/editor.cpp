@@ -184,7 +184,14 @@ bool LoadModelAsset(const std::filesystem::path &path, Ref<Mesh> &mesh, Ref<Mate
   if (ext == ".obj") {
     mesh = ModelLoader::LoadObj(path.string());
     if (mesh) {
-      AutoAssignObjTextures(material, path);
+      // Prefer the OBJ's own .mtl material (exact maps/factors); fall back to
+      // the sibling-texture name heuristic when there is no readable .mtl.
+      if (auto mtl_mat = ModelLoader::LoadObjMaterial(path.string())) {
+        mtl_mat->SetShader(AssetManager::Instance().GetShader("pbr"));
+        material = mtl_mat;
+      } else {
+        AutoAssignObjTextures(material, path);
+      }
     }
   } else if (ext == ".gltf" || ext == ".glb") {
     mesh = ModelLoader::LoadGltf(path.string());

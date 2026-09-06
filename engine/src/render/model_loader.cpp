@@ -1,6 +1,7 @@
 #include "render/model_loader.hpp"
 
 #include <array>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <sstream>
@@ -9,7 +10,9 @@
 #include <glm/glm.hpp>
 
 #include "core/logger.hpp"
+#include "render/material.hpp"
 #include "render/mesh.hpp"
+#include "render/texture.hpp"
 
 namespace MEngine {
 
@@ -178,6 +181,106 @@ Ref<Mesh> ModelLoader::LoadObj(const std::string &path) {
   LOG_INFO("ModelLoader") << "Loaded OBJ '" << path << "': " << vertices.size() << " vertices, " << indices.size()
                           << " indices.";
   return Mesh::Create(vertices, indices);
+}
+
+Ref<Material> ModelLoader::LoadObjMaterial(const std::string &obj_path) {
+  // Read the `mtllib` line(s) of the OBJ and open the first file that exists.
+  const std::filesystem::path obj_dir = std::filesystem::path(obj_path).parent_path();
+  std::ifstream               obj(obj_path);
+  if (!obj.is_open()) {
+    return nullptr;
+  }
+  std::string mtl_rel;
+  std::string line;
+  while (std::getline(obj, line)) {
+    std::istringstream iss(line);
+    std::string        type;
+    iss >> type;
+    if (type == "mtllib") {
+      std::string name;
+      iss >> name;
+      if (std::filesystem::exists(obj_dir / name)) {
+        mtl_rel = name;
+        break;
+      }
+    }
+  }
+  if (mtl_rel.empty()) {
+    return nullptr;
+  }
+
+  std::ifstream mtl(obj_dir / mtl_rel);
+  if (!mtl.is_open()) {
+    return nullptr;
+  }
+
+  // Reads a texture file name, skipping option tokens like `-bm 1.0`.
+  const auto read_texture_name = [](std::istringstream &s) -> std::string {
+    std::string tok;
+    if (!(s >> tok)) return "";
+    while (tok.size() > 1 && tok[0] == '-') {
+      std::string dummy;
+      if (!(s >> dummy) || !(s >> tok)) return "";
+    }
+    return tok;
+  };
+
+  Ref<Material> material = CreateRef<Material>();
+  material->SetBaseColorFactor(glm::vec4(1.0f));
+  material->SetMetallicFactor(0.0f);
+  material->SetRoughnessFactor(1.0f);
+
+  glm::vec3   kd(1.0f);
+  std::string albedo_rel, normal_rel, spec_rel;
+  std::string line2;
+  while (std::getline(mtl, line2)) {
+    std::istringstream iss(line2);
+    std::string        type;
+    iss >> type;
+    if (type == "newmtl") {
+      // We only build the first material (multi-material OBJs are not split).
+      break;
+    }
+    if (type == "Kd") {
+      float r = 1.0f, g = 1.0f, b = 1.0f;
+      if (iss >> r >> g >> b) {
+        kd = glm::vec3(r, g, b);
+      }
+    } else if (type == "map_Kd") {
+      albedo_rel = read_texture_name(iss);
+    } else if (type == "map_Bump" || type == "map_Kn" || type == "norm" || type == "bump") {
+      if (normal_rel.empty()) normal_rel = read_texture_name(iss);
+    } else if (type == "map_Ks") {
+      spec_rel = read_texture_name(iss);
+    }
+  }
+
+  // Kd is the base colour when no map_Kd overrides it (Blender exports both,
+  // and multiplying albedo by Kd too would darken the texture).
+  if (albedo_rel.empty()) {
+    material->SetBaseColorFactor(glm::vec4(kd, 1.0f));
+  }
+  const auto resolve = [&](const std::string &rel) -> Ref<Texture> {
+    if (rel.empty()) return nullptr;
+    const std::filesystem::path p = obj_dir / rel;
+    if (!std::filesystem::exists(p)) return nullptr;
+    return Texture::Create(p.string());
+  };
+  if (Ref<Texture> albedo = resolve(albedo_rel)) {
+    material->SetAlbedoMap(albedo);
+    material->SetAlbedoSRGB(true);  // diffuse maps are sRGB-encoded
+  }
+  if (Ref<Texture> normal = resolve(normal_rel)) {
+    material->SetNormalMap(normal);
+  }
+  if (Ref<Texture> spec = resolve(spec_rel)) {
+    material->SetSpecularMap(spec);
+  }
+
+  LOG_INFO("ModelLoader") << "Loaded OBJ material from '" << mtl_rel
+                           << "' (albedo=" << (albedo_rel.empty() ? std::string("Kd") : albedo_rel)
+                           << " normal=" << normal_rel << " specular=" << spec_rel << ")";
+  return material;
 }
 
 }  // namespace MEngine

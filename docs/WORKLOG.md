@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-06 — `.mtl` 解析（ModelLoader::LoadObjMaterial）+ editor OBJ 导入优先用 .mtl
+
+- **engine**：`ModelLoader::LoadObjMaterial(obj)` 解析 OBJ 引用的 sidecar `.mtl`（首个材质）：
+  `Kd` base color（无 `map_Kd` 时）、`map_Kd` albedo（标 sRGB）、`map_Bump/map_Kn/norm` 法线、
+  `map_Ks` 高光；自动跳过 `-bm` 等选项 token；纹理用 `Texture::Create`（OBJ 翻转向，与现有路径一致）。
+  返回 `nullptr` 时调用方可回退文件名启发式。多材质 `usemtl`（需 Model 重构拆分）暂返回首个材质。
+- **editor**：`LoadModelAsset` 拖入 `.obj` 时优先用 `.mtl`（如 backpack），无 `.mtl` 再回退文件名约定。
+  技术债“OBJ .mtl 未解析”部分解决（多材质拆分为后续 Model 项）。
+
+---
+
 ## 2026-09-06 — editor 默认场景换成 ex_5_6(HDR/bloom) 风 + 运行时换天空盒
 
 - **默认场景 → Lighting demo**（`CreateLightingDemo`，复刻 ex_5_6 = LO 7.bloom）：木地板 + container 木箱

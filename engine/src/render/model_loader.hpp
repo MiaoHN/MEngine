@@ -23,6 +23,18 @@ class ModelLoader {
   ///  - flat face normals are generated when the file has no `vn`
   static Ref<Mesh> LoadObj(const std::string &path);
 
+  /// @brief Builds a Material from an OBJ's sidecar `.mtl` file (the `mtllib`
+  /// the OBJ references, resolved next to it). Returns the FIRST material's
+  /// maps/factors: `Kd` base colour, `map_Kd` albedo (marked sRGB), `map_Bump` /
+  /// `map_Kn` normal and `map_Ks` specular. Returns nullptr when there is no
+  /// readable `.mtl`, so callers can fall back to name-based heuristics.
+  ///
+  /// The shader is not assigned here; callers should set it. Note: OBJ files
+  /// using SEVERAL materials (`usemtl`) are not yet split into per-face
+  /// submeshes (that is the future Model refactor) - only the first material
+  /// is returned.
+  static Ref<Material> LoadObjMaterial(const std::string &obj_path);
+
   /// @brief Loads a glTF 2.0 file (`.gltf` or `.glb`) into a single Mesh.
   ///
   /// Takes the first mesh's first primitive; attributes used: POSITION,
