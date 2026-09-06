@@ -1333,6 +1333,22 @@ void DrawMaterialEditor(Material *material) {
   ImGui::SameLine();
   draw_map("AO", material->GetAOMap(), [&](Ref<Texture> t) { material->SetAOMap(t); });
 
+  // Height map + parallax scale live on their own row (parallax occlusion
+  // mapping); the height map's red channel stores 0 = base .. 1 = top.
+  draw_map("Height", material->GetHeightMap(), [&](Ref<Texture> t) { material->SetHeightMap(t); });
+  ImGui::SameLine();
+  ImGui::BeginDisabled(material->GetHeightMap() == nullptr);
+  float height_scale = material->GetHeightScale();
+  if (ImGui::SliderFloat("Height Scale", &height_scale, 0.0f, 0.2f, "%.3f")) {
+    material->SetHeightScale(height_scale);
+  }
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Parallax occlusion strength (0 = flat). ~0.02-0.1 is typical.\n"
+                      "A height map must be set for this to have an effect.");
+  }
+  ImGui::TextDisabled("Parallax: drag a height map above, right-click it to clear.");
+
   ImGui::Separator();
   ImGui::Text("Properties");
 

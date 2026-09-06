@@ -38,6 +38,12 @@ class Material {
   /// @brief Optional equirectangular environment/reflection map (OBJ `map_Ka`),
   /// sampled by the pbr shader for baked reflections.
   void SetReflectionMap(Ref<Texture> texture) { reflection_map_ = std::move(texture); }
+  /// @brief Optional height / displacement map for parallax mapping (POM). The
+  /// pbr/blinn shaders displace the texture coordinates along the tangent view
+  /// ray by `height_scale`; a red channel stores height (0 = base, 1 = top).
+  void SetHeightMap(Ref<Texture> texture) { height_map_ = std::move(texture); }
+  /// @brief Parallax strength (0 = disabled). ~0.02..0.1 is typical.
+  void SetHeightScale(float scale) { height_scale_ = scale; }
 
   [[nodiscard]] Ref<Texture> GetAlbedoMap() const { return albedo_map_; }
   [[nodiscard]] Ref<Texture> GetNormalMap() const { return normal_map_; }
@@ -45,6 +51,8 @@ class Material {
   [[nodiscard]] Ref<Texture> GetAOMap() const { return ao_map_; }
   [[nodiscard]] Ref<Texture> GetSpecularMap() const { return specular_map_; }
   [[nodiscard]] Ref<Texture> GetReflectionMap() const { return reflection_map_; }
+  [[nodiscard]] Ref<Texture> GetHeightMap() const { return height_map_; }
+  [[nodiscard]] float GetHeightScale() const { return height_scale_; }
 
   /// @brief Marks the albedo map as sRGB-encoded (LearnOpenGL loads its albedo
   /// maps this way in the gamma-correct HDR/bloom demos). The shader decodes
@@ -95,12 +103,14 @@ class Material {
   Ref<Texture> ao_map_;
   Ref<Texture> specular_map_;
   Ref<Texture> reflection_map_;
+  Ref<Texture> height_map_;  // parallax height map (parallax mapping, POM)
 
   glm::vec4 base_color_factor_{1.0f};
   float     metallic_factor_  = 1.0f;
   float     roughness_factor_ = 1.0f;
   float     specular_factor_  = 1.0f;
   float     shininess_        = 32.0f;
+  float     height_scale_     = 0.0f;  // parallax strength (0 = off)
   glm::vec3 specular_color_{1.0f};
   bool      has_specular_color_ = false;
   bool      albedo_srgb_      = false;

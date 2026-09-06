@@ -12,6 +12,7 @@ uniform sampler2D metallic_roughness_map;
 uniform sampler2D ao_map;
 uniform sampler2D specular_map;    // OBJ map_Ks (slot 12)
 uniform sampler2D reflection_map;  // OBJ map_Ka equirect env (slot 14)
+uniform sampler2D height_map;      // parallax height map (slot 15)
 
 uniform int  has_albedo_map              = 0;
 uniform int  has_normal_map              = 0;
@@ -19,12 +20,14 @@ uniform int  has_metallic_roughness_map  = 0;
 uniform int  has_ao_map                  = 0;
 uniform int  has_specular_map            = 0;
 uniform int  has_reflection_map          = 0;
+uniform int  has_height_map              = 0;
 uniform int  u_albedo_srgb               = 0;  // 1 = decode albedo map sRGB -> linear
 
 uniform vec4  base_color_factor = vec4(1.0);
 uniform float metallic_factor   = 1.0;
 uniform float roughness_factor  = 1.0;
 uniform float specular_intensity = 1.0;
+uniform float height_scale       = 0.0;  // parallax strength (0 = off)
 uniform int   u_render_mode      = 0;  // 0 = lit PBR, 1 = unlit albedo
 uniform int   u_material_unlit   = 0;  // per-material emissive (light cubes)
 
@@ -244,8 +247,65 @@ vec3 SpotLightContribution(vec3 light_pos, vec3 light_dir, vec3 light_color, flo
   return (kD * albedo / PI + specular * specular_intensity) * radiance * NdotL;
 }
 
+/// @brief Parallax occlusion mapping (LearnOpenGL 5.3): ray-marches the height
+/// field along the (tangent-space) view ray in discrete layers and linearly
+/// interpolates between the last two layers for a smoother result. `viewDir`
+/// must point from the surface TOWARDS the camera in tangent space; the red
+/// height channel stores 0 = base .. 1 = top.
+vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir) {
+  const float minLayers = 8.0;
+  const float maxLayers = 32.0;
+  // Grazing angles need more layers; looking straight-on fewer is enough.
+  float numLayers = mix(maxLayers, minLayers, abs(dot(vec3(0.0, 0.0, 1.0), viewDir)));
+  float layerDepth       = 1.0 / numLayers;
+  float currentLayerDepth = 0.0;
+  vec2  P                = viewDir.xy / max(abs(viewDir.z), 0.0001) * height_scale;
+  vec2  deltaTexCoords   = P / numLayers;
+
+  vec2  currentTexCoords     = texCoords;
+  float currentDepthMapValue = texture(height_map, currentTexCoords).r;
+  int   guard                = 0;
+  while (currentLayerDepth < currentDepthMapValue && guard < 64) {
+    currentTexCoords -= deltaTexCoords;
+    currentDepthMapValue = texture(height_map, currentTexCoords).r;
+    currentLayerDepth += layerDepth;
+    ++guard;
+  }
+
+  // Interpolate between the layer before / after the collision for a smooth UV.
+  vec2  prevTexCoords = currentTexCoords + deltaTexCoords;
+  float afterDepth    = currentDepthMapValue - currentLayerDepth;
+  float beforeDepth   = texture(height_map, prevTexCoords).r - currentLayerDepth + layerDepth;
+  float weight        = clamp(afterDepth / max(afterDepth - beforeDepth, 0.0001), 0.0, 1.0);
+  return prevTexCoords * weight + currentTexCoords * (1.0 - weight);
+}
+
 void main() {
-  vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, TexCoord).rgb : vec3(1.0);
+  vec2 uv = TexCoord;
+  // Parallax mapping (lit pass only): displace the texture coordinates along
+  // the tangent-space view ray using the height map. The tangent basis is the
+  // geometric one (same as the normal-map path below), so this works without
+  // extra vertex attributes (derivative-based TBN).
+  if (has_height_map == 1 && height_scale > 0.0 && u_render_mode != 1 && u_material_unlit != 1) {
+    vec2 duv1 = dFdx(TexCoord);
+    vec2 duv2 = dFdy(TexCoord);
+    if (dot(duv1, duv1) > 1e-8 && dot(duv2, duv2) > 1e-8) {
+      vec3  N_geom = normalize(Normal);
+      vec3  dp1    = dFdx(FragPos);
+      vec3  dp2    = dFdy(FragPos);
+      vec3  T      = normalize(dp1 * duv2.t - dp2 * duv1.t);
+      vec3  B      = normalize(cross(N_geom, T));
+      mat3  TBN    = mat3(T, B, N_geom);
+      vec3  V_world = normalize(view_pos - FragPos);
+      vec3  view_tan = transpose(TBN) * V_world;  // world -> tangent space
+      uv = ParallaxMapping(TexCoord, view_tan);
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        discard;  // offset sampled outside the texture: nothing is there
+      }
+    }
+  }
+
+  vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, uv).rgb : vec3(1.0);
   albedo *= base_color_factor.rgb;
   // LearnOpenGL decodes albedo maps sRGB->linear (pow 2.2) in its PBR shaders;
   // do the same when the material opts in (SetAlbedoSRGB).
@@ -261,18 +321,18 @@ void main() {
   float metallic  = metallic_factor;
   float roughness = roughness_factor;
   if (has_metallic_roughness_map == 1) {
-    vec3 mr  = texture(metallic_roughness_map, TexCoord).rgb;
+    vec3 mr  = texture(metallic_roughness_map, uv).rgb;
     roughness *= mr.g;  // green = roughness
     metallic  *= mr.b;  // blue = metallic
   }
   roughness = clamp(roughness, 0.04, 1.0);
   metallic  = clamp(metallic, 0.0, 1.0);
 
-  float ao = has_ao_map == 1 ? texture(ao_map, TexCoord).r : 1.0;
+  float ao = has_ao_map == 1 ? texture(ao_map, uv).r : 1.0;
 
   vec3 N = normalize(Normal);
   if (has_normal_map == 1) {
-    vec3 n    = texture(normal_map, TexCoord).rgb * 2.0 - 1.0;
+    vec3 n    = texture(normal_map, uv).rgb * 2.0 - 1.0;
     vec3 dp1  = dFdx(FragPos);
     vec3 dp2  = dFdy(FragPos);
     vec2 duv1 = dFdx(TexCoord);
@@ -291,7 +351,7 @@ void main() {
   // Specular-workflow OBJ material: the per-pixel specular map (map_Ks) drives
   // the F0 - as a tinted dielectric (metals use its colour directly).
   if (has_specular_map == 1) {
-    vec3 spec_col = texture(specular_map, TexCoord).rgb;
+    vec3 spec_col = texture(specular_map, uv).rgb;
     F0 = metallic > 0.5 ? clamp(spec_col, vec3(0.0), vec3(1.0))
                         : clamp(vec3(0.04) + spec_col * 0.5, vec3(0.04), vec3(1.0));
   }

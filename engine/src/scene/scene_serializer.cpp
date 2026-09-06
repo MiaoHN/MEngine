@@ -105,6 +105,7 @@ json MaterialToJson(const Ref<Material> &material) {
   j["metallic"]   = material->GetMetallicFactor();
   j["roughness"]  = material->GetRoughnessFactor();
   j["specular"]   = material->GetSpecularFactor();
+  j["height_scale"] = material->GetHeightScale();  // parallax strength
 
   switch (material->GetCullMode()) {
     case CullMode::Back:
@@ -126,6 +127,7 @@ json MaterialToJson(const Ref<Material> &material) {
   j["normal"]             = texture_path(material->GetNormalMap());
   j["metallic_roughness"] = texture_path(material->GetMetallicRoughnessMap());
   j["ao"]                 = texture_path(material->GetAOMap());
+  j["height"]             = texture_path(material->GetHeightMap());
   return j;
 }
 
@@ -137,6 +139,7 @@ Ref<Material> MaterialFromJson(const json &j) {
   material->SetMetallicFactor(j.value("metallic", 1.0f));
   material->SetRoughnessFactor(j.value("roughness", 1.0f));
   material->SetSpecularFactor(j.value("specular", 1.0f));
+  material->SetHeightScale(j.value("height_scale", 0.0f));
 
   const std::string cull = j.value("cull", "");
   if (cull == "back") {
@@ -155,6 +158,7 @@ Ref<Material> MaterialFromJson(const json &j) {
   material->SetNormalMap(load_texture("normal"));
   material->SetMetallicRoughnessMap(load_texture("metallic_roughness"));
   material->SetAOMap(load_texture("ao"));
+  material->SetHeightMap(load_texture("height"));
   return material;
 }
 
@@ -181,6 +185,7 @@ void ApplyMaterialJson(const Ref<Material> &material, const json &j) {
   if (j.contains("metallic")) material->SetMetallicFactor(j["metallic"].get<float>());
   if (j.contains("roughness")) material->SetRoughnessFactor(j["roughness"].get<float>());
   if (j.contains("specular")) material->SetSpecularFactor(j["specular"].get<float>());
+  if (j.contains("height_scale")) material->SetHeightScale(j["height_scale"].get<float>());
   if (j.contains("cull")) {
     const std::string cull = j["cull"].get<std::string>();
     material->SetCullMode(cull == "back" ? CullMode::Back : cull == "front" ? CullMode::Front : CullMode::None);
@@ -189,6 +194,7 @@ void ApplyMaterialJson(const Ref<Material> &material, const json &j) {
   set_map("normal", &Material::SetNormalMap);
   set_map("metallic_roughness", &Material::SetMetallicRoughnessMap);
   set_map("ao", &Material::SetAOMap);
+  set_map("height", &Material::SetHeightMap);
 }
 
 // --- camera ----------------------------------------------------------------

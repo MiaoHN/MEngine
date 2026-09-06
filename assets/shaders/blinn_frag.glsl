@@ -25,17 +25,20 @@ uniform sampler2D albedo_map;
 uniform sampler2D normal_map;
 uniform sampler2D metallic_roughness_map;  // unused (kept so batching matches)
 uniform sampler2D ao_map;
+uniform sampler2D height_map;  // parallax height map (slot 15)
 
 uniform int  has_albedo_map             = 0;
 uniform int  has_normal_map             = 0;
 uniform int  has_metallic_roughness_map = 0;
 uniform int  has_ao_map                 = 0;
+uniform int  has_height_map             = 0;
 
 uniform vec4  base_color_factor   = vec4(1.0);
 uniform float metallic_factor     = 1.0;   // ignored
 uniform float roughness_factor    = 1.0;   // ignored
 uniform float specular_intensity  = 1.0;
 uniform float material_shininess  = 32.0;
+uniform float height_scale        = 0.0;   // parallax strength (0 = off)
 uniform int   u_render_mode       = 0;     // 0 = lit, 1 = unlit albedo
 uniform int   u_material_unlit    = 0;     // per-material emissive (light cubes)
 
@@ -157,8 +160,56 @@ float DistanceAttenuation(vec3 light_pos, float radius, bool lo_attenuation, flo
   return att / max(distance * distance, 0.001);
 }
 
+/// @brief Parallax occlusion mapping - see pbr_frag.glsl for the details.
+vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir) {
+  const float minLayers = 8.0;
+  const float maxLayers = 32.0;
+  float numLayers = mix(maxLayers, minLayers, abs(dot(vec3(0.0, 0.0, 1.0), viewDir)));
+  float layerDepth       = 1.0 / numLayers;
+  float currentLayerDepth = 0.0;
+  vec2  P                = viewDir.xy / max(abs(viewDir.z), 0.0001) * height_scale;
+  vec2  deltaTexCoords   = P / numLayers;
+
+  vec2  currentTexCoords     = texCoords;
+  float currentDepthMapValue = texture(height_map, currentTexCoords).r;
+  int   guard                = 0;
+  while (currentLayerDepth < currentDepthMapValue && guard < 64) {
+    currentTexCoords -= deltaTexCoords;
+    currentDepthMapValue = texture(height_map, currentTexCoords).r;
+    currentLayerDepth += layerDepth;
+    ++guard;
+  }
+
+  vec2  prevTexCoords = currentTexCoords + deltaTexCoords;
+  float afterDepth    = currentDepthMapValue - currentLayerDepth;
+  float beforeDepth   = texture(height_map, prevTexCoords).r - currentLayerDepth + layerDepth;
+  float weight        = clamp(afterDepth / max(afterDepth - beforeDepth, 0.0001), 0.0, 1.0);
+  return prevTexCoords * weight + currentTexCoords * (1.0 - weight);
+}
+
 void main() {
-  vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, TexCoord).rgb : vec3(1.0);
+  vec2 uv = TexCoord;
+  // Parallax mapping (lit pass only) - see pbr_frag.glsl for the details.
+  if (has_height_map == 1 && height_scale > 0.0 && u_render_mode != 1 && u_material_unlit != 1) {
+    vec2 duv1 = dFdx(TexCoord);
+    vec2 duv2 = dFdy(TexCoord);
+    if (dot(duv1, duv1) > 1e-8 && dot(duv2, duv2) > 1e-8) {
+      vec3  N_geom = normalize(Normal);
+      vec3  dp1    = dFdx(FragPos);
+      vec3  dp2    = dFdy(FragPos);
+      vec3  T      = normalize(dp1 * duv2.t - dp2 * duv1.t);
+      vec3  B      = normalize(cross(N_geom, T));
+      mat3  TBN    = mat3(T, B, N_geom);
+      vec3  V_world = normalize(view_pos - FragPos);
+      vec3  view_tan = transpose(TBN) * V_world;  // world -> tangent space
+      uv = ParallaxMapping(TexCoord, view_tan);
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        discard;
+      }
+    }
+  }
+
+  vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, uv).rgb : vec3(1.0);
   albedo *= base_color_factor.rgb;
 
   if (u_render_mode == 1 || u_material_unlit == 1) {  // Unlit / emissive
@@ -168,7 +219,7 @@ void main() {
 
   vec3 N = normalize(Normal);
   if (has_normal_map == 1) {
-    vec3 n    = texture(normal_map, TexCoord).rgb * 2.0 - 1.0;
+    vec3 n    = texture(normal_map, uv).rgb * 2.0 - 1.0;
     vec3 dp1  = dFdx(FragPos);
     vec3 dp2  = dFdy(FragPos);
     vec2 duv1 = dFdx(TexCoord);
@@ -181,7 +232,7 @@ void main() {
 
   vec3 V = normalize(view_pos - FragPos);
 
-  float ao = has_ao_map == 1 ? texture(ao_map, TexCoord).r : 1.0;
+  float ao = has_ao_map == 1 ? texture(ao_map, uv).r : 1.0;
   if (ssao_enabled == 1) {
     ao *= texture(ssao_map, gl_FragCoord.xy / viewport_size).r;
   }

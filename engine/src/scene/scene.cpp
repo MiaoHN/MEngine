@@ -137,6 +137,9 @@ bool MaterialLessForBatching(const Ref<Material> &a, const Ref<Material> &b) {
   if (a->GetSpecularMap() != b->GetSpecularMap()) {
     return tex_cmp(a->GetSpecularMap(), b->GetSpecularMap());
   }
+  if (a->GetHeightMap() != b->GetHeightMap()) {
+    return tex_cmp(a->GetHeightMap(), b->GetHeightMap());
+  }
   const glm::vec4 ca = a->GetBaseColorFactor();
   const glm::vec4 cb = b->GetBaseColorFactor();
   if (std::memcmp(&ca, &cb, sizeof(ca)) != 0) {
@@ -148,6 +151,7 @@ bool MaterialLessForBatching(const Ref<Material> &a, const Ref<Material> &b) {
   if (a->GetMetallicFactor() != b->GetMetallicFactor()) return a->GetMetallicFactor() < b->GetMetallicFactor();
   if (a->GetRoughnessFactor() != b->GetRoughnessFactor()) return a->GetRoughnessFactor() < b->GetRoughnessFactor();
   if (a->GetSpecularFactor() != b->GetSpecularFactor()) return a->GetSpecularFactor() < b->GetSpecularFactor();
+  if (a->GetHeightScale() != b->GetHeightScale()) return a->GetHeightScale() < b->GetHeightScale();
   if (a->GetShininess() != b->GetShininess()) return a->GetShininess() < b->GetShininess();
   if (a->IsTranslucent() != b->IsTranslucent()) return a->IsTranslucent() < b->IsTranslucent();
   if (a->IsAlbedoSRGB() != b->IsAlbedoSRGB()) return a->IsAlbedoSRGB() < b->IsAlbedoSRGB();

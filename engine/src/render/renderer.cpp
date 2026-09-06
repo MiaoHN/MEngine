@@ -372,9 +372,11 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   bind_texture(material->GetAOMap(), 3, "ao_map", "has_ao_map");
   // Specular map (slot 12) feeds the pbr shader's F0 and the blinn LO-exact
   // specular term; an optional equirect reflection map (OBJ map_Ka) lives on
-  // slot 14 (kept clear of textures 0..13).
+  // slot 14 and the parallax height map on slot 15 (both kept clear of the
+  // shadow maps on 4 / IBL on 5,6,13 / SSAO on 7 / point shadows on 8..11).
   bind_texture(material->GetSpecularMap(), 12, "specular_map", "has_specular_map");
   bind_texture(material->GetReflectionMap(), 14, "reflection_map", "has_reflection_map");
+  bind_texture(material->GetHeightMap(), 15, "height_map", "has_height_map");
 
   shader->SetUniform("base_color_factor", material->GetBaseColorFactor());
   shader->SetUniform("metallic_factor", material->GetMetallicFactor());
@@ -385,6 +387,7 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   shader->SetUniform("u_albedo_srgb", material->IsAlbedoSRGB() ? 1 : 0);
   shader->SetUniform("material_shininess", material->GetShininess());
   shader->SetUniform("u_material_unlit", material->IsUnlit() ? 1 : 0);
+  shader->SetUniform("height_scale", material->GetHeightScale());  // parallax strength
   // Scene / view constants (lights, shadow, IBL, SSAO, point & spot arrays) are
   // identical for every draw in one main pass: upload them once per shader
   // program (cached until the next ResetFrameUniformCache) instead of once per
