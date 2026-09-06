@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-06 — ex_6.1 PBR 观感对齐：引擎加 Reinhard 色调 + 合并 MR 贴图（修锈迹反光）
+
+- **用户反馈**：① 纯色红球太亮，希望与 LO 参数一致；② 锈铁球的“锈”不该反光但看着太亮。
+- **根因**：① 引擎默认 composite 是 ACES+gamma，LO 6.pbr 1.1/1.2 用 **Reinhard** `color/(color+1)`+gamma → 偏亮/饱和；② 之前引擎没有 separate metallic/roughness，我以标量 metal 0.9/rough 0.6 近似 → 整球金属，锈区也反光。
+- **引擎**：composite 新增 **Reinhard 色调** `u_reinhard_tone`（`SetReinhardTone`，scene→renderer→post 链路照抄 lo_hdr_tone）；默认关，其它场景不变。
+- **素材/工具**：新增 `tools/make_pbr_mr.ps1`：把 LO 分开的 `metallic.png`/`roughness.png` 灰度合成引擎的合并 MR 贴图（R=1、G=roughness、B=metallic）→ 每材质生成 `assets/textures/pbr/<mat>/mr.png`（gold/grass/plastic/rusted_iron/wall 共 5 张）。
+- **ex_6_1_1**：`SetReinhardTone(true)` + 微弱 IBL ambient（≈LO 0.03*albedo）+ 小线性背景使 tone 后呈 LO 深 clear。
+- **ex_6_1_2**：`RustedIron()` 改用 albedo/normal/**mr.png**/ao（factors=1，金属/粗糙逐像素）→ 锈区低金属高粗糙哑光、裸金属才反光。
+- **验证**：capture：6.1.1 暗底红球+白高光（Reinhard）；6.1.2 锈铁球呈现“石状粗糙 + 局部金属亮斑”而非整体反光。
+- 之前 ACES 背景 0.1→0.36 中灰的坑也一并修：改用小线性背景 + Reinhard 呈现 ~RGB 25。
+
+---
+
 ## 2026-09-06 — LO 6.pbr 复刻：6.1.1 lighting + 6.1.2 lighting_textured（引擎 PBR 直射）
 
 - **用户**：刚才压测那个先不要了；继续复刻 LO 的 PBR 部分场景。

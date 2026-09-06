@@ -160,6 +160,7 @@ class Renderer {
 
   /// @brief LearnOpenGL 6.hdr / 7.bloom tone mapping (1-exp(-x) + gamma).
   void SetLoHdrTone(bool enabled);
+  void SetReinhardTone(bool enabled);
   [[nodiscard]] bool IsLoHdrTone() const;
 
   /// @brief LearnOpenGL-exact lighting mode (for the "blinn" shader): each light

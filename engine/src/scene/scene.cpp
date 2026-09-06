@@ -1317,6 +1317,7 @@ void Scene::SetLinearOutput(bool enabled) { renderer_->SetLinearOutput(enabled);
 bool Scene::IsLinearOutput() const { return renderer_->IsLinearOutput(); }
 
 void Scene::SetLoHdrTone(bool enabled) { renderer_->SetLoHdrTone(enabled); }
+void Scene::SetReinhardTone(bool enabled) { renderer_->SetReinhardTone(enabled); }
 bool Scene::IsLoHdrTone() const { return renderer_->IsLoHdrTone(); }
 
 void Scene::SetLoLighting(bool enabled) { renderer_->SetLoLighting(enabled); }

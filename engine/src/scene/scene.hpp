@@ -205,6 +205,7 @@ class Scene {
   [[nodiscard]] bool IsLinearOutput() const;
   /// @brief LearnOpenGL HDR/bloom tone mapping (1-exp(-x) + gamma).
   void SetLoHdrTone(bool enabled);
+  void SetReinhardTone(bool enabled);
   [[nodiscard]] bool IsLoHdrTone() const;
   /// @brief LearnOpenGL-exact per-light ambient/diffuse/specular lighting.
   void SetLoLighting(bool enabled);

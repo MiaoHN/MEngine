@@ -11,6 +11,7 @@ uniform float     bloom_strength    = 0.04;
 uniform float     god_rays_strength = 0.05;
 uniform int       u_linear_output   = 0;  // 1 = raw output (LearnOpenGL style, no ACES/gamma)
 uniform int       u_lo_hdr_tone     = 0;  // 1 = LearnOpenGL HDR/bloom tone: 1 - exp(-x), + gamma
+uniform int       u_reinhard_tone   = 0;  // 1 = LearnOpenGL PBR tone: color/(color+1), + gamma
 
 vec3 ACESToneMap(vec3 x) {
   const float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
@@ -31,6 +32,10 @@ void main() {
     // LearnOpenGL 6.hdr / 7.bloom tone: 1 - exp(-hdr), then gamma. (hdr already
     // includes the exposure multiply, so this is 1 - exp(-color*exposure).)
     mapped = vec3(1.0) - exp(-hdr);
+    mapped = pow(mapped, vec3(1.0 / 2.2));
+  } else if (u_reinhard_tone == 1) {
+    // LearnOpenGL PBR (6.pbr 1.1/1.2): color / (color + 1), then gamma.
+    mapped = hdr / (hdr + vec3(1.0));
     mapped = pow(mapped, vec3(1.0 / 2.2));
   } else {
     mapped = ACESToneMap(hdr);

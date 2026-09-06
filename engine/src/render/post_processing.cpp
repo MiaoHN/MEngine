@@ -238,6 +238,7 @@ void PostProcessing::Render(const glm::vec2 &light_screen_pos, unsigned int targ
   composite_shader_->SetUniform("god_rays_strength", bloom_enabled_ ? god_rays_strength_ * god_rays_scale : 0.0f);
   composite_shader_->SetUniform("u_linear_output", linear_output_ ? 1 : 0);
   composite_shader_->SetUniform("u_lo_hdr_tone", lo_hdr_tone_ ? 1 : 0);
+  composite_shader_->SetUniform("u_reinhard_tone", reinhard_tone_ ? 1 : 0);
   DrawFullscreenTriangle();
   composite_shader_->Unbind();
 }

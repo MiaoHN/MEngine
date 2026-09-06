@@ -22,7 +22,10 @@ using MEngine::examples::Put;
 
 namespace {
 
-/// @brief rusted_iron PBR material: raw albedo/normal/ao maps + factors.
+/// @brief rusted_iron PBR material: raw albedo/normal maps + combined MR map
+/// (R=1, G=roughness, B=metallic, generated from LO's separate grayscale maps)
+/// + ao. The MR map makes the rust (non-metal + rough) dull while bare metal
+/// stays reflective - exactly like LO 1.2.
 Ref<Material> RustedIron() {
   const auto tex = [](const char *name) {
     return AssetManager::Instance().GetTexture(std::string("textures/pbr/rusted_iron/") + name);
@@ -31,9 +34,10 @@ Ref<Material> RustedIron() {
   m->SetShader(examples::PbrShader());
   m->SetAlbedoMap(tex("albedo.png"));
   m->SetNormalMap(tex("normal.png"));
+  m->SetMetallicRoughnessMap(tex("mr.png"));
   m->SetAOMap(tex("ao.png"));
-  m->SetMetallicFactor(0.9f);    // rusted iron: mostly metal
-  m->SetRoughnessFactor(0.6f);   // (engine has no separate roughness map)
+  m->SetMetallicFactor(1.0f);    // MR map fully drives metallic/roughness
+  m->SetRoughnessFactor(1.0f);
   m->SetSpecularFactor(1.0f);
   return m;
 }
@@ -68,12 +72,12 @@ std::shared_ptr<Scene> BuildPbrTextured() {
   l.quadratic      = 1.0f;
   s->AddPointLight(l);
 
-  // No IBL / no sun; LO's raw 0.1 clear reads ~RGB 25 while the engine's post
-  // tone+gamma would lift 0.1 to a medium grey, so feed ~0.011 linear to keep
-  // the background dark like LO. Engine PBR post (ACES tone + gamma), clean LO
-  // figure (no bloom / god rays / TAA / SSAO).
+  // LO 1.2: faint ambient 0.03*albedo, Reinhard tone + gamma, raw 0.1 clear.
+  // Engine: low IBL for the faint ambient + Reinhard tone + small linear bg so
+  // it reads dark like LO. Clean LO figure (no bloom / god rays / TAA / SSAO).
   examples::NoSun(*s);
-  examples::SolidBackground(*s, glm::vec3(0.011f, 0.011f, 0.011f), 0.0f);
+  examples::SolidBackground(*s, glm::vec3(0.0065f, 0.0065f, 0.0065f), 0.03f);
+  s->SetReinhardTone(true);
   s->SetBloomEnabled(false);
   s->SetGodRaysStrength(0.0f);
   s->SetTAAEnabled(false);
