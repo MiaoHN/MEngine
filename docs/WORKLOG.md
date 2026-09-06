@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-09-06 — editor 默认场景换成 ex_5_6(HDR/bloom) 风 + 运行时换天空盒
+
+- **默认场景 → Lighting demo**（`CreateLightingDemo`，复刻 ex_5_6 = LO 7.bloom）：木地板 + container 木箱
+  + 4 个 HDR 点光（1/d²，色 5/10/15 等）各自带发光立方体，暗室 + LO HDR 色调 + bloom（threshold 1，
+  strength 1）；每个 HDR 灯是实体（`PointLightComponent` + unlit 发光盒），拖实体光与发光一起动。
+  原物理 demo（CreatePhysicsDemo）保留但不再是默认。
+- **NewScene 重置友好基线**：新空场景不再继承上一个暗 LO 场景的设置——恢复默认太阳/IBL 0.6/ACES/
+  skybox 开/bloom 柔和等。
+- **运行时换环境（engine）**：`Renderer::Scene::SetEnvironmentHdr(path, flip)`——运行时重建 Skybox
+  （env cubemap/irradiance/prefilter，BRDF 保留），并同步 Application 静态。
+- **Editor Rendering 面板**：新增环境 .hdr 拖放槽（拖图片文件换天空盒/IBL）+ “Flip V(glTF)” 开关。
+- 引擎默认方向光 color 2.5 → 1.0（默认不再刺眼）。
+- 提交含：engine(scene/renderer/light)、editor(editor.cpp/hpp)、docs。
+
+---
+
 ## 2026-09-06 — editor 默认场景：发光小正方体 + 调暗环境光 + bloom
 
 - 默认编辑器场景（`CreatePhysicsDemo`）四角加入 4 个 **HDR 发光小正方体**（unlit PBR、base_color>1

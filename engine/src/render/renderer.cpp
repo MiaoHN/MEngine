@@ -88,6 +88,16 @@ Renderer::Renderer() {
                         << " point-light shadow maps, SSAO + skybox + post-processing)";
 }
 
+void Renderer::SetEnvironmentHdr(const std::string &hdr_path, bool flip) {
+  // Recreate the whole Skybox (env cubemap + irradiance + prefiltered + BRDF)
+  // from the new HDR. This runs under the active GL context in the editor; a
+  // one-off cost on drag-and-drop. The Application statics track the current
+  // environment so a later full rebuild (e.g. new Renderer) matches.
+  Application::SetEnvironmentHdrPath(hdr_path);
+  Application::SetEnvironmentHdrFlip(flip);
+  skybox_ = CreateRef<Skybox>(AssetManager::Instance().Resolve(hdr_path), 512, 32, 128, flip);
+}
+
 Renderer::~Renderer() = default;
 
 void Renderer::RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) const {

@@ -14,7 +14,7 @@ namespace MEngine {
  */
 struct DirectionalLight {
   glm::vec3 direction = glm::normalize(glm::vec3(-0.3f, -1.0f, -0.4f));
-  glm::vec3 color     = glm::vec3(2.5f);
+  glm::vec3 color     = glm::vec3(1.0f);
 
   // LearnOpenGL-exact per-channel strengths. Used only when the renderer's
   // "LO lighting" mode is enabled (then `color` is ignored): ambient / diffuse

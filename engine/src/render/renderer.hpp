@@ -148,6 +148,13 @@ class Renderer {
   [[nodiscard]] bool GetIblSpecular() const { return ibl_specular_ == 1; }
   void SetGodRaysStrength(float strength);
 
+  /// @brief Rebuilds the IBL/skybox environment from a new equirectangular HDR
+  /// file at runtime (used by the editor to swap the skybox by drag-and-drop).
+  /// `path` is resolved through the AssetManager; `flip` mirrors the glTF HDR
+  /// vertical-flip convention. BRDF LUT is kept; env/irradiance/prefilter
+  /// regenerated from the new file.
+  void SetEnvironmentHdr(const std::string &hdr_path, bool flip);
+
   /// @brief Toggles drawing the skybox as the scene background (the IBL
   /// environment still lights the scene either way).
   void SetSkyboxEnabled(bool enabled) { skybox_enabled_ = enabled; }

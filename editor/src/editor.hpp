@@ -88,6 +88,7 @@ class Editor : public Application {
   bool show_colliders_       = true;
   bool show_script_editor_   = true;
   bool show_timeline_        = true;
+  bool env_hdr_flip_         = false;  ///< vertical flip when loading a dropped .hdr environment
   /// @brief Auto-Key toggle: gizmo moves on an already-animated entity record
   /// keys at the current playhead (like Blender auto-keyframe / Unity record).
   bool auto_key_ = true;
@@ -136,6 +137,7 @@ class Editor : public Application {
   void CreateDirectionalLightEntity();
   void CreateModelEntity(const std::filesystem::path &path);
   void CreatePhysicsDemo();
+  void CreateLightingDemo();
   void DuplicateSelectedEntity();
   /// @brief Deep-copies `source` and its whole child subtree. The copy is
   /// parented under `parent_copy` (entt::null = root) when `source` had one.

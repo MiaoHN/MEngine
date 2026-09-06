@@ -1361,6 +1361,7 @@ void Scene::SetGodRaysStrength(float strength) { renderer_->SetGodRaysStrength(s
 
 void Scene::SetSkyboxEnabled(bool enabled) { renderer_->SetSkyboxEnabled(enabled); }
 bool Scene::IsSkyboxEnabled() const { return renderer_->IsSkyboxEnabled(); }
+void Scene::SetEnvironmentHdr(const std::string &hdr_path, bool flip) { renderer_->SetEnvironmentHdr(hdr_path, flip); }
 void Scene::SetBackgroundColor(const glm::vec3 &color) { renderer_->SetBackgroundColor(color); }
 const glm::vec3 &Scene::GetBackgroundColor() const { return renderer_->GetBackgroundColor(); }
 

@@ -493,9 +493,9 @@ default_material_ = CreateDefaultMaterial();
   grid_entity_.AddComponent<Transform>();
   grid_entity_.AddComponent<MeshComponent>(grid_mesh_, grid_material_);
 
-  // Physics demo: a static ground box plus a stack of dynamic boxes topped
-  // with a sphere. Everything is at rest until Play is pressed.
-  CreatePhysicsDemo();
+  // Default scene: a LO 7.bloom / ex_5_6-style lighting showroom (wood floor +
+  // crates + 4 HDR point lights that bloom). Everything sits at rest until Play.
+  CreateLightingDemo();
 
   // Scene-level Lua main script (optional GameManager).
   active_scene_->SetMainScript("scripts/main.lua");
@@ -1735,6 +1735,30 @@ void Editor::ShowImGuiRendering() {
     }
   }
 
+  ImGui::TextDisabled("Drag a .hdr below to replace the skybox / IBL environment");
+  ImGui::InvisibleButton("##EnvDrop", ImVec2(ImGui::GetContentRegionAvail().x, 22.0f));
+  const ImVec2 env_min = ImGui::GetItemRectMin();
+  const ImVec2 env_max = ImGui::GetItemRectMax();
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+      const std::filesystem::path file(static_cast<const wchar_t *>(payload->Data));
+      if (file.extension().string() == ".hdr") {
+        active_scene_->SetEnvironmentHdr(file.string(), env_hdr_flip_);
+        LOG_INFO("Editor") << "Environment HDR set to " << file.string();
+      } else {
+        LOG_WARN("Editor") << "Environment expects an equirectangular .hdr file, got "
+                            << file.extension().string();
+      }
+    }
+    ImGui::EndDragDropTarget();
+  }
+  ImGui::GetWindowDrawList()->AddRect(env_min, env_max, ImGui::GetColorU32(ImGuiCol_Separator));
+  ImGui::SetCursorScreenPos(ImVec2(env_min.x + 6.0f, env_min.y + 3.0f));
+  ImGui::TextColored(ImVec4(0.4f, 0.5f, 0.9f, 1.0f), "( .hdr )");
+  if (ImGui::Checkbox("Flip V (glTF)", &env_hdr_flip_)) {
+    active_scene_->SetEnvironmentHdr(Application::GetEnvironmentHdrPath(), env_hdr_flip_);
+  }
+
   bool ibl_spec = active_scene_->IsIblSpecular();
   if (ImGui::Checkbox("IBL Specular", &ibl_spec)) {
     active_scene_->SetIblSpecular(ibl_spec);
@@ -2679,6 +2703,114 @@ void Editor::CreateDirectionalLightEntity() {
   LOG_DEBUG("Editor") << "Created directional light '" << entity.GetComponent<Tag>().tag << "'";
 }
 
+/// @brief The default editor "lighting showroom": an ex_5_6 (LO 7.bloom) look
+/// - wood floor + container crates lit by 4 HDR point lights (1/d^2) that
+/// bloom in a dark room under the LO HDR tone. Each light is an entity
+/// carrying a PointLightComponent + an emissive HDR cube, so both the glow and
+/// the light move together (Light componentization demo).
+void Editor::CreateLightingDemo() {
+  const auto lo_textured = [](const std::string &map) {
+    auto material = CreateRef<Material>();
+    material->SetShader(AssetManager::Instance().GetShader("blinn_lo"));
+    material->SetAlbedoMap(AssetManager::Instance().GetTexture(map, true));  // LO sRGB diffuse
+    material->SetAlbedoSRGB(true);
+    material->SetShininess(32.0f);
+    return material;
+  };
+  const auto put_cube = [&](const glm::vec3 &pos, const glm::vec3 &scale) {
+    Entity e = active_scene_->CreateEntity("Crate");
+    auto   &t = e.AddComponent<Transform>();
+    t.translation = pos;
+    t.scale       = scale;
+    e.AddComponent<MeshComponent>(Mesh::CreateCube(), lo_textured("textures/container2.png"));
+    return e;
+  };
+  const auto put_cube_axis = [&](const glm::vec3 &pos, const glm::vec3 &axis, float degrees, const glm::vec3 &scale) {
+    Entity e = active_scene_->CreateEntity("Crate");
+    auto   &t = e.AddComponent<Transform>();
+    t.translation = pos;
+    t.scale       = scale;
+    t.SetRotationAxisAngle(axis, degrees);
+    e.AddComponent<MeshComponent>(Mesh::CreateCube(), lo_textured("textures/container2.png"));
+    return e;
+  };
+
+  // Wood floor (LO floor cube: translate (0,-1,0), scale (25,1,25)).
+  {
+    Entity floor = active_scene_->CreateEntity("Wood Floor");
+    auto   &t    = floor.AddComponent<Transform>();
+    t.translation = glm::vec3(0.0f, -1.0f, 0.0f);
+    t.scale       = glm::vec3(25.0f, 1.0f, 25.0f);
+    floor.AddComponent<MeshComponent>(Mesh::CreateCube(), lo_textured("textures/wood.png"));
+  }
+
+  // Scenery crates (LO 7.bloom layout/rotations/scales; engine cube is unit so
+  // use the same scale numbers as the example).
+  put_cube({0.0f, 1.5f, 0.0f}, glm::vec3(1.0f));
+  put_cube({2.0f, 0.0f, 1.0f}, glm::vec3(1.0f));
+  put_cube_axis({-1.0f, -1.0f, 2.0f}, glm::normalize(glm::vec3(1.0f, 0.0f, 1.0f)), 60.0f, glm::vec3(2.0f));
+  put_cube_axis({0.0f, 2.7f, 4.0f}, glm::normalize(glm::vec3(1.0f, 0.0f, 1.0f)), 23.0f, glm::vec3(2.5f));
+  put_cube_axis({-2.0f, 1.0f, -3.0f}, glm::normalize(glm::vec3(1.0f, 0.0f, 1.0f)), 124.0f, glm::vec3(2.0f));
+  put_cube({-3.0f, 0.0f, 0.0f}, glm::vec3(1.0f));
+
+  // 4 HDR lights (LO 7.bloom.fs colours/positions, 1/d^2 attenuation) each on
+  // its own entity with a matching HDR-emissive cube so it blooms.
+  const struct {
+    glm::vec3 pos;
+    glm::vec3 color;
+  } kLights[] = {
+      {{0.0f, 0.5f, 1.5f}, {5.0f, 5.0f, 5.0f}},
+      {{-4.0f, 0.5f, -3.0f}, {10.0f, 0.0f, 0.0f}},
+      {{3.0f, 0.5f, 1.0f}, {0.0f, 0.0f, 15.0f}},
+      {{-0.8f, 2.4f, -1.0f}, {0.0f, 5.0f, 0.0f}},
+  };
+  for (const auto &def : kLights) {
+    Entity lamp = active_scene_->CreateEntity("HDR Light");
+    lamp.AddComponent<Transform>(def.pos);
+    lamp.GetComponent<Transform>().scale = glm::vec3(0.5f);  // emissive cube size
+
+    auto emissive = CreateRef<Material>();
+    emissive->SetShader(AssetManager::Instance().GetShader("pbr"));
+    emissive->SetBaseColorFactor(glm::vec4(def.color, 1.0f));
+    emissive->SetUnlit(true);  // >1 HDR colour -> bloom picks it up
+    lamp.AddComponent<MeshComponent>(Mesh::CreateCube(), emissive);
+
+    PointLightComponent pl;
+    pl.light.ambient       = glm::vec3(0.0f);
+    pl.light.diffuse       = def.color;  // LO mode uses diffuse as the HDR colour
+    pl.light.specular      = glm::vec3(0.0f);
+    pl.light.color         = def.color;
+    pl.light.lo_attenuation = true;
+    pl.light.constant      = 0.0f;   // 1 / d^2
+    pl.light.linear        = 0.0f;
+    pl.light.quadratic     = 1.0f;
+    lamp.AddComponent<PointLightComponent>(pl);
+  }
+
+  // ex_5_6 scene/tonemapping settings (LO HDR tone + bloom, dark room, no sun).
+  auto &sun = active_scene_->GetLight();
+  sun.ambient  = glm::vec3(0.0f);
+  sun.diffuse  = glm::vec3(0.0f);
+  sun.specular = glm::vec3(0.0f);
+  sun.color    = glm::vec3(1.0f);
+  active_scene_->SetLoLighting(true);
+  active_scene_->SetLinearOutput(false);
+  active_scene_->SetLoHdrTone(true);
+  active_scene_->SetReinhardTone(false);
+  active_scene_->SetSkyboxEnabled(false);
+  active_scene_->SetBackgroundColor(glm::vec3(0.0f));
+  active_scene_->SetIblIntensity(0.0f);
+  active_scene_->SetExposure(1.5f);
+  active_scene_->SetTAAEnabled(false);
+  active_scene_->SetSSAOEnabled(false);
+  active_scene_->SetGodRaysStrength(0.0f);
+  active_scene_->SetBloomEnabled(true);
+  active_scene_->SetBloomThreshold(1.0f);
+  active_scene_->SetBloomStrength(1.0f);
+
+  LOG_INFO("Editor") << "Created lighting/bloom demo (wood floor + crates + 4 HDR lights)";
+}
+
 void Editor::CreatePhysicsDemo() {
   // Large static floor platform. Colliders are world-space (the transform's
   // scale is intentionally ignored), so the half extents match the visible box.
@@ -2866,6 +2998,29 @@ void Editor::NewScene() {
   active_scene_->ClearContent();
   current_scene_path_.clear();
   selected_entity_ = Entity();
+
+  // Reset to friendly editor defaults (a new/empty scene should not inherit the
+  // previous scene's dark LO-toned look with no lights).
+  auto &sun = active_scene_->GetLight();
+  sun.direction = glm::normalize(glm::vec3(-0.3f, -1.0f, -0.4f));
+  sun.color     = glm::vec3(1.0f);
+  sun.ambient   = glm::vec3(0.05f);
+  sun.diffuse   = glm::vec3(1.0f);
+  sun.specular  = glm::vec3(1.0f);
+  active_scene_->SetLoLighting(false);
+  active_scene_->SetLinearOutput(false);
+  active_scene_->SetLoHdrTone(false);
+  active_scene_->SetReinhardTone(false);
+  active_scene_->SetSkyboxEnabled(true);
+  active_scene_->SetBackgroundColor(glm::vec3(0.0f));
+  active_scene_->SetIblIntensity(0.6f);
+  active_scene_->SetExposure(1.0f);
+  active_scene_->SetTAAEnabled(false);
+  active_scene_->SetSSAOEnabled(false);
+  active_scene_->SetGodRaysStrength(0.06f);
+  active_scene_->SetBloomEnabled(true);
+  active_scene_->SetBloomThreshold(1.0f);
+  active_scene_->SetBloomStrength(0.5f);
   LOG_INFO("Editor") << "Started a new (empty) scene";
 }
 
@@ -2977,8 +3132,7 @@ void Editor::RunSceneFileSelftest(const std::string &path) {
 
   // 4. Restore the default demo scene so interactive use still has content.
   NewScene();
-  CreatePhysicsDemo();
-  active_scene_->SetMainScript("scripts/main.lua");
+  CreateLightingDemo();
   current_scene_path_.clear();
 
   LOG_INFO("Editor") << "[selftest] scene-file ops " << (ok ? "PASSED" : "FAILED") << " (base=" << base_content

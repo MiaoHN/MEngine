@@ -196,6 +196,9 @@ class Scene {
   /// @brief Enables/disables the skybox background (IBL lighting unchanged).
   void SetSkyboxEnabled(bool enabled);
   [[nodiscard]] bool IsSkyboxEnabled() const;
+  /// @brief Rebuilds the skybox/IBL environment from a new equirectangular HDR
+  /// file at runtime (editor drag-and-drop). See Renderer::SetEnvironmentHdr.
+  void SetEnvironmentHdr(const std::string &hdr_path, bool flip);
   /// @brief Solid scene background used when the skybox is disabled.
   void SetBackgroundColor(const glm::vec3 &color);
   [[nodiscard]] const glm::vec3 &GetBackgroundColor() const;
