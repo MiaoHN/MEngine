@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-06 — Material 自发光 + ex_2_6_multiple_lights 调成 LO 观感
+
+- **用户对比 LO 截图反馈**：我们的背景/环境太亮、灯位小立方不是“纯白发光”，不像 LO。
+- **原因**：① 引擎后处理有 ACES tone map + gamma，线性 0.1 的背景会被抬成中灰；② Blinn 环境光开太大；③ 灯位小立方用的是“被照亮的彩色材质”，而 LO 的灯是**纯色自发光白块**。
+- **改动（95e2d9e，dev）**：
+  - 引擎：`Material::SetUnlit/IsUnlit`（pbr/blinn 都支持 `u_material_unlit` 时直接输出 albedo，做自发光/灯源），纳入合批比较；helper 加 `examples::Unlit(color)`。
+  - `ex_2_6_multiple_lights` 调参：背景线性 ~0.008（gamma 后近黑）；IBL/环境光 = 0（暗面近黑，同 LO）；灯位立方 = 纯白自发光；曝光 0.85。capture 确认：黑背景 + 木箱 + 白灯，接近 LO 原图。
+- **经验（供后续端口复用）**：引擎是 gamma-correct 管线，若要复刻 LO 的“不 gamma”观感，背景/环境值要按“最终 sRGB ≈ 目标”反算（LO clear 0.1 → 我们线性 ~0.01 级），环境光尽量 0，灯源用 unlit。
+
+---
+
 ## 2026-09-06 — 引擎 axis-angle 旋转 + 首个 1:1 LO 端口（multiple_lights）
 
 - **需求（选 A）**：给引擎加任意轴旋转，以便 LO 那种 `rotate(axis, angle)` 能 1:1 复刻。
