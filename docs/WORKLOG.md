@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-06 — examples：按 LearnOpenGL 复刻的“光照/高级光照”演示（每个场景一个独立可执行）
+
+- **需求**：参考 JoeyDeVries/LearnOpenGL，用 **MEngine 自己复刻**光照/高级光照实现与测试场景；每个场景做成**不同可执行文件**，代码统一放 `examples/`；示例贴图资源版权用户确认无碍（可直接从 GitHub 下，后续再加纹理场景时用）。
+- **做法**（引擎零改动之外的纯示例层，只走公共 API）：
+  - `examples/` 新工程：共享宿主 `example_app.{hpp,cpp}`（轨道相机：右键拖拽环视）+ `example_helpers.hpp`（PBR 材质/放置/太阳/纯色背景小工具）。
+  - **每场景一个 exe**：`example_colors / example_basic_lighting / example_materials / example_multiple_lights / example_light_casters / example_shadow_mapping / example_hdr_bloom`；各自输出到独立子目录（自带 assets 拷贝，避免 POST_BUILD 并发冲突）。
+  - 引擎为此加了一个通用能力：**天空盒开关 + 纯色场景背景**（见下条）→ 例子都关掉 IBL 天空、用深色纯背景 + 调低环境光，观感对齐 LearnOpenGL 原示例（浅天空/云背景不再是干扰）。
+  - 高级光照大多复用引擎已有能力：PBR 方向/点/聚光、方向光+立方体点光阴影(PCF)、HDR/Bloom、TAA。
+- **验证**：headless 逐例 capture（`--hidden --frames 30 --capture-frame 25`）确认：colors=红褐立方深底；multiple_lights=彩色 3×3 立方+灰底；shadow_mapping=墙/盒/球+软阴影；hdr_bloom=近黑背景+亮灯球辉光。debug/release 全量零警告。
+- **待续**：纹理类章节（lighting_maps/normal/parallax/ssao 等）可按同一模式继续加 exe（先下载容器/砖墙贴图到 assets/textures）。
+
+## 2026-09-06 — 引擎：天空盒开关 + 纯色场景背景（通用能力）
+
+- 之前 `RenderMeshes` 恒画 IBL 天空盒，示例与 LearnOpenGL 的深色纯背景不一致。
+- 引擎新增：`Renderer/Scene` 的 `SetSkyboxEnabled(bool)/IsSkyboxEnabled()`、`SetBackgroundColor(vec3)/GetBackgroundColor()`；`PostProcessing::BeginScene` 接收清屏色。天空盒关掉时场景清成纯色背景；**IBL 环境光不受影响**。默认 `skybox_enabled=true`、背景黑 → editor/voxel/sandbox 行为不变（沙盒仍画天空）。
+
+---
+
 ## 2026-09-06 — engine 新增 sound 模块 P1（miniaudio：2D 音效播放）
 
 - **用户澄清**：要给 engine 加的是 **sound（音频播放）**，不是 voice（语音识别/合成）；范围 2D/3D 都要，先做 2D。
