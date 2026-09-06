@@ -866,6 +866,9 @@ void Editor::ShowImGuiScene() {
     if (ImGui::MenuItem("Plane")) CreatePrimitive("Plane", AssetManager::Instance().GetMesh("plane"));
     if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere", AssetManager::Instance().GetMesh("sphere"));
     ImGui::Separator();
+    if (ImGui::MenuItem("Point Light")) CreatePointLightEntity();
+    if (ImGui::MenuItem("Spot Light")) CreateSpotLightEntity();
+    ImGui::Separator();
     if (ImGui::MenuItem("Camera")) CreateCameraEntity();
     ImGui::EndPopup();
   }
@@ -1227,6 +1230,8 @@ void Editor::ShowImGuiProperties() {
       DisplayAddComponentEntry<MeshComponent>("Mesh");
       DisplayAddComponentEntry<CameraComponent>("Camera");
       DisplayAddComponentEntry<CameraController>("Camera Controller");
+      DisplayAddComponentEntry<PointLightComponent>("Point Light");
+      DisplayAddComponentEntry<SpotLightComponent>("Spot Light");
       DisplayAddComponentEntry<LuaScriptComponent>("Lua Script");
       DisplayAddComponentEntry<RigidBodyComponent>("Rigid Body");
       DisplayAddComponentEntry<ColliderComponent>("Collider");
@@ -1383,6 +1388,41 @@ void Editor::ShowImGuiProperties() {
       ImGui::DragFloat("Ortho Size", &component.camera.ortho_size, 0.1f, 0.1f, 1000.0f);
       ImGui::DragFloat("Near", &component.camera.near_plane, 0.01f, 0.001f, 1000.0f);
       ImGui::DragFloat("Far", &component.camera.far_plane, 1.0f, 0.1f, 10000.0f);
+    });
+
+    DrawComponent<PointLightComponent>("Point Light", selected_entity_, [](auto &component) {
+      PointLight &light = component.light;
+      ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
+      ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 500.0f);
+      ImGui::DragFloat("Radius", &light.radius, 0.1f, 0.1f, 100.0f);
+      ImGui::Checkbox("Cast Shadow", &light.casts_shadow);
+      ImGui::Checkbox("LO Attenuation", &light.lo_attenuation);
+      if (light.lo_attenuation) {
+        ImGui::DragFloat("Constant", &light.constant, 0.05f, 0.0f, 10.0f);
+        ImGui::DragFloat("Linear", &light.linear, 0.01f, 0.0f, 2.0f);
+        ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
+        DrawVec3Control("Ambient", light.ambient);
+        DrawVec3Control("Diffuse", light.diffuse);
+        DrawVec3Control("Specular", light.specular);
+      }
+      ImGui::TextDisabled("Position = the entity's Transform (move it with the gizmo).");
+    });
+
+    DrawComponent<SpotLightComponent>("Spot Light", selected_entity_, [](auto &component) {
+      SpotLight &light = component.light;
+      ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
+      ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 500.0f);
+      ImGui::DragFloat("Range", &light.range, 0.1f, 0.1f, 200.0f);
+      float inner = glm::degrees(glm::acos(std::clamp(light.cutoff, -1.0f, 1.0f)));
+      float outer = glm::degrees(glm::acos(std::clamp(light.outer_cutoff, -1.0f, 1.0f)));
+      if (ImGui::DragFloat("Inner Cone", &inner, 0.5f, 0.0f, 90.0f)) {
+        light.cutoff = glm::cos(glm::radians(inner));
+      }
+      if (ImGui::DragFloat("Outer Cone", &outer, 0.5f, 0.0f, 90.0f)) {
+        light.outer_cutoff = glm::cos(glm::radians(outer));
+      }
+      DrawVec3Control("Direction", light.direction);
+      ImGui::TextDisabled("Position = the entity's Transform (move it with the gizmo).");
     });
 
     DrawComponent<RigidBodyComponent>("Rigid Body", selected_entity_, [](auto &component) {
@@ -2563,6 +2603,30 @@ void Editor::CreateCameraEntity() {
 
   selected_entity_ = entity;
   LOG_DEBUG("Editor") << "Created camera '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+void Editor::CreatePointLightEntity() {
+  Entity entity = CreateEntityWithUniqueName("Point Light");
+  entity.AddComponent<Transform>(glm::vec3(0.0f, 2.0f, 0.0f));
+  PointLightComponent component;
+  component.light.color     = glm::vec3(1.0f);
+  component.light.intensity = 2.0f;
+  component.light.radius    = 6.0f;
+  entity.AddComponent<PointLightComponent>(component);
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created point light '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+void Editor::CreateSpotLightEntity() {
+  Entity entity = CreateEntityWithUniqueName("Spot Light");
+  entity.AddComponent<Transform>(glm::vec3(0.0f, 2.0f, 0.0f));
+  SpotLightComponent component;
+  component.light.color     = glm::vec3(1.0f);
+  component.light.intensity = 2.0f;
+  component.light.range     = 8.0f;
+  entity.AddComponent<SpotLightComponent>(component);
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created spot light '" << entity.GetComponent<Tag>().tag << "'";
 }
 
 void Editor::CreatePhysicsDemo() {

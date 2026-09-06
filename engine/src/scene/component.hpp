@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "render/light.hpp"
 #include "render/material.hpp"
 #include "render/mesh.hpp"
 #include "render/texture.hpp"
@@ -159,6 +160,29 @@ struct MeshComponent {
 };
 
 /// @brief Attaches a rigid body to an entity (requires a ColliderComponent).
+/// @brief A point light carried by an entity (ECS). When at least one entity in
+/// the scene has a PointLightComponent the scene drives the renderer's point
+/// lights from these entities every frame - position comes from the entity's
+/// world Transform (gizmo-movable) and colour/intensity/radius/shadow from this
+/// component. The component's own `light.position` is ignored while the entity
+/// also has a Transform. Scenes that only use the legacy `Scene::AddPointLight`
+/// list API (no light components) are unaffected.
+struct PointLightComponent {
+  PointLight light;
+
+  PointLightComponent() = default;
+  explicit PointLightComponent(const PointLight &l) : light(l) {}
+};
+
+/// @brief Spot-light counterpart of PointLightComponent (position from the
+/// entity Transform; direction/cone from `light`).
+struct SpotLightComponent {
+  SpotLight light;
+
+  SpotLightComponent() = default;
+  explicit SpotLightComponent(const SpotLight &l) : light(l) {}
+};
+
 struct RigidBodyComponent {
   enum class Type { Static, Dynamic };
 

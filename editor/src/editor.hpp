@@ -131,6 +131,8 @@ class Editor : public Application {
   /// selection and selects it. Creates at root when nothing is selected.
   Entity CreateChildPrimitive(const std::string &name, const Ref<Mesh> &mesh);
   void CreateCameraEntity();
+  void CreatePointLightEntity();
+  void CreateSpotLightEntity();
   void CreateModelEntity(const std::filesystem::path &path);
   void CreatePhysicsDemo();
   void DuplicateSelectedEntity();

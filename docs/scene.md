@@ -51,7 +51,14 @@ entt::entity GetHandle() const;
 | `AABB` | `position/scale` | 轴对齐包围盒 |
 | `Circle` | `position/radius` | 圆形碰撞体 |
 
-> 注意：`Transform` 是 3D 语义的（vec3 + 四元数旋转），但当前渲染路径只用到 2D 的 `Sprite2D`。这是 3D 化的现成基础。
+> 注意：`Transform` 是 3D 语义的（vec3 + 四元数旋转）。渲染主路径为 3D（`MeshComponent`）。
+
+**灯光组件（Light 组件化 v1）**：`PointLightComponent` / `SpotLightComponent`（ECS）——灯挂到实体上，
+位置取实体的世界 `Transform`（可用 Gizmo/层级移动），颜色/强度/半径/阴影等存组件内。场景里只要存在
+带灯光组件的实体，`Scene::RenderMeshes` 每帧就会从这些实体重建 renderer 的点/聚光灯表；无组件时旧的
+`Scene::AddPointLight` / `AddSpotLight` 列表 API 行为完全不变。方向光仍为场景级单一 `DirectionalLight`
+（`Scene::GetLight`），未组件化。Editor 的 Create 菜单可建 Point/Spot Light 实体，Properties 可编辑组件；
+灯光组件的实体级序列化尚在跟进（保存时以 renderer 灯光数组落盘）。
 
 ## Scene
 

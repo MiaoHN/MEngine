@@ -359,7 +359,9 @@
 ## 已知问题 / 技术债
 
 - 背面剔除已按材质启用（renderer 每 draw 设 `rhi->SetCullMode(material->GetCullMode())`，默认 Back；2D/UI 前恢复 None）——旧的"全局无剔除"已解决；后续仅需确认新网格绕序符合。
-- 光照参数（方向光方向/颜色）未抽象为完整 Light 体系（点光/聚光为场景级列表，非 ECS 组件）。
+- 光照：点光/聚光已支持 ECS 组件（`PointLightComponent`/`SpotLightComponent`，位置=实体 Transform；
+  场景有组件灯时每帧驱动 renderer；旧 `Scene::AddPointLight`/`AddSpotLight` 列表 API 兼容保留）；
+  方向光仍为场景级单一 `DirectionalLight`（未组件化、不支持多方向光）；灯光组件实体级序列化待做。
 - `Renderer::DrawMesh` 每帧重复设置全部 uniform，后续可引入 material/UBO 批量上传。
 - OBJ 的 `.mtl` 未解析，贴图靠文件名约定自动套用。
 - 点光阴影逐面全量重绘、无 PCF，后续可做分层渲染/软阴影优化。

@@ -997,6 +997,9 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     t = 0.0f;
   }
 
+  // ECS lights (if any) take over the renderer's light lists each frame.
+  SyncLightComponents();
+
   // Collect every renderable mesh entity once per frame: one model-matrix
   // computation, one world AABB (from the mesh's cached object-space AABB)
   // shared by the shadow/SSAO/main passes below.
@@ -1278,6 +1281,45 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
 }
 
 void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(light); }
+
+void Scene::SyncLightComponents() {
+  bool has_point = false;
+  bool has_spot  = false;
+  {
+    const auto view = registry_.view<PointLightComponent>();
+    has_point       = !view.empty();
+  }
+  {
+    const auto view = registry_.view<SpotLightComponent>();
+    has_spot        = !view.empty();
+  }
+  if (!has_point && !has_spot) {
+    return;  // legacy list API in use - leave the renderer's lights untouched.
+  }
+
+  renderer_->ClearPointLights();
+  renderer_->ClearSpotLights();
+  if (has_point) {
+    for (const auto e : registry_.view<PointLightComponent>()) {
+      auto      &c = registry_.get<PointLightComponent>(e);
+      PointLight l = c.light;
+      if (registry_.all_of<Transform>(e)) {
+        l.position = GetWorldPosition(e);
+      }
+      renderer_->AddPointLight(l);
+    }
+  }
+  if (has_spot) {
+    for (const auto e : registry_.view<SpotLightComponent>()) {
+      auto     &c = registry_.get<SpotLightComponent>(e);
+      SpotLight l = c.light;
+      if (registry_.all_of<Transform>(e)) {
+        l.position = GetWorldPosition(e);
+      }
+      renderer_->AddSpotLight(l);
+    }
+  }
+}
 
 void Scene::ClearPointLights() { renderer_->ClearPointLights(); }
 

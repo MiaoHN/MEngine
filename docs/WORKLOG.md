@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-06 — Light 组件化 v1：PointLight/SpotLight 变 ECS 组件（editor 可建可编辑）
+
+- **引擎**：新增 `PointLightComponent` / `SpotLightComponent`（component.hpp，含 render/light.hpp）。
+  `Scene::SyncLightComponents()`（RenderMeshes 每帧开头调用）：只要场景存在带灯光组件的实体，就从这些
+  实体**重建** renderer 的点/聚光灯表（位置取实体世界 Transform）；无组件时旧 `AddPointLight`/`AddSpotLight`
+  列表 API 完全不变（回归：ex_6_1_1 / ex_2_6 / ex_5_8 / ex_6_2_2 编译+运行正常）。
+- **Editor**：Create 菜单新增 Point Light / Spot Light 实体；Add Component 弹出项 + Properties 可编辑
+  颜色/强度/半径/阴影/LO 衰减（点光）与锥角/方向（聚光）。灯的实体可被 Gizmo 移动/层级管理。
+- 方向光仍为场景级单一 `DirectionalLight`（未组件化）；灯光组件实体级序列化待做（暂以 renderer 灯光数组落盘）。
+- 文档：scene.md（组件表+说明）、status.md（技术债更新）。
+
+---
+
 ## 2026-09-06 — 深度整理启动：文档同步 + 死码清理 + Editor 渲染选项接入
 
 - **阶段 A 后续（整理/增强）**：

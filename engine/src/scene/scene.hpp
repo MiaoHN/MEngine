@@ -325,6 +325,12 @@ class Scene {
   /// local Transform.
   void ApplyAnimations();
 
+  /// @brief When any entity carries a PointLightComponent / SpotLightComponent,
+  /// rebuilds the renderer's point/spot light lists from those entities each
+  /// frame (position from the entity's world Transform). No-op when the scene
+  /// only uses the legacy Scene::AddPointLight / AddSpotLight list API.
+  void SyncLightComponents();
+
   /// @brief Accumulator for the fixed-step simulation (physics + OnFixedUpdate
   /// + collision dispatch all advance at kFixedTimeStep).
   float sim_accumulator_ = 0.0f;
