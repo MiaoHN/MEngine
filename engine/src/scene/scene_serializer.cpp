@@ -557,6 +557,12 @@ void Scene::SaveScene(const std::string &path) {
     j["taa"]             = IsTAAEnabled();
     j["ibl_intensity"]   = GetIblIntensity();
     j["pcf_radius"]      = GetShadowPcfRadius();
+    j["skybox"]          = IsSkyboxEnabled();
+    j["background"]      = Vec3ToJson(GetBackgroundColor());
+    j["linear_output"]   = IsLinearOutput();
+    j["lo_hdr_tone"]     = IsLoHdrTone();
+    j["reinhard_tone"]   = IsReinhardTone();
+    j["ibl_specular"]    = IsIblSpecular();
     root["render"]       = j;
   }
 
@@ -679,6 +685,12 @@ void Scene::LoadScene(const std::string &path) {
     SetTAAEnabled(j.value("taa", true));
     SetIblIntensity(j.value("ibl_intensity", 0.8f));
     SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
+    SetSkyboxEnabled(j.value("skybox", true));
+    SetBackgroundColor(Vec3FromJson(j.value("background", json()), glm::vec3(0.0f)));
+    SetLinearOutput(j.value("linear_output", false));
+    SetLoHdrTone(j.value("lo_hdr_tone", false));
+    SetReinhardTone(j.value("reinhard_tone", false));
+    SetIblSpecular(j.value("ibl_specular", true));
   }
 
   // Entities.
@@ -847,6 +859,12 @@ bool Scene::OpenSceneFile(const std::string &path) {
     SetTAAEnabled(j.value("taa", true));
     SetIblIntensity(j.value("ibl_intensity", 0.8f));
     SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
+    SetSkyboxEnabled(j.value("skybox", true));
+    SetBackgroundColor(Vec3FromJson(j.value("background", json()), glm::vec3(0.0f)));
+    SetLinearOutput(j.value("linear_output", false));
+    SetLoHdrTone(j.value("lo_hdr_tone", false));
+    SetReinhardTone(j.value("reinhard_tone", false));
+    SetIblSpecular(j.value("ibl_specular", true));
   }
 
   // Entities.

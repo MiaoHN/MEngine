@@ -5,6 +5,20 @@
 
 ---
 
+## 2026-09-06 — 深度整理启动：文档同步 + 死码清理 + Editor 渲染选项接入
+
+- **阶段 A 后续（整理/增强）**：
+  - **B-1 文档同步**：`status.md` 补 M6(LO 移植期)；`rendering.md`/`architecture.md` 纠过时说法
+    （2D/无剔除/无 BRDF LUT）；纠正 4 处“序列化未实现”（其实 engine+editor 早已实现）。
+  - **B-2 技术债**：删除死代码 `render_context.hpp`（无人引用、无实现）。
+  - **Editor**：`Rendering` 面板接入 **Tone Mapping**(ACES/Linear/LO-HDR/Reinhard)、**Skybox**、
+    **Background**（关天空盒时）、**IBL Specular**；引擎补 `Renderer/Scene::IsReinhardTone`、
+    `Scene::IsIblSpecular`。
+  - **序列化持久化**：`scene_serializer` 补存 skybox/background/linear_output/lo_hdr/reinhard/ibl_specular
+    （SaveScene + LoadScene + RestorePlaySnapshot）。
+
+---
+
 ## 2026-09-06 — 补完 LO 必要端口：IBL 2.1.2/2.2.1 + model_loading
 
 - 用户确认"先补完再整理"：把剩余必要的 LO 端口补齐，随后进入项目深度整理/engine+editor 增强。
