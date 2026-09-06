@@ -33,6 +33,7 @@ class ExampleApp : public MEngine::Application {
     float yaw   = 0.0f;
     float pitch = 18.0f;
     float dist  = 10.0f;
+    float fov   = 55.0f;  // vertical FOV in degrees (LearnOpenGL demos use 45)
   };
 
   explicit ExampleApp(Setup setup);

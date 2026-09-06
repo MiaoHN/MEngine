@@ -1,52 +1,65 @@
-// LearnOpenGL "Multiple Lights" - a sun + several colored point lights over a
-// grid of colored cubes.
-#include <cmath>
-
+// = LearnOpenGL 2.lighting/6.multiple_lights
+//   source: LearnOpenGL/src/2.lighting/6.multiple_lights/multiple_lights.cpp
+//
+// 1:1 port on the MEngine Blinn-Phong pipeline:
+//   - 10 containers (container2 albedo) at LO positions, each rotated around
+//     the LO axis (1,0.3,0.5) by 20deg*i (via Transform axis-angle support)
+//   - 4 point lights at LO positions with LO constant/linear/quadratic
+//     attenuation (lo_attenuation), white ~0.8 diffuse
+//   - a dim directional light, small ambient, grey 0.1 clear background
+//   - LO camera: position (0,0,3), vertical FOV 45, looking towards -Z
+//   - the LO flashlight spot light (attached to the camera) is omitted because
+//     the shared example host uses an orbit camera
 #include "example_app.hpp"
 #include "example_helpers.hpp"
 
 using namespace MEngine;
 using MEngine::examples::Put;
+using MEngine::examples::PutAxis;
 
 namespace {
 std::shared_ptr<Scene> BuildMultipleLights() {
   auto s = std::make_shared<Scene>();
-  Put(*s, Mesh::CreatePlane(24.0f), examples::Pbr(glm::vec3(0.22f, 0.22f, 0.27f), 0.0f, 0.9f), {0, 0, 0});
 
-  const glm::vec3 cube_colors[9] = {
-      {1.0f, 0.2f, 0.2f}, {0.6f, 1.0f, 0.2f}, {0.2f, 0.7f, 1.0f},
-      {1.0f, 0.6f, 0.1f}, {0.9f, 0.2f, 0.9f}, {0.2f, 0.9f, 0.6f},
-      {0.4f, 0.4f, 1.0f}, {1.0f, 0.8f, 0.2f}, {0.6f, 0.9f, 0.3f},
+  // --- containers: LO cubePositions[10], rotation axis (1,0.3,0.5), angle 20*i
+  const glm::vec3 cube_pos[10] = {
+      {0.0f, 0.0f, 0.0f},     {2.0f, 5.0f, -15.0f},   {-1.5f, -2.2f, -2.5f}, {-3.8f, -2.0f, -12.3f},
+      {2.4f, -0.4f, -3.5f},   {-1.7f, 3.0f, -7.5f},   {1.3f, -2.0f, -2.5f},  {1.5f, 2.0f, -2.5f},
+      {1.5f, 0.2f, -1.5f},    {-1.3f, 1.0f, -1.5f},
   };
-  int i = 0;
-  for (int x = -2; x <= 2; x += 2) {
-    for (int z = -2; z <= 2; z += 2) {
-      Put(*s, Mesh::CreateCube(), examples::Pbr(cube_colors[i++], 0.0f, 0.55f),
-          {static_cast<float>(x), 0.5f, static_cast<float>(z)});
-    }
+  const glm::vec3 axis  = glm::vec3(1.0f, 0.3f, 0.5f);
+  const auto      crate = []() { return examples::BlinnTextured("textures/container2.png", 32.0f, 0.9f); };
+  for (int i = 0; i < 10; ++i) {
+    PutAxis(*s, Mesh::CreateCube(), crate(), cube_pos[i], axis, 20.0f * static_cast<float>(i));
   }
 
-  examples::Sun(*s, {-0.35f, -1.0f, -0.5f}, glm::vec3(1.05f, 1.0f, 0.95f));
-  examples::SolidBackground(*s, glm::vec3(0.10f, 0.10f, 0.12f), 0.12f);
-  s->SetExposure(1.0f);
-  s->SetTAAEnabled(true);
-
-  const glm::vec3 colors[5] = {{1.0f, 0.1f, 0.1f}, {0.1f, 1.0f, 0.2f}, {0.1f, 0.4f, 1.0f},
-                               {1.0f, 0.8f, 0.1f}, {1.0f, 0.2f, 1.0f}};
-  for (int k = 0; k < 5; ++k) {
-    const float a = static_cast<float>(k) / 5.0f * 6.2831853f;
-    PointLight  l;
-    l.position  = {4.6f * std::cos(a), 2.6f, 4.6f * std::sin(a)};
-    l.color     = colors[k];
-    l.intensity = 9.0f;
-    l.radius    = 9.0f;
+  // --- 4 point lights at LO positions, LO attenuation, white ~0.8 diffuse
+  const glm::vec3 point_pos[4] = {
+      {0.7f, 0.2f, 2.0f}, {2.3f, -3.3f, -4.0f}, {-4.0f, 2.0f, -12.0f}, {0.0f, 0.0f, -3.0f}};
+  const glm::vec3 lamp_col[4] = {
+      {1.0f, 0.9f, 0.6f}, {0.7f, 0.9f, 1.0f}, {1.0f, 0.6f, 0.6f}, {0.8f, 1.0f, 0.8f}};
+  for (int i = 0; i < 4; ++i) {
+    PointLight l;
+    l.position      = point_pos[i];
+    l.color         = glm::vec3(0.8f, 0.8f, 0.8f);
+    l.intensity     = 1.0f;
+    l.lo_attenuation = true;
+    l.constant      = 1.0f;
+    l.linear        = 0.09f;
+    l.quadratic     = 0.032f;
     s->AddPointLight(l);
+    Put(*s, Mesh::CreateCube(), examples::Blinn(lamp_col[i], 32.0f, 0.3f), point_pos[i], 0.2f);  // lamp marker
   }
+
+  // --- dim directional light + small ambient + LO grey background
+  examples::Sun(*s, {-0.2f, -1.0f, -0.3f}, glm::vec3(0.6f, 0.6f, 0.6f));
+  examples::SolidBackground(*s, glm::vec3(0.10f, 0.10f, 0.10f), 0.5f);  // ibl = small ambient
   return s;
 }
 }  // namespace
 
 ::MEngine::Application *CreateApplication() {
   return new MEngine::examples::ExampleApp(
-      MEngine::examples::ExampleApp::Setup{BuildMultipleLights, "Multiple Lights", {0, 1.0f, 0}, 0.0f, 18.0f, 11.0f});
+      MEngine::examples::ExampleApp::Setup{BuildMultipleLights, "LO 2.6 multiple_lights", {0, 0, 0}, 0.0f, 0.0f,
+                                           3.0f, 45.0f});
 }

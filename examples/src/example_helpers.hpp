@@ -48,6 +48,18 @@ inline Ref<Material> Blinn(const glm::vec3 &color, float shininess = 32.0f, floa
   return m;
 }
 
+/// @brief Blinn-Phong material with an albedo texture (diffuse map), used for
+/// the LO lighting_maps / multiple_lights look.
+inline Ref<Material> BlinnTextured(const std::string &albedo_path, float shininess = 32.0f,
+                                   float specular = 0.5f) {
+  Ref<Material> m = CreateRef<Material>();
+  m->SetShader(AssetManager::Instance().GetShader("blinn"));
+  m->SetAlbedoMap(AssetManager::Instance().GetTexture(albedo_path));
+  m->SetSpecularFactor(specular);
+  m->SetShininess(shininess);
+  return m;
+}
+
 /// @brief A PBR material with an albedo texture (asset-relative path) and
 /// optional normal map + roughness.
 inline Ref<Material> PbrTextured(const std::string &albedo_path, const std::string &normal_path = "",
@@ -96,6 +108,18 @@ inline void Put(Scene &scene, Ref<Mesh> mesh, Ref<Material> material, const glm:
   auto &t  = e.AddComponent<Transform>();
   t.translation = pos;
   t.scale       = glm::vec3(scale);
+  e.AddComponent<MeshComponent>(mesh, std::move(material));
+}
+
+/// @brief Like Put but applies an arbitrary axis-angle rotation (degrees) -
+/// the exact form LearnOpenGL uses (`rotate(model, radians(angle), axis)`).
+inline void PutAxis(Scene &scene, Ref<Mesh> mesh, Ref<Material> material, const glm::vec3 &pos,
+                    const glm::vec3 &axis, float degrees, float scale = 1.0f) {
+  Entity e = scene.CreateEntity("obj");
+  auto &t  = e.AddComponent<Transform>();
+  t.translation = pos;
+  t.scale       = glm::vec3(scale);
+  t.SetRotationAxisAngle(axis, degrees);
   e.AddComponent<MeshComponent>(mesh, std::move(material));
 }
 

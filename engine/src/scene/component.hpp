@@ -14,6 +14,7 @@
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 #include <algorithm>
@@ -71,6 +72,21 @@ struct Transform {
     glm::mat4 rotation_matrix = glm::toMat4(glm::quat(glm::radians(rotation)));
 
     return glm::translate(glm::mat4(1.0f), translation) * rotation_matrix * glm::scale(glm::mat4(1.0f), scale);
+  }
+
+  /// @brief Sets the orientation from an arbitrary axis-angle (angle in
+  /// degrees), e.g. LearnOpenGL's `rotate(model, radians(angle), axis)`.
+  /// Internally converts to the stored Euler degrees so the editor / animation
+  /// / Lua / physics-writeback all keep working unchanged, while the net
+  /// rotation exactly equals an axis-angle rotation about `axis`.
+  void SetRotationAxisAngle(const glm::vec3 &axis, float degrees) {
+    glm::vec3 a = axis;
+    if (glm::length2(a) < 1e-6f) {
+      a = glm::vec3(0.0f, 1.0f, 0.0f);
+    } else {
+      a = glm::normalize(a);
+    }
+    rotation = glm::degrees(glm::eulerAngles(glm::angleAxis(glm::radians(degrees), a)));
   }
 };
 

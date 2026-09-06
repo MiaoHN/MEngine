@@ -45,7 +45,7 @@ void ExampleApp::OnUpdate(float dt) {
       cam_target_ + cam_dist_ * glm::vec3(cy * std::sin(glm::radians(cam_yaw_)), std::sin(glm::radians(cam_pitch_)),
                                           cy * std::cos(glm::radians(cam_yaw_)));
   const glm::mat4 view = glm::lookAt(eye, cam_target_, glm::vec3(0.0f, 1.0f, 0.0f));
-  const glm::mat4 proj = glm::perspective(glm::radians(55.0f), aspect, 0.05f, 400.0f);
+  const glm::mat4 proj = glm::perspective(glm::radians(setup_.fov), aspect, 0.05f, 400.0f);
 
   if (ready_) {
     scene_->RenderMeshes(view, proj, eye);
