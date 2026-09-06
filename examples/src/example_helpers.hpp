@@ -9,6 +9,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -38,16 +39,43 @@ inline Ref<Material> Pbr(const glm::vec3 &color, float metallic, float roughness
 /// @brief A PBR material with an albedo texture (asset-relative path) and
 /// optional normal map + roughness.
 inline Ref<Material> PbrTextured(const std::string &albedo_path, const std::string &normal_path = "",
-                                 float roughness = 0.7f) {
+                                 float roughness = 0.7f, float metallic = 0.0f) {
   Ref<Material> m = CreateRef<Material>();
   m->SetShader(PbrShader());
   m->SetAlbedoMap(AssetManager::Instance().GetTexture(albedo_path));
   if (!normal_path.empty()) {
     m->SetNormalMap(AssetManager::Instance().GetTexture(normal_path));
   }
-  m->SetMetallicFactor(0.0f);
+  m->SetMetallicFactor(metallic);
   m->SetRoughnessFactor(roughness);
   return m;
+}
+
+/// @brief A +Y floor quad whose UVs repeat `tiles` times (for tiling textures).
+inline Ref<Mesh> TiledPlane(float size, float tiles) {
+  const float h = size * 0.5f;
+  const std::vector<Vertex> verts = {
+      {{-h, 0.0f, -h}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+      {{h, 0.0f, -h}, {0.0f, 1.0f, 0.0f}, {tiles, 0.0f}},
+      {{h, 0.0f, h}, {0.0f, 1.0f, 0.0f}, {tiles, tiles}},
+      {{-h, 0.0f, h}, {0.0f, 1.0f, 0.0f}, {0.0f, tiles}},
+  };
+  const std::vector<unsigned int> idx = {0, 3, 2, 2, 1, 0};
+  return Mesh::Create(verts, idx);
+}
+
+/// @brief A vertical +Z wall quad (for normal-mapping / texture demos).
+inline Ref<Mesh> TiledWall(float width, float height, float tiles) {
+  const float hw = width * 0.5f;
+  const float hh = height * 0.5f;
+  const std::vector<Vertex> verts = {
+      {{-hw, -hh, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+      {{hw, -hh, 0.0f}, {0.0f, 0.0f, 1.0f}, {tiles, 0.0f}},
+      {{hw, hh, 0.0f}, {0.0f, 0.0f, 1.0f}, {tiles, tiles}},
+      {{-hw, hh, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, tiles}},
+  };
+  const std::vector<unsigned int> idx = {0, 1, 2, 0, 2, 3};
+  return Mesh::Create(verts, idx);
 }
 
 /// @brief Adds a primitive mesh (cubes are unit-sized; pass `scale` for size).

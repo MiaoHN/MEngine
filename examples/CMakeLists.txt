@@ -29,14 +29,21 @@ target_link_libraries(example_app
 
 mengine_enable_warnings(example_app)
 
+# LearnOpenGL "2. lighting" chapter (one exe per scene)
 set(MENGINE_EXAMPLE_DEMOS
-  colors
-  basic_lighting
-  materials
-  multiple_lights
-  light_casters
-  shadow_mapping
-  hdr_bloom
+  colors                # 1.colors
+  basic_lighting        # 2.x basic lighting (diffuse+specular)
+  materials             # 3.x materials
+  lighting_maps         # 4.x lighting maps (container2 diffuse texture)
+  multiple_lights       # 6.multiple_lights
+  light_casters         # 5.x light casters (dir/point/spot)
+)
+
+# LearnOpenGL "5. advanced_lighting" chapter
+list(APPEND MENGINE_EXAMPLE_DEMOS
+  shadow_mapping        # 3.x shadow mapping (directional + point cube shadows)
+  hdr_bloom             # 6.hdr + 7.bloom
+  normal_mapping        # 4.normal_mapping (brickwall albedo + normal)
 )
 
 function(mengine_add_example name)

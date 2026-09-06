@@ -21,3 +21,5 @@ cmake-build-*/
 capture_*
 .workbuddy/
 
+LearnOpenGL/
+
