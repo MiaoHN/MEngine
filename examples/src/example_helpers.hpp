@@ -12,7 +12,9 @@
 #include <vector>
 
 #include <glm/glm.hpp>
+#include <stb_image.h>
 
+#include "core/logger.hpp"
 #include "render/asset_manager.hpp"
 #include "render/material.hpp"
 #include "render/mesh.hpp"
@@ -243,6 +245,92 @@ inline void SolidBackground(Scene &scene, const glm::vec3 &background = glm::vec
   if (ibl >= 0.0f) {
     scene.SetIblIntensity(ibl);
   }
+}
+
+namespace detail {
+
+/// @brief Loads an image (TGA/PNG/...) as an RGBA8 GPU texture WITHOUT a
+/// vertical flip. glTF meshes use a top-left UV origin, so raw file rows
+/// (row 0 = top) must be uploaded as-is to match. stb's implementation lives
+/// in the engine's texture.cpp, which every example links against.
+inline Ref<Texture> LoadRawTexture(const std::string &path) {
+  stbi_set_flip_vertically_on_load(false);  // glTF UV convention
+  int      w = 0, h = 0, c = 0;
+  stbi_uc *pixels = stbi_load(path.c_str(), &w, &h, &c, 4);
+  if (!pixels || w <= 0 || h <= 0) {
+    LOG_ERROR("examples") << "PbrSidecarTextured: failed to load '" << path << "'";
+    if (pixels) {
+      stbi_image_free(pixels);
+    }
+    return nullptr;
+  }
+  Ref<Texture> tex = CreateRef<Texture>();
+  tex->SetData(pixels, w, h);
+  stbi_image_free(pixels);
+  return tex;
+}
+
+/// @brief Packs separate single-channel roughness + metallic maps into the
+/// engine's combined MR texture: R unused(=1), G=roughness, B=metallic
+/// (pbr_frag samples roughness from G and metallic from B).
+inline Ref<Texture> PackMetallicRoughness(const std::string &roughness_path,
+                                          const std::string &metallic_path) {
+  stbi_set_flip_vertically_on_load(false);
+  int rw = 0, rh = 0, rc = 0, mw = 0, mh = 0, mc = 0;
+  stbi_uc *r = stbi_load(roughness_path.c_str(), &rw, &rh, &rc, 0);
+  stbi_uc *m = stbi_load(metallic_path.c_str(), &mw, &mh, &mc, 0);
+  if (!r || !m || rw != mw || rh != mh) {
+    LOG_ERROR("examples") << "PackMetallicRoughness: size mismatch / load failure "
+                           << "(rough " << (r ? rw : -1) << "x" << (r ? rh : -1) << ", metal "
+                           << (m ? mw : -1) << "x" << (m ? mh : -1) << ")";
+    if (r) {
+      stbi_image_free(r);
+    }
+    if (m) {
+      stbi_image_free(m);
+    }
+    return nullptr;
+  }
+  std::vector<unsigned char> out(static_cast<size_t>(rw) * static_cast<size_t>(rh) * 4);
+  for (int i = 0; i < rw * rh; ++i) {
+    out[i * 4 + 0] = 255;        // R unused
+    out[i * 4 + 1] = r[i * rc];  // G = roughness
+    out[i * 4 + 2] = m[i * mc];  // B = metallic
+    out[i * 4 + 3] = 255;
+  }
+  Ref<Texture> tex = CreateRef<Texture>();
+  tex->SetData(out.data(), rw, rh);
+  stbi_image_free(r);
+  stbi_image_free(m);
+  return tex;
+}
+
+}  // namespace detail
+
+/// @brief A full PBR material assembled from separate sidecar image maps - the
+/// extra texture files that FBX2glTF-style converters leave next to a GLB when
+/// the glTF only embeds the albedo (e.g. Cerberus keeps its metallic /
+/// roughness / normal / AO in sibling files). The albedo map is treated as
+/// sRGB and decoded in the shader; metallic+roughness are packed into the
+/// engine MR texture; every map is read without a vertical flip to match the
+/// glTF mesh UVs. Returns a material with null maps (engine defaults) if a
+/// file is missing, so callers should check their textures loaded.
+inline Ref<Material> PbrSidecarTextured(const std::string &albedo_path, const std::string &normal_path,
+                                        const std::string &roughness_path,
+                                        const std::string &metallic_path,
+                                        const std::string &ao_path = "") {
+  Ref<Material> m = CreateRef<Material>();
+  m->SetShader(PbrShader());
+  m->SetAlbedoMap(detail::LoadRawTexture(albedo_path));
+  m->SetAlbedoSRGB(true);
+  m->SetNormalMap(detail::LoadRawTexture(normal_path));
+  m->SetMetallicRoughnessMap(detail::PackMetallicRoughness(roughness_path, metallic_path));
+  if (!ao_path.empty()) {
+    m->SetAOMap(detail::LoadRawTexture(ao_path));
+  }
+  m->SetMetallicFactor(1.0f);  // maps drive metallic/roughness per pixel
+  m->SetRoughnessFactor(1.0f);
+  return m;
 }
 
 }  // namespace examples

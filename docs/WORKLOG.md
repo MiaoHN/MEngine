@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-06 — 修 Cerberus 渲染：GLB 只内嵌 albedo，其余贴图在 sidecar 文件里
+
+- **现象**：枪渲染成一片浅灰/塑料感，无贴图细节。
+- **根因**：FBX2glTF 转出的 `Cerberus_LP.glb` 只内嵌了 `Cerberus_A.tga`（mime `image/unknown`，材质只有 baseColor，metallic/roughness 是标量），**metallic / roughness / normal / AO 四张在 `Textures/` sidecar 文件里没进 GLB** → 材质日志 `albedo=set mr=NULL normal=NULL ao=NULL`。
+- **验证**：unlit 直接输出原始 albedo 一帧，可见铜喷口+细节 → UV 与 albedo 正常，缺的是 M/R/N/AO。
+- **修复**：新增 `examples::PbrSidecarTextured(albedo, normal, roughness, metallic, ao)`（example_helpers.hpp）：用 stb 按 **glTF UV 不翻转**读 sidecar 图，把 R/M 两张贴图打包成引擎 MR（G=roughness、B=metallic），albedo 标记 sRGB 解码、factor=1 由贴图驱动。`ex_6_2_cerberus` 与 `ex_model_viewer` 改用它（两者同是 Cerberus）。
+- capture：两处均恢复深色金属 + 金/铜细节的完整 PBR 观感。
+- 注：Cerberus 原始 TGA(4096² 每张 35–48MB)+GLB(47MB) 体积大，不入库。
+
+---
+
 ## 2026-09-06 — 把 Cerberus 放进 LO 6.2 的 newport_loft IBL 场景（ex_6_2_cerberus）
 
 - **用户**：把新加的 model 放到 pbr 6.2 的场景下（参考图=悬浮在客厅的斜置枪，背景虚化）。

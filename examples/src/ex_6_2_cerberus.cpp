@@ -2,6 +2,11 @@
 // environment (newport_loft HDR IBL): same skybox/env + IBL + LO's 4 white HDR
 // point lights as ex_6_2_2, but the glTF model is the hero, floating in the
 // room. Camera: right-drag orbit, wheel zoom, WASD/Space/Ctrl fly.
+//
+// NOTE: FBX2glTF's GLB only embeds the albedo (Cerberus_A.tga); the metallic /
+// roughness / normal / AO maps live as sidecar files next to the model, so the
+// material is assembled from all of them (PbrSidecarTextured) rather than from
+// the GLB's own (incomplete) material.
 #include <limits>
 #include <memory>
 
@@ -14,23 +19,16 @@ using namespace MEngine;
 
 namespace {
 
-/// @brief Loads a glTF/GLB mesh + its PBR material (fallback: a plain PBR).
-void LoadGltfAsset(const std::string &path, Ref<Mesh> &mesh, Ref<Material> &material) {
-  mesh = ModelLoader::LoadGltf(path);
-  material = ModelLoader::LoadGltfMaterial(path);
-  if (!material) {
-    material = examples::Pbr(glm::vec3(0.6f), 0.5f, 0.4f);
-  }
-  material->SetShader(examples::PbrShader());
-}
-
 std::shared_ptr<Scene> BuildIblCerberus() {
   auto s = std::make_shared<Scene>();
 
-  // --- the Cerberus model, auto-centered + normalized, floating in the room.
-  Ref<Mesh>     mesh;
-  Ref<Material> material;
-  LoadGltfAsset("assets/models/Cerberus_by_Andrew_Maximov/Cerberus_LP.glb", mesh, material);
+  // --- the Cerberus model (geometry from the GLB), auto-centered + normalized.
+  const std::string dir   = "assets/models/Cerberus_by_Andrew_Maximov/";
+  Ref<Mesh>         mesh  = ModelLoader::LoadGltf(dir + "Cerberus_LP.glb");
+  Ref<Material>     material =
+      examples::PbrSidecarTextured(dir + "Textures/Cerberus_A.tga", dir + "Textures/Cerberus_N.tga",
+                                   dir + "Textures/Cerberus_R.tga", dir + "Textures/Cerberus_M.tga",
+                                   dir + "Textures/Raw/Cerberus_AO.tga");
 
   glm::vec3 bmin(std::numeric_limits<float>::max());
   glm::vec3 bmax(std::numeric_limits<float>::lowest());

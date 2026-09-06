@@ -2,6 +2,9 @@
 // auto-frames it at the origin, and shows it with engine PBR + environment IBL
 // + a key light. Camera: right-drag orbit, wheel zoom, WASD/Space/Ctrl fly
 // (shared ExampleApp host). Default model = the user-added Cerberus GLB.
+//
+// NOTE: FBX2glTF's Cerberus GLB only embeds the albedo; the metallic /
+// roughness / normal / AO sidecar files are loaded separately (see below).
 #include <limits>
 #include <memory>
 
@@ -16,13 +19,14 @@ namespace {
 std::shared_ptr<Scene> BuildViewer() {
   auto s = std::make_shared<Scene>();
 
-  // Load the model + its glTF PBR material (metallic-roughness workflow).
-  const std::string model_path = "assets/models/Cerberus_by_Andrew_Maximov/Cerberus_LP.glb";
-  Ref<Mesh>     mesh     = ModelLoader::LoadGltf(model_path);
-  Ref<Material> material = ModelLoader::LoadGltfMaterial(model_path);
-  if (material) {
-    material->SetShader(examples::PbrShader());
-  }
+  // Load the model geometry; assemble its PBR material from the original
+  // A/M/R/N/AO maps (the GLB itself only carries the albedo).
+  const std::string dir   = "assets/models/Cerberus_by_Andrew_Maximov/";
+  Ref<Mesh>         mesh  = ModelLoader::LoadGltf(dir + "Cerberus_LP.glb");
+  Ref<Material>     material =
+      examples::PbrSidecarTextured(dir + "Textures/Cerberus_A.tga", dir + "Textures/Cerberus_N.tga",
+                                   dir + "Textures/Cerberus_R.tga", dir + "Textures/Cerberus_M.tga",
+                                   dir + "Textures/Raw/Cerberus_AO.tga");
   if (!mesh) {
     return s;  // load failure logged by the loader
   }
