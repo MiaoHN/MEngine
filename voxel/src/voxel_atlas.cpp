@@ -139,7 +139,7 @@ TileId Atlas::TileFor(Block block, bool top, bool bottom) const {
   }
 }
 
-glm::vec2 Atlas::TileUV(TileId tile, int corner_u, int corner_v) const {
+glm::vec2 Atlas::TileUV(TileId tile, float u, float v) const {
   const int col = static_cast<int>(tile) % kCols;
   const int row = static_cast<int>(tile) / kCols;
   // Content region is [x0, x0+16] x [y0, y0+16]; leave the 1px border out.
@@ -147,7 +147,7 @@ glm::vec2 Atlas::TileUV(TileId tile, int corner_u, int corner_v) const {
   const float u1 = static_cast<float>(col * kStride + kStride - 1) / kWidth;
   const float v0 = static_cast<float>(row * kStride + 1) / kHeight;
   const float v1 = static_cast<float>(row * kStride + kStride - 1) / kHeight;
-  return {corner_u == 0 ? u0 : u1, corner_v == 0 ? v0 : v1};
+  return {u0 + (u1 - u0) * u, v0 + (v1 - v0) * v};
 }
 
 }  // namespace vox

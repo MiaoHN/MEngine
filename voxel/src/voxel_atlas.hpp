@@ -68,9 +68,10 @@ class Atlas {
   /// any side). Callers pick the face kind themselves.
   [[nodiscard]] TileId TileFor(Block block, bool top, bool bottom) const;
 
-  /// @brief Converts a tile + (u,v) corner in {0,1} to a UV coordinate inside
-  /// the tile's CONTENT region (0.5px margin protects against filter bleed).
-  [[nodiscard]] glm::vec2 TileUV(TileId tile, int corner_u, int corner_v) const;
+  /// @brief Converts a tile + fractional (u, v) in [0,1] to a UV coordinate
+  /// inside the tile's CONTENT region (a margin keeps linear filter from
+  /// bleeding into neighbouring tiles). `v` = 0 is the tile bottom.
+  [[nodiscard]] glm::vec2 TileUV(TileId tile, float u, float v) const;
 
  private:
   /// @brief Fills one tile's 16x16 content. `row` counts from the bottom of the
