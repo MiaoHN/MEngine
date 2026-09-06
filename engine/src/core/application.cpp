@@ -1,5 +1,6 @@
 #include "core/application.hpp"
 
+#include <cstdio>
 #include <fstream>
 
 #include "audio/audio.hpp"
@@ -71,6 +72,9 @@ Application::Application(GraphicsAPI api) : graphics_api_(api) {
     glfwTerminate();
     exit(-1);
   }
+
+  // Push the base title (no FPS yet - it appears after the first second).
+  UpdateWindowTitle();
 
   int window_width  = 0;
   int window_height = 0;
@@ -176,9 +180,28 @@ float Application::GetDeltaTime() {
     fps_         = frame_count_;
     frame_count_ = 0;
     frame_time_  = current_time;
+    UpdateWindowTitle();  // title bar carries the live FPS once a second
   }
 
   return delta_time;
+}
+
+void Application::SetWindowTitleBase(const std::string &title) {
+  window_title_base_ = title;
+  UpdateWindowTitle();
+}
+
+void Application::UpdateWindowTitle() {
+  if (!window_) {
+    return;
+  }
+  std::string title = window_title_base_;
+  if (fps_ > 0) {
+    char suffix[64];
+    std::snprintf(suffix, sizeof(suffix), "  |  %d FPS (%.1f ms)", fps_, 1000.0 / static_cast<double>(fps_));
+    title += suffix;
+  }
+  glfwSetWindowTitle(window_, title.c_str());
 }
 
 }  // namespace MEngine

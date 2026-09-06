@@ -12,7 +12,10 @@
 namespace MEngine {
 namespace examples {
 
-ExampleApp::ExampleApp(Setup setup) : MEngine::Application(Application::GetStartupApi()), setup_(std::move(setup)) {}
+ExampleApp::ExampleApp(Setup setup) : MEngine::Application(Application::GetStartupApi()), setup_(std::move(setup)) {
+  // Show the demo name in the title bar; the engine appends the live FPS.
+  SetWindowTitleBase(setup_.name);
+}
 
 ExampleApp::~ExampleApp() {}
 

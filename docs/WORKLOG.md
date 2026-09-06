@@ -5,6 +5,15 @@
 
 ---
 
+## 2026-09-06 — 窗口标题实时 FPS（引擎 Application + 每个 example 标题带 demo 名）
+
+- **用户**：每个 example 的窗口 title 上能不能加上 FPS。
+- **引擎**：`Application` 增加 `window_title_base_`（默认 "MEngine"）+ `SetWindowTitleBase()`；`GetDeltaTime` 每秒刷新 `fps_` 时顺带 `UpdateWindowTitle()` → `glfwSetWindowTitle(base + "  |  N FPS (x.x ms)")`（0 FPS 时只显示 base，窗口建好后先推一次 base）。
+- **examples**：`ExampleApp` ctor 里 `SetWindowTitleBase(setup_.name)`，于是每个 demo 标题 = 自己的 demo 名 + 实时 FPS/帧时。
+- **验证**：hidden 运行标题实测 `LO 5.9 ssao (engine SSAO, Space toggles)  |  895 FPS (1.1 ms)`（首秒启动为 1 FPS 属正常 ramp）；全 12 个 examples + editor/sandbox/voxel 编译链接通过。editor/sandbox/voxel 未设 base，仍显示 MEngine + FPS。
+
+---
+
 ## 2026-09-06 — ex_5_9_ssao（引擎真实 SSAO 演示）+ ex_5_8_deferred_shading（前向等效 32 盏光）
 
 - **用户**：advanced_lighting 里延迟着色与 SSAO 两个示例还没做，能不能加一下。

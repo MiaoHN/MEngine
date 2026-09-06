@@ -143,6 +143,14 @@ class Application {
 
   GraphicsAPI graphics_api_;
 
+  /// @brief Base text of the window title. The live FPS suffix is appended
+  /// automatically once a second by Application::UpdateWindowTitle; apps set
+  /// their own name here (e.g. each example sets its demo label in ExampleApp).
+  void SetWindowTitleBase(const std::string &title);
+  /// @brief Rebuilds the GLFW title = `window_title_base_` + live FPS / ms.
+  void UpdateWindowTitle();
+  std::string window_title_base_ = "MEngine";
+
   static std::string     startup_scene_path_;
   static GraphicsAPI     startup_api_;
   static int             max_frames_;
