@@ -497,8 +497,8 @@ default_material_ = CreateDefaultMaterial();
   // crates + 4 HDR point lights that bloom). Everything sits at rest until Play.
   CreateLightingDemo();
 
-  // Scene-level Lua main script (optional GameManager).
-  active_scene_->SetMainScript("scripts/main.lua");
+  // No scene-level main script by default: pressing Play only runs the light
+  // entities' own orbit_light.lua scripts. (Set one via the Scene panel.)
 
   base_directory_    = std::filesystem::absolute(AssetManager::Instance().GetAssetRoot());
   current_directory_ = base_directory_;
@@ -2785,6 +2785,10 @@ void Editor::CreateLightingDemo() {
     pl.light.linear        = 0.0f;
     pl.light.quadratic     = 1.0f;
     lamp.AddComponent<PointLightComponent>(pl);
+
+    // Press Play: this script orbits the light entity around the scene centre
+    // (the ECS light follows its Transform, so the light moves with the cube).
+    lamp.AddComponent<LuaScriptComponent>("scripts/orbit_light.lua");
   }
 
   // ex_5_6 scene/tonemapping settings (LO HDR tone + bloom, dark room, no sun).
