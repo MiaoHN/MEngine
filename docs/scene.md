@@ -53,12 +53,15 @@ entt::entity GetHandle() const;
 
 > 注意：`Transform` 是 3D 语义的（vec3 + 四元数旋转）。渲染主路径为 3D（`MeshComponent`）。
 
-**灯光组件（Light 组件化 v1）**：`PointLightComponent` / `SpotLightComponent`（ECS）——灯挂到实体上，
-位置取实体的世界 `Transform`（可用 Gizmo/层级移动），颜色/强度/半径/阴影等存组件内。场景里只要存在
-带灯光组件的实体，`Scene::RenderMeshes` 每帧就会从这些实体重建 renderer 的点/聚光灯表；无组件时旧的
-`Scene::AddPointLight` / `AddSpotLight` 列表 API 行为完全不变。方向光仍为场景级单一 `DirectionalLight`
-（`Scene::GetLight`），未组件化。Editor 的 Create 菜单可建 Point/Spot Light 实体，Properties 可编辑组件；
-灯光组件的实体级序列化尚在跟进（保存时以 renderer 灯光数组落盘）。
+**灯光组件（Light 组件化 v1 + v2）**：`DirectionalLightComponent` / `PointLightComponent` /
+`SpotLightComponent`（ECS）——灯挂到实体上，点/聚光位置取实体的世界 `Transform`（可用 Gizmo/层级移动），
+颜色/强度/半径/锥角/方向等存组件内。场景里只要存在带灯光组件的实体，`Scene::RenderMeshes` 每帧就会从
+这些实体重建 renderer 的点/聚光列表，并把（首个）`DirectionalLightComponent` 拷入 renderer 的方向光
+（renderer 仍只支持 1 个方向光）；无组件时旧的 `Scene::GetLight/SetLight`、`AddPointLight`/`AddSpotLight`
+列表 API 行为完全不变。灯光组件**已按实体级序列化**（`.scene` 的 entities 里存 `directional_light` /
+`point_light` / `spot_light`，保存/加载/Play 快照一致）；当场景存在组件灯时不再写旧的顶层灯光数组
+（旧文件仍兼容读回）。Editor 的 Create 菜单可建三类灯实体，Properties 可编辑对应组件；Lighting 面板在
+有方向光实体时自动提示改用实体编辑。
 
 ## Scene
 

@@ -133,6 +133,7 @@ class Editor : public Application {
   void CreateCameraEntity();
   void CreatePointLightEntity();
   void CreateSpotLightEntity();
+  void CreateDirectionalLightEntity();
   void CreateModelEntity(const std::filesystem::path &path);
   void CreatePhysicsDemo();
   void DuplicateSelectedEntity();

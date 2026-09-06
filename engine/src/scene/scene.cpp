@@ -1283,6 +1283,18 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
 void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(light); }
 
 void Scene::SyncLightComponents() {
+  // A DirectionalLightComponent (single for now) overrides the renderer's
+  // directional light every frame. Multi-directional needs shader arrays.
+  {
+    const auto view = registry_.view<DirectionalLightComponent>();
+    if (!view.empty()) {
+      for (const auto e : view) {
+        renderer_->SetLight(registry_.get<DirectionalLightComponent>(e).light);
+        break;  // renderer supports one directional light
+      }
+    }
+  }
+
   bool has_point = false;
   bool has_spot  = false;
   {

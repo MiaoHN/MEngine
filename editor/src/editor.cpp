@@ -868,6 +868,7 @@ void Editor::ShowImGuiScene() {
     ImGui::Separator();
     if (ImGui::MenuItem("Point Light")) CreatePointLightEntity();
     if (ImGui::MenuItem("Spot Light")) CreateSpotLightEntity();
+    if (ImGui::MenuItem("Directional Light")) CreateDirectionalLightEntity();
     ImGui::Separator();
     if (ImGui::MenuItem("Camera")) CreateCameraEntity();
     ImGui::EndPopup();
@@ -1232,6 +1233,7 @@ void Editor::ShowImGuiProperties() {
       DisplayAddComponentEntry<CameraController>("Camera Controller");
       DisplayAddComponentEntry<PointLightComponent>("Point Light");
       DisplayAddComponentEntry<SpotLightComponent>("Spot Light");
+      DisplayAddComponentEntry<DirectionalLightComponent>("Directional Light");
       DisplayAddComponentEntry<LuaScriptComponent>("Lua Script");
       DisplayAddComponentEntry<RigidBodyComponent>("Rigid Body");
       DisplayAddComponentEntry<ColliderComponent>("Collider");
@@ -1425,6 +1427,21 @@ void Editor::ShowImGuiProperties() {
       ImGui::TextDisabled("Position = the entity's Transform (move it with the gizmo).");
     });
 
+    DrawComponent<DirectionalLightComponent>("Directional Light", selected_entity_, [](auto &component) {
+      DirectionalLight &light = component.light;
+      DrawVec3Control("Direction (travel)", light.direction);
+      ImGui::SameLine();
+      ImGui::TextDisabled("(?)");
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Direction the light TRAVELS (away from the sun);\n"
+                          "e.g. (0, -1, 0) = sun straight above.");
+      }
+      ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
+      DrawVec3Control("Ambient", light.ambient);
+      DrawVec3Control("Diffuse", light.diffuse);
+      DrawVec3Control("Specular", light.specular);
+    });
+
     DrawComponent<RigidBodyComponent>("Rigid Body", selected_entity_, [](auto &component) {
       const char *types[] = {"Static", "Dynamic"};
       int         current = component.type == RigidBodyComponent::Type::Static ? 0 : 1;
@@ -1573,18 +1590,32 @@ void Editor::ShowImGuiLighting() {
   PROFILER_FUNCTION();
   ImGui::Begin("Lighting");
 
-  DirectionalLight &dir_light = active_scene_->GetLight();
-  ImGui::Text("Directional Light");
-  DrawVec3Control("Direction (travel)", dir_light.direction);
-  ImGui::SameLine();
-  ImGui::TextDisabled("(?)");
-  if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("Direction the light TRAVELS (away from the sun).\n"
-                      "The sun is at the opposite end.\n"
-                      "e.g. (0, -1, 0) = sun straight above.\n"
-                      "Filling in the sun position instead makes shading look inverted.");
+  const auto has_dir_entity = [&] {
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (entity.HasComponent<DirectionalLightComponent>()) {
+        return true;
+      }
+    }
+    return false;
+  }();
+  if (has_dir_entity) {
+    ImGui::TextWrapped(
+        "The directional light is an entity in the scene - select it and edit its "
+        "Directional Light component (Create > Directional Light).");
+  } else {
+    DirectionalLight &dir_light = active_scene_->GetLight();
+    ImGui::Text("Directional Light");
+    DrawVec3Control("Direction (travel)", dir_light.direction);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("Direction the light TRAVELS (away from the sun).\n"
+                        "The sun is at the opposite end.\n"
+                        "e.g. (0, -1, 0) = sun straight above.\n"
+                        "Filling in the sun position instead makes shading look inverted.");
+    }
+    ImGui::ColorEdit3("Color", glm::value_ptr(dir_light.color));
   }
-  ImGui::ColorEdit3("Color", glm::value_ptr(dir_light.color));
 
   ImGui::Separator();
   ImGui::Text("Point Lights");
@@ -2627,6 +2658,15 @@ void Editor::CreateSpotLightEntity() {
   entity.AddComponent<SpotLightComponent>(component);
   selected_entity_ = entity;
   LOG_DEBUG("Editor") << "Created spot light '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+void Editor::CreateDirectionalLightEntity() {
+  Entity entity = CreateEntityWithUniqueName("Directional Light");
+  entity.AddComponent<Transform>(glm::vec3(0.0f, 0.0f, 0.0f));
+  DirectionalLightComponent component;  // defaults match the engine's sun
+  entity.AddComponent<DirectionalLightComponent>(component);
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created directional light '" << entity.GetComponent<Tag>().tag << "'";
 }
 
 void Editor::CreatePhysicsDemo() {

@@ -183,6 +183,19 @@ struct SpotLightComponent {
   explicit SpotLightComponent(const SpotLight &l) : light(l) {}
 };
 
+/// @brief A directional light carried by an entity. When an entity has a
+/// DirectionalLightComponent the scene copies it into the renderer's (single)
+/// directional light each frame - so a scene whose sun is an entity is edited
+/// by selecting that entity. The renderer still supports exactly one
+/// directional light (multi-directional needs shader arrays - future work);
+/// scenes without the component keep using the legacy Scene::GetLight/SetLight.
+struct DirectionalLightComponent {
+  DirectionalLight light;
+
+  DirectionalLightComponent() = default;
+  explicit DirectionalLightComponent(const DirectionalLight &l) : light(l) {}
+};
+
 struct RigidBodyComponent {
   enum class Type { Static, Dynamic };
 

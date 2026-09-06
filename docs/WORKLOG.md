@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-06 — Light 组件化 v2：方向光实体 + 灯光组件实体级序列化
+
+- **方向光实体**：`DirectionalLightComponent`（ECS）。场景存在该组件时每帧把（首个）组件拷入
+  renderer 方向光；renderer 仍只支持 1 个方向光（多方向光需 shader 数组，未做）。Editor Create 菜单
+  新增 Directional Light 实体、Add Component/Properties 可编辑（Direction/Color/ambient/diffuse/specular）；
+  Lighting 面板检测到方向光实体时提示改用实体编辑，避免每帧被覆盖。
+- **灯光组件实体级序列化**：scene_serializer 为实体 JSON 加 `directional_light`/`point_light`/
+  `spot_light` 完整字段（含 LO ambient/diffuse/specular、lo_attenuation、cutoff 等）并读写；SaveScene
+  在存在组件灯时**跳过**旧的顶层灯光数组（旧文件无组件仍按旧路径读回）；Play 快照同构。
+- 回归：engine/editor 编译通过；组件灯+实体→Gizmo/层级/保存加载闭环完成。多方向光/面板整合为后续项。
+
+---
+
 ## 2026-09-06 — Light 组件化 v1：PointLight/SpotLight 变 ECS 组件（editor 可建可编辑）
 
 - **引擎**：新增 `PointLightComponent` / `SpotLightComponent`（component.hpp，含 render/light.hpp）。

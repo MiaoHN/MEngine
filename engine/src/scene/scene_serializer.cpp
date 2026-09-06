@@ -198,6 +198,102 @@ std::vector<Entity> ContentEntities(Scene &scene) {
 /// @brief Serializes a single content entity to its JSON form. Used both by
 /// SaveScene and by the Play-mode snapshot. `parent_index` is the index of the
 /// entity's parent inside the same `entities` array (-1 = root-level, omitted).
+// --- light struct JSON helpers (ECS light components) -----------------------
+
+json DirectionalLightJson(const DirectionalLight &l) {
+  json j;
+  j["direction"] = Vec3ToJson(l.direction);
+  j["color"]     = Vec3ToJson(l.color);
+  j["ambient"]   = Vec3ToJson(l.ambient);
+  j["diffuse"]   = Vec3ToJson(l.diffuse);
+  j["specular"]  = Vec3ToJson(l.specular);
+  return j;
+}
+
+DirectionalLight DirectionalLightFromJson(const json &j) {
+  DirectionalLight l;
+  l.direction = Vec3FromJson(j.value("direction", json()), l.direction);
+  l.color     = Vec3FromJson(j.value("color", json()), l.color);
+  l.ambient   = Vec3FromJson(j.value("ambient", json()), l.ambient);
+  l.diffuse   = Vec3FromJson(j.value("diffuse", json()), l.diffuse);
+  l.specular  = Vec3FromJson(j.value("specular", json()), l.specular);
+  return l;
+}
+
+json PointLightJson(const PointLight &l) {
+  json j;
+  j["position"]     = Vec3ToJson(l.position);
+  j["color"]        = Vec3ToJson(l.color);
+  j["intensity"]    = l.intensity;
+  j["radius"]       = l.radius;
+  j["casts_shadow"] = l.casts_shadow;
+  j["ambient"]      = Vec3ToJson(l.ambient);
+  j["diffuse"]      = Vec3ToJson(l.diffuse);
+  j["specular"]     = Vec3ToJson(l.specular);
+  j["lo_attenuation"] = l.lo_attenuation;
+  j["constant"]     = l.constant;
+  j["linear"]       = l.linear;
+  j["quadratic"]    = l.quadratic;
+  return j;
+}
+
+PointLight PointLightFromJson(const json &j) {
+  PointLight l;
+  l.position     = Vec3FromJson(j.value("position", json()), l.position);
+  l.color        = Vec3FromJson(j.value("color", json()), l.color);
+  l.intensity    = j.value("intensity", l.intensity);
+  l.radius       = j.value("radius", l.radius);
+  l.casts_shadow = j.value("casts_shadow", false);
+  l.ambient      = Vec3FromJson(j.value("ambient", json()), l.ambient);
+  l.diffuse      = Vec3FromJson(j.value("diffuse", json()), l.diffuse);
+  l.specular     = Vec3FromJson(j.value("specular", json()), l.specular);
+  l.lo_attenuation = j.value("lo_attenuation", false);
+  l.constant     = j.value("constant", l.constant);
+  l.linear       = j.value("linear", l.linear);
+  l.quadratic    = j.value("quadratic", l.quadratic);
+  return l;
+}
+
+json SpotLightJson(const SpotLight &l) {
+  json j;
+  j["position"]     = Vec3ToJson(l.position);
+  j["direction"]    = Vec3ToJson(l.direction);
+  j["color"]        = Vec3ToJson(l.color);
+  j["intensity"]    = l.intensity;
+  j["range"]        = l.range;
+  j["cutoff"]       = l.cutoff;
+  j["outer_cutoff"] = l.outer_cutoff;
+  j["ambient"]      = Vec3ToJson(l.ambient);
+  j["diffuse"]      = Vec3ToJson(l.diffuse);
+  j["specular"]     = Vec3ToJson(l.specular);
+  j["lo_flashlight"]  = l.lo_flashlight;
+  j["lo_attenuation"] = l.lo_attenuation;
+  j["constant"]     = l.constant;
+  j["linear"]       = l.linear;
+  j["quadratic"]    = l.quadratic;
+  return j;
+}
+
+SpotLight SpotLightFromJson(const json &j) {
+  SpotLight l;
+  l.position     = Vec3FromJson(j.value("position", json()), l.position);
+  l.direction    = Vec3FromJson(j.value("direction", json()), l.direction);
+  l.color        = Vec3FromJson(j.value("color", json()), l.color);
+  l.intensity    = j.value("intensity", l.intensity);
+  l.range        = j.value("range", l.range);
+  l.cutoff       = j.value("cutoff", l.cutoff);
+  l.outer_cutoff = j.value("outer_cutoff", l.outer_cutoff);
+  l.ambient      = Vec3FromJson(j.value("ambient", json()), l.ambient);
+  l.diffuse      = Vec3FromJson(j.value("diffuse", json()), l.diffuse);
+  l.specular     = Vec3FromJson(j.value("specular", json()), l.specular);
+  l.lo_flashlight  = j.value("lo_flashlight", false);
+  l.lo_attenuation = j.value("lo_attenuation", false);
+  l.constant     = j.value("constant", l.constant);
+  l.linear       = j.value("linear", l.linear);
+  l.quadratic    = j.value("quadratic", l.quadratic);
+  return l;
+}
+
 json EntityToJson(Entity &entity, int parent_index = -1) {
   const auto &tag = entity.GetComponent<Tag>();
 
@@ -334,6 +430,18 @@ json EntityToJson(Entity &entity, int parent_index = -1) {
     e["animation"] = std::move(j);
   }
 
+  // ECS light components (Light componentization): a light entity round-trips
+  // as a normal entity carrying its component, so hierarchy/gizmo survive save.
+  if (entity.HasComponent<DirectionalLightComponent>()) {
+    e["directional_light"] = DirectionalLightJson(entity.GetComponent<DirectionalLightComponent>().light);
+  }
+  if (entity.HasComponent<PointLightComponent>()) {
+    e["point_light"] = PointLightJson(entity.GetComponent<PointLightComponent>().light);
+  }
+  if (entity.HasComponent<SpotLightComponent>()) {
+    e["spot_light"] = SpotLightJson(entity.GetComponent<SpotLightComponent>().light);
+  }
+
   return e;
 }
 
@@ -464,6 +572,22 @@ Entity LoadEntityFromJson(Scene &scene, const json &e) {
     }
   }
 
+  if (e.contains("directional_light")) {
+    DirectionalLightComponent c;
+    c.light = DirectionalLightFromJson(e["directional_light"]);
+    entity.AddComponent<DirectionalLightComponent>(c);
+  }
+  if (e.contains("point_light")) {
+    PointLightComponent c;
+    c.light = PointLightFromJson(e["point_light"]);
+    entity.AddComponent<PointLightComponent>(c);
+  }
+  if (e.contains("spot_light")) {
+    SpotLightComponent c;
+    c.light = SpotLightFromJson(e["spot_light"]);
+    entity.AddComponent<SpotLightComponent>(c);
+  }
+
   return entity;
 }
 
@@ -503,8 +627,8 @@ void Scene::SaveScene(const std::string &path) {
   json root;
   root["version"] = 1;
 
-  // Directional light.
-  {
+  // Directional light (only as a legacy block when no entity carries it).
+  if (registry_.view<DirectionalLightComponent>().empty()) {
     const auto &light = renderer_->GetLight();
     json        j;
     j["direction"] = Vec3ToJson(light.direction);
@@ -512,8 +636,8 @@ void Scene::SaveScene(const std::string &path) {
     root["directional_light"] = j;
   }
 
-  // Point lights.
-  {
+  // Point lights (legacy array; skipped when lights are ECS entities).
+  if (registry_.view<PointLightComponent>().empty()) {
     json lights = json::array();
     for (const auto &light : renderer_->GetPointLights()) {
       json j;
@@ -527,8 +651,8 @@ void Scene::SaveScene(const std::string &path) {
     root["point_lights"] = lights;
   }
 
-  // Spot lights.
-  {
+  // Spot lights (legacy array; skipped when lights are ECS entities).
+  if (registry_.view<SpotLightComponent>().empty()) {
     json lights = json::array();
     for (const auto &light : renderer_->GetSpotLights()) {
       json j;
