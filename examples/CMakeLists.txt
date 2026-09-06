@@ -29,22 +29,25 @@ target_link_libraries(example_app
 
 mengine_enable_warnings(example_app)
 
-# LearnOpenGL "2. lighting" chapter (one exe per scene)
+# Target naming: ex_<LO-top-chapter>_<LO-demo-number>_<name>
+#   e.g. ex_2_6_multiple_lights = LearnOpenGL src/2.lighting/6.multiple_lights
+#        ex_5_4_normal_mapping  = LearnOpenGL src/5.advanced_lighting/4.normal_mapping
+# The exact LO source file is also named in a header comment of each .cpp.
 set(MENGINE_EXAMPLE_DEMOS
-  colors                # 1.colors
-  basic_lighting        # 2.x basic lighting (diffuse+specular, PBR)
-  blinn_lighting        # 2.x basic lighting on the Blinn-Phong pipeline
-  materials             # 3.x materials
-  lighting_maps         # 4.x lighting maps (container2 diffuse texture)
-  multiple_lights       # 6.multiple_lights
-  light_casters         # 5.x light casters (dir/point/spot)
+  ex_2_1_colors                  # 2.lighting/1.colors
+  ex_2_2_basic_lighting          # 2.lighting/2.2.basic_lighting_specular (PBR)
+  ex_2_2_blinn_lighting          # 2.lighting/2.2 ... on the Blinn-Phong pipeline
+  ex_2_3_materials               # 2.lighting/3.1.materials
+  ex_2_4_lighting_maps           # 2.lighting/4.1.lighting_maps_diffuse_map
+  ex_2_5_light_casters           # 2.lighting/5.3.light_casters_spot
+  ex_2_6_multiple_lights         # 2.lighting/6.multiple_lights
 )
 
-# LearnOpenGL "5. advanced_lighting" chapter
+# 5.advanced_lighting
 list(APPEND MENGINE_EXAMPLE_DEMOS
-  shadow_mapping        # 3.x shadow mapping (directional + point cube shadows)
-  hdr_bloom             # 6.hdr + 7.bloom
-  normal_mapping        # 4.normal_mapping (brickwall albedo + normal)
+  ex_5_3_shadow_mapping          # 5.advanced_lighting/3.1.x shadow_mapping + 3.2 point_shadows
+  ex_5_6_hdr_bloom               # 5.advanced_lighting/6.hdr + 7.bloom
+  ex_5_4_normal_mapping          # 5.advanced_lighting/4.normal_mapping
 )
 
 function(mengine_add_example name)

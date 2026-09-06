@@ -4,7 +4,7 @@
 > `src/` 下的示例（本地源码/资源在仓库根 `LearnOpenGL/`）。**不复刻裸 GL 代码**——而是
 > 把每个示例的“场景与效果”用 MEngine（Scene/实体/PBR 材质/灯光/后处理/skybox 等）重建。
 >
-> 每个复刻成品 = `examples/src/<name>.cpp` 一个**独立可执行**（`example_<name>`），
+> 每个复刻成品 = `examples/src/<name>.cpp` 一个**独立可执行**（target `example_<name>`），
 > 共享宿主在 `examples/src/example_app.*`，小工具在 `example_helpers.hpp`。
 >
 > 状态：✅ = 已复刻可运行；◐ = 部分/可等价（引擎能力演示）; ⛔ = 底层裸 GL 特性，
@@ -24,12 +24,12 @@
 ## 2. lighting（光照）—— 引擎为 PBR，逐场景等价重建
 | 目录 | 内容 | MEngine 成品 |
 |---|---|---|
-| 1.colors | 颜色相乘 | ✅ `example_colors` |
-| 2.x basic_lighting (+specular/exercise) | 漫反射+高光 | ✅ `example_basic_lighting`（diffuse+specular via PBR roughness）|
-| 3.x materials | 材质参数 | ✅ `example_materials`（metallic/roughness 扫描）|
-| 4.x lighting_maps (diffuse/specular) | 贴图（diffuse/specular map）| ✅ `example_lighting_maps`（container2 贴图 + 低粗糙度高光；specular map ≈ roughness/金属度）|
-| 5.x light_casters (dir/point/spot/soft) | 方向/点/聚光 | ✅ `example_light_casters`（方向+两聚光+点光；软边 via outer_cutoff）|
-| 6.multiple_lights | 多光源 | ✅ `example_multiple_lights` |
+| 1.colors | 颜色相乘 | ✅ `ex_2_1_colors` |
+| 2.x basic_lighting (+specular/exercise) | 漫反射+高光 | ✅ `ex_2_2_basic_lighting`（PBR）/ `ex_2_2_blinn_lighting`（Blinn）|
+| 3.x materials | 材质参数 | ✅ `ex_2_3_materials`（metallic/roughness 扫描）|
+| 4.x lighting_maps (diffuse/specular) | 贴图（diffuse/specular map）| ✅ `ex_2_4_lighting_maps`（container2 贴图 + 低粗糙度高光）|
+| 5.x light_casters (dir/point/spot/soft) | 方向/点/聚光 | ✅ `ex_2_5_light_casters`（方向+两聚光+点光；软边 via outer_cutoff）|
+| 6.multiple_lights | 多光源 | ✅ `ex_2_6_multiple_lights` |
 | exercises | 练习 | ◐ 概念已含在上面对应成品中 |
 
 ## 3. model_loading
@@ -54,20 +54,20 @@
 ## 5. advanced_lighting
 | 目录 | 内容 | MEngine 成品 |
 |---|---|---|
-| 1.advanced_lighting | Blinn-Phong | ✅ 引擎现提供 **Blinn-Phong 管线**（shader "blinn"）；`example_blinn_lighting` 演示同款高光 |
+| 1.advanced_lighting | Blinn-Phong | ✅ 引擎现提供 **Blinn-Phong 管线**（shader "blinn"）；`ex_2_2_blinn_lighting` 演示同款高光 |
 | 2.gamma_correction | Gamma | ◐ 引擎输出已含 gamma（post）；无单独场景 |
-| 3.x shadow_mapping (+point/soft/csm) | 阴影映射/点阴影 | ✅ `example_shadow_mapping`（方向光+立方体点光阴影）；CSM ⬜（引擎单级）|
-| 4.normal_mapping | 法线贴图 | ✅ `example_normal_mapping`（砖墙 albedo+normal，引擎 pbr 法线槽）|
+| 3.x shadow_mapping (+point/soft/csm) | 阴影映射/点阴影 | ✅ `ex_5_3_shadow_mapping`（方向光+立方体点光阴影）；CSM ⬜（引擎单级）|
+| 4.normal_mapping | 法线贴图 | ✅ `ex_5_4_normal_mapping`（砖墙 albedo+normal，引擎 pbr 法线槽）|
 | 5.x parallax (incl steep/pom) | 视差映射 | ⬜（引擎 pbr 无视差；需引擎扩展或 ⛔）|
-| 6.hdr | HDR | ◐ 引擎 HDR 内部；`example_hdr_bloom` 演示高动态亮度 |
-| 7.bloom | 泛光 | ✅ `example_hdr_bloom`（bloom）|
+| 6.hdr | HDR | ◐ 引擎 HDR 内部；`ex_5_6_hdr_bloom` 演示高动态亮度 |
+| 7.bloom | 泛光 | ✅ `ex_5_6_hdr_bloom`（bloom）|
 | 8.x deferred (+volumes) | 延迟着色 | ⛔ 引擎为前向+实例化 |
 | 9.ssao | 屏幕空间环境光遮蔽 | ◐ 引擎已有 SSAO（内部开关）；可做一个 SSAO 开关演示 exe ⬜ |
 
 ## 6. pbr
 | 目录 | 内容 | 状态 |
 |---|---|---|
-| 1.x lighting / textured | PBR 直射 | ✅ 引擎即 PBR；`example_materials` 覆盖（加贴图见 lighting_maps/normal）|
+| 1.x lighting / textured | PBR 直射 | ✅ 引擎即 PBR；`ex_2_3_materials` 覆盖（加贴图见 lighting_maps/normal）|
 | 2.x ibl (irradiance/specular conversion) | IBL 预计算 | ⛔ 引擎 skybox 在内部已完成 IBL（prefilter/irradiance）；非用户层 |
 | PBR 资源 (rusted_iron/gold 等) | — | 可下载到 `assets/textures/pbr/` 后做 PBR 贴图材质场景 ⬜ |
 
@@ -79,16 +79,18 @@
 | 3.2d_game | 2D Breakout 游戏 | ⬜ 大工程（引擎 2D Sprite 能力有限）|
 | 8.guest (2020/2021/2022) | 嘉宾教程 | ⬜ 逐个评估 |
 
-## 现有例子命名对照（examples/src）
+## 现有例子命名对照（target / 源文件 = ex_<LO章>_<LO小节>_<名>）
 ```
-colors              -> 2.lighting/1.colors
-basic_lighting      -> 2.lighting/2.x (PBR)
-blinn_lighting      -> 2.lighting/2.x (Blinn-Phong 管线)
-materials           -> 2.lighting/3.x
-lighting_maps       -> 2.lighting/4.x   (新增)
-multiple_lights     -> 2.lighting/6
-light_casters       -> 2.lighting/5.x
-shadow_mapping      -> 5.advanced_lighting/3.x
-hdr_bloom           -> 5.advanced_lighting/6-7
-normal_mapping      -> 5.advanced_lighting/4   (新增)
+ex_2_1_colors              -> 2.lighting/1.colors
+ex_2_2_basic_lighting      -> 2.lighting/2.2.basic_lighting_specular (PBR)
+ex_2_2_blinn_lighting      -> 2.lighting/2.2 ... (Blinn-Phong 管线)
+ex_2_3_materials           -> 2.lighting/3.1.materials
+ex_2_4_lighting_maps       -> 2.lighting/4.1.lighting_maps_diffuse_map
+ex_2_5_light_casters       -> 2.lighting/5.3.light_casters_spot
+ex_2_6_multiple_lights     -> 2.lighting/6.multiple_lights
+ex_5_3_shadow_mapping      -> 5.advanced_lighting/3.1.x shadow_mapping + 3.2 point_shadows
+ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom
+ex_5_4_normal_mapping      -> 5.advanced_lighting/4.normal_mapping
 ```
+> 每个 target 对应 LO 源码：`LearnOpenGL/src/<章>/<小节>/<源码名>.cpp`（CMake 注释里已写死）。
+> 新建端口一律沿用该命名，如 `ex_3_1_model_loading`、`ex_6_1_1_pbr_lighting` 等。
