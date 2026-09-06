@@ -131,13 +131,16 @@ Ref<Mesh> Mesh::CreateSphere(float radius, int segments) {
       const unsigned int a = static_cast<unsigned int>(r * (sectors + 1) + s);
       const unsigned int b = a + static_cast<unsigned int>(sectors) + 1;
 
+      // Wound so the geometric normal points OUTWARD (away from the sphere
+      // centre). (The previous order produced inward geometric normals, so
+      // under back-face culling the sphere rendered as an inside-out shell.)
       indices.push_back(a);
-      indices.push_back(b);
       indices.push_back(a + 1);
+      indices.push_back(b);
 
       indices.push_back(a + 1);
-      indices.push_back(b);
       indices.push_back(b + 1);
+      indices.push_back(b);
     }
   }
 

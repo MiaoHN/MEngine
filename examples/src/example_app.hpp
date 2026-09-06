@@ -38,7 +38,9 @@ class ExampleApp : public MEngine::Application {
     /// with the camera `eye`/`front` of that frame), e.g. to animate a light
     /// or attach a flashlight to the camera. Kept last so the existing
     /// positional `Setup{ build, name, ... }` initializers still line up.
-    std::function<void(MEngine::Scene &, const glm::vec3 &eye, const glm::vec3 &front, float dt)> update;
+    /// (Has a default member initializer so positional aggregate init that
+    /// omits it stays warning-free.)
+    std::function<void(MEngine::Scene &, const glm::vec3 &eye, const glm::vec3 &front, float dt)> update{};
   };
 
   explicit ExampleApp(Setup setup);
