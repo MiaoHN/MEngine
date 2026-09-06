@@ -365,6 +365,7 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   shader->SetUniform("specular_intensity", material->GetSpecularFactor());
   shader->SetUniform("u_material_specular_color", material->GetSpecularColor());
   shader->SetUniform("u_material_has_specular_color", material->HasSpecularColor() ? 1 : 0);
+  shader->SetUniform("u_albedo_srgb", material->IsAlbedoSRGB() ? 1 : 0);
   shader->SetUniform("material_shininess", material->GetShininess());
   shader->SetUniform("u_material_unlit", material->IsUnlit() ? 1 : 0);
   shader->SetUniform("u_render_mode", render_mode_ == RenderMode::Unlit ? 1 : 0);

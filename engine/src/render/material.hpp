@@ -43,6 +43,12 @@ class Material {
   [[nodiscard]] Ref<Texture> GetAOMap() const { return ao_map_; }
   [[nodiscard]] Ref<Texture> GetSpecularMap() const { return specular_map_; }
 
+  /// @brief Marks the albedo map as sRGB-encoded (LearnOpenGL loads its albedo
+  /// maps this way in the gamma-correct HDR/bloom demos). The shader decodes
+  /// it to linear (pow 2.2) before lighting; no GL_SRGB texture needed.
+  void SetAlbedoSRGB(bool srgb) { albedo_srgb_ = srgb; }
+  [[nodiscard]] bool IsAlbedoSRGB() const { return albedo_srgb_; }
+
   void SetBaseColorFactor(const glm::vec4 &factor) { base_color_factor_ = factor; }
   void SetMetallicFactor(float factor) { metallic_factor_ = factor; }
   void SetRoughnessFactor(float factor) { roughness_factor_ = factor; }
@@ -93,6 +99,7 @@ class Material {
   float     shininess_        = 32.0f;
   glm::vec3 specular_color_{1.0f};
   bool      has_specular_color_ = false;
+  bool      albedo_srgb_      = false;
   bool      translucent_      = false;
   bool      unlit_            = false;
   // Closed, opaque meshes are the norm (primitives, models, stress grids), so

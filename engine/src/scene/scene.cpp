@@ -143,6 +143,7 @@ bool MaterialLessForBatching(const Ref<Material> &a, const Ref<Material> &b) {
   if (a->GetSpecularFactor() != b->GetSpecularFactor()) return a->GetSpecularFactor() < b->GetSpecularFactor();
   if (a->GetShininess() != b->GetShininess()) return a->GetShininess() < b->GetShininess();
   if (a->IsTranslucent() != b->IsTranslucent()) return a->IsTranslucent() < b->IsTranslucent();
+  if (a->IsAlbedoSRGB() != b->IsAlbedoSRGB()) return a->IsAlbedoSRGB() < b->IsAlbedoSRGB();
   return a->IsUnlit() < b->IsUnlit();
 }
 

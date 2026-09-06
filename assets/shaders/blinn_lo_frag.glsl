@@ -37,6 +37,7 @@ uniform int  has_specular_map = 0;
 uniform vec4  base_color_factor   = vec4(1.0);
 uniform float specular_intensity  = 1.0;
 uniform float material_shininess  = 32.0;
+uniform int   u_albedo_srgb       = 0;  // decode albedo map sRGB->linear (LO 6/7)
 uniform vec3  u_material_specular_color      = vec3(1.0);
 uniform int   u_material_has_specular_color  = 0;
 uniform int   u_material_unlit    = 0;  // emissive light-source cubes
@@ -137,6 +138,9 @@ float DirShadowLit(vec3 frag_pos_world, vec3 N, vec3 L) {
 
 void main() {
   vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, TexCoord).rgb : vec3(1.0);
+  if (has_albedo_map == 1 && u_albedo_srgb == 1) {
+    albedo = pow(albedo, vec3(2.2));  // sRGB -> linear (LO loads these as sRGB)
+  }
   albedo *= base_color_factor.rgb;
 
   // Emissive light-source cubes output their color directly (LO light_cube).

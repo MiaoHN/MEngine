@@ -25,13 +25,15 @@ OpenGLTextureBackend::OpenGLTextureBackend() {
 OpenGLTextureBackend::~OpenGLTextureBackend() { glDeleteTextures(1, &id_); }
 
 void OpenGLTextureBackend::SetData(unsigned char *data, int width, int height, int channels, bool srgb) {
+  // sRGB decode is done in the SHADER (per-material `u_albedo_srgb` flag) rather
+  // than via GL_SRGB internal formats: some drivers return black when sampling a
+  // GL_SRGB texture here, and shader-side pow() is exact + portable.
+  (void)srgb;
   GLenum format = GL_RGBA;
   if (channels == 1) {
     format = GL_RED;
   } else if (channels == 3) {
-    format = srgb ? GL_SRGB : GL_RGB;
-  } else if (channels == 4) {
-    format = srgb ? GL_SRGB_ALPHA : GL_RGBA;
+    format = GL_RGB;
   }
 
   glBindTexture(GL_TEXTURE_2D, id_);

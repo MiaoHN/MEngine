@@ -71,7 +71,7 @@ std::shared_ptr<Scene> BuildHdrBloom() {
   s->SetSkyboxEnabled(false);
   s->SetBackgroundColor(glm::vec3(0.0f));
   s->SetIblIntensity(0.0f);
-  s->SetExposure(1.0f);  // LO default exposure; sRGB albedo maps keep brightness in check
+  s->SetExposure(1.5f);  // LO demo's exposure dial; sRGB albedo keeps pools from blowing out
   s->SetTAAEnabled(false);
   s->SetSSAOEnabled(false);
   // LO adds the blurred bright buffer additively with NO extra god-rays veil.
@@ -86,6 +86,6 @@ std::shared_ptr<Scene> BuildHdrBloom() {
 ::MEngine::Application *CreateApplication() {
   MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
-      MEngine::examples::ExampleApp::Setup{BuildHdrBloom, "LO 5.6 hdr + bloom", {0, 0, 0}, 0.0f, 0.0f, 5.0f,
+      MEngine::examples::ExampleApp::Setup{BuildHdrBloom, "LO 5.6 hdr + bloom", {0, 0.0f, 0}, 0.0f, 0.0f, 5.0f,
                                            45.0f});
 }

@@ -5,16 +5,14 @@
 
 ---
 
-## 2026-09-06 — 引擎 sRGB 贴图支持：ex_5_6 泛光与 LO“处理一致”（修复偏亮/过渡）
+## 2026-09-06 — ex_5_6 泛光 sRGB 处理与 LO 对齐（最终：shader 侧解码，防驱动黑屏）
 
-- **用户反馈**：泛光比 LO 示例亮、白色发光块下亮暗过渡不自然；要求整个渲染参数/处理与 LO 一致（不要靠压曝光硬凑）。
-- **根因**：LO 7.bloom 把 wood/container2 按 **sRGB 上传**（GPU 采样时解码 sRGB→linear，最后再 gamma），引擎却把所有贴图当线性（字节直读）→ 光照在线性域用了高一截的 albedo → 整体偏亮。先前压 exposure/bloom 是“假对齐”。
-- **引擎（真对齐）**：
-  - `ITextureBackend::SetData(..., bool srgb=false)`；OpenGL 在 srgb 时用 `GL_SRGB`/`GL_SRGB_ALPHA` 内格式（Vulkan 忽略）；`Texture` 支持 srgb 构造/`SetData`；`AssetManager::GetTexture(path, srgb=false)` 缓存键加 `@srgb` 后缀（同一文件可在不同场景分别按 raw 或 sRGB 加载，互不污染）。
-  - 新增 `examples::BlinnLoDiffuse(path, shininess, srgb)`（`GetTexture(path, srgb)`）。
-- **ex_5_6_hdr_bloom**：木地板与 container2 均按 **sRGB** 加载；曝光回 LO 默认 **1.0**；bloom 全量叠加 strength 1.0、阈值 1.0；god rays 关（LO 无）；LO `1-exp` tone + gamma 不变。默认正视画面=白色/绿色发光体+黑场（LO 官网图为斜视取景，可右键环绕观看光池/木箱）。
-- **验证**：debug（串行避免 clang OOM）全量编译零警告；capture 观感：发光体克制、过渡平顺。
-- **已知残留差异**：引擎 bloom 模糊在半分辨率做、LO 全分辨率 → 光晕略宽/柔和度不同；如白色块下过渡仍不自然，可给 PostProcessing 加“全分辨率 bloom”开关。
+- **用户反馈**：泛光比 LO 亮、白色块下过渡不自然；随后“压得啥都看不到”→ 要求处理/参数与 LO 一致且要看得见。
+- **根因**：LO 7.bloom 把 wood/container2 按 sRGB 加载（采样解码到线性、最后 gamma），引擎当线性字节直读 → 线性域 albedo 偏高 → 偏亮。
+- **引擎（最终方案）**：**不依赖 GL_SRGB 内格式**（Intel 驱动对它采样返回 0 → 整片黑），改为 **shader 侧解码**：`Material::SetAlbedoSRGB(true)` → Renderer 上传 `u_albedo_srgb` → `blinn_lo` 里 `albedo=pow(albedo, vec3(2.2))`（数学与 GL sRGB 解码等价、各驱动稳）。`GetTexture(path,srgb)`/`@srgb` 缓存键、Texture 接口保留（GL 上传一律 raw）。`BlinnLoDiffuse(path, shininess, srgb)` 在 srgb 时设旗标。
+- **ex_5_6**：木地板/container2 按 sRGB 解码；曝光 **1.5**（LO 演示的曝光拨盘值，sRGB 下光池不爆白）；bloom 全量叠加 + 阈值 1.0 + god rays 关；LO `1-exp` tone + gamma。默认正视即可见 pale 地板/木箱/白绿光晕。
+- **验证**：debug 全量（串行）零警告；capture：地板/木箱/发光体自然可见、不过曝。
+- **已知残留差异**：引擎 bloom 模糊为半分辨率、LO 全分辨率 → 光晕略宽；如仍需更“贴”的光晕可加全分辨率 bloom 开关。
 
 ---
 

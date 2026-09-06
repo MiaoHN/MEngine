@@ -110,6 +110,9 @@ inline Ref<Material> BlinnLoDiffuse(const std::string &albedo_path, float shinin
   Ref<Material> m = CreateRef<Material>();
   m->SetShader(AssetManager::Instance().GetShader("blinn_lo"));
   m->SetAlbedoMap(AssetManager::Instance().GetTexture(albedo_path, srgb));
+  if (srgb) {
+    m->SetAlbedoSRGB(true);  // decode the map sRGB->linear in the shader
+  }
   m->SetShininess(shininess);
   return m;
 }
