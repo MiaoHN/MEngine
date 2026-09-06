@@ -57,6 +57,7 @@ list(APPEND MENGINE_EXAMPLE_DEMOS
   ex_6_1_1_pbr_lighting          # 6.pbr/1.1.lighting (engine PBR, 7x7 metal/rough matrix)
   ex_6_1_2_pbr_lighting_textured # 6.pbr/1.2.lighting_textured (rusted_iron, engine PBR)
   ex_6_2_2_ibl_specular_textured # 6.pbr/2.2.2.ibl_specular_textured (5 materials, newport_loft IBL)
+  ex_6_2_cerberus                # user Cerberus model in the LO 6.2 newport_loft IBL scene
 )
 
 # Utility: engine model viewer (user asset, e.g. Cerberus GLB)

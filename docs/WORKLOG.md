@@ -5,6 +5,14 @@
 
 ---
 
+## 2026-09-06 — 把 Cerberus 放进 LO 6.2 的 newport_loft IBL 场景（ex_6_2_cerberus）
+
+- **用户**：把新加的 model 放到 pbr 6.2 的场景下（参考图=悬浮在客厅的斜置枪，背景虚化）。
+- **ex_6_2_cerberus**：同 6.2.2 环境配置（newport_loft env+flip、4×300 直射光、IBL=1、Reinhard、无 bloom/godrays/TAA/SSAO），主体为 Cerberus glTF：自归一化后斜置（绕 Z ~38°）悬浮在房间里；相机可 WASD 飞行/轨道/滚轮。capture 与参考图一致观感（清晰模型+虚化客厅）。
+- 6.2.2 的 LO 球体材质图保持独立不受影响。
+
+---
+
 ## 2026-09-06 — example 相机可移动（WASD 飞行）+ Cerberus 模型 viewer
 
 - **用户**：① 6.2.2 球仍有点不一样（后续再对）；② 加了个新模型让加载进去；③ 让摄像头能移动。
