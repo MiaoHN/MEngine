@@ -134,7 +134,6 @@ class Editor : public Application {
   void CreateSpotLightEntity();
   void CreateDirectionalLightEntity();
   void CreateModelEntity(const std::filesystem::path &path);
-  void CreatePhysicsDemo();
   void CreateEngineDemo();
   void DuplicateSelectedEntity();
   /// @brief Deep-copies `source` and its whole child subtree. The copy is

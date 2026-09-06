@@ -425,6 +425,32 @@ void DrawFolderIcon(ImDrawList *draw, const ImVec2 &min, const ImVec2 &max) {
   draw->AddRectFilled(body_min, body_max, body);
 }
 
+/// @brief Projects a world point to viewport screen coordinates (returns a
+/// sentinel with x == float max when the point is behind the camera).
+glm::vec2 WorldToScreen(const glm::mat4 &view_proj, const ImVec2 &image_pos, const ImVec2 &image_size,
+                        const glm::vec3 &world) {
+  const glm::vec4 clip = view_proj * glm::vec4(world, 1.0f);
+  if (clip.w <= 0.0f) {
+    return glm::vec2(std::numeric_limits<float>::max(), 0.0f);
+  }
+  const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+  return glm::vec2(image_pos.x + (ndc.x * 0.5f + 0.5f) * image_size.x,
+                   image_pos.y + (0.5f - ndc.y * 0.5f) * image_size.y);
+}
+
+/// @brief Draws a 3D line through the gizmo projection (skipped when either
+/// endpoint is behind the camera).
+void DrawWorldLine(ImDrawList *draw_list, const glm::mat4 &view_proj, const ImVec2 &image_pos,
+                   const ImVec2 &image_size, const glm::vec3 &a, const glm::vec3 &b, ImU32 color,
+                   float thickness = 1.5f) {
+  const glm::vec2 sa = WorldToScreen(view_proj, image_pos, image_size, a);
+  const glm::vec2 sb = WorldToScreen(view_proj, image_pos, image_size, b);
+  if (sa.x == std::numeric_limits<float>::max() || sb.x == std::numeric_limits<float>::max()) {
+    return;
+  }
+  draw_list->AddLine(ImVec2(sa.x, sa.y), ImVec2(sb.x, sb.y), color, thickness);
+}
+
 }  // namespace
 
 Editor::Editor() : Application(Application::GetStartupApi()) {}
@@ -2894,122 +2920,6 @@ void Editor::CreateEngineDemo() {
   LOG_INFO("Editor") << "Created engine lighting demo (PBR floor/boxes + sun + colored point lights + bloom)";
 }
 
-void Editor::CreatePhysicsDemo() {
-  // Large static floor platform. Colliders are world-space (the transform's
-  // scale is intentionally ignored), so the half extents match the visible box.
-  Entity ground = active_scene_->CreateEntity("Ground");
-  ground.AddComponent<Transform>(glm::vec3(0.0f, -0.5f, 0.0f));
-  ground.GetComponent<Transform>().scale = glm::vec3(20.0f, 1.0f, 20.0f);
-  ground.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateRef<Material>(*default_material_));
-  ground.AddComponent<RigidBodyComponent>(RigidBodyComponent::Type::Static);
-  {
-    ColliderComponent collider;
-    collider.shape            = ColliderComponent::Shape::Box;
-    collider.box_half_extents = glm::vec3(10.0f, 0.5f, 10.0f);
-    ground.AddComponent<ColliderComponent>(collider);
-  }
-
-  // A free-fly player camera for Play mode: WASD/QE move, right-drag looks.
-  Entity camera = active_scene_->CreateEntity("Player Camera");
-  CameraComponent camera_component;
-  camera_component.camera.position = glm::vec3(11.0f, 7.0f, 11.0f);
-  camera_component.camera.LookAt(glm::vec3(0.0f, 1.5f, 0.0f));
-  camera_component.primary = true;
-  camera.AddComponent<CameraComponent>(camera_component);
-  camera.AddComponent<CameraController>();
-
-  // A script-driven cube (no physics) off to the side, just to keep the plain
-  // LuaScriptComponent demo around.
-  Entity spinner = active_scene_->CreateEntity("Spinner");
-  spinner.AddComponent<Transform>(glm::vec3(4.0f, 3.0f, 4.5f));
-  spinner.AddComponent<MeshComponent>(Mesh::CreateCube(), CreateRef<Material>(*default_material_));
-  spinner.AddComponent<LuaScriptComponent>("scripts/spin.lua");
-
-  // ---- Collision playground (press Play) --------------------------------
-  // main.lua periodically fires "Ball"s (+X, along z = 0) from the left.
-  // Static brick targets sit in the lane: target.lua turns them red as they
-  // take hits and destroys them at 0 HP. The Bouncer (far side, z = -4) hops
-  // on its own and reacts to Space via OnFixedUpdate.
-
-  const struct {
-    float     x;
-    glm::vec3 color;
-  } kTargets[] = {
-      {-3.0f, {0.25f, 0.55f, 0.95f}},
-      {0.0f, {0.25f, 0.78f, 0.42f}},
-      {3.0f, {0.95f, 0.62f, 0.18f}},
-  };
-  for (const auto &t : kTargets) {
-    Entity target = active_scene_->CreateEntity("Target");
-    target.AddComponent<Transform>(glm::vec3(t.x, 0.5f, 0.0f));
-    auto material      = CreateRef<Material>(*default_material_);
-    material->SetBaseColorFactor(glm::vec4(t.color, 1.0f));
-    target.AddComponent<MeshComponent>(Mesh::CreateCube(), material);
-    target.AddComponent<RigidBodyComponent>(RigidBodyComponent::Type::Static);
-    {
-      ColliderComponent collider;
-      collider.shape            = ColliderComponent::Shape::Box;
-      collider.box_half_extents = glm::vec3(0.5f);
-      target.AddComponent<ColliderComponent>(collider);
-    }
-    target.AddComponent<LuaScriptComponent>("scripts/target.lua");
-  }
-
-  // A bouncy dynamic sphere driven entirely by Lua (impulse + collision hooks).
-  Entity bouncer = active_scene_->CreateEntity("Bouncer");
-  bouncer.AddComponent<Transform>(glm::vec3(0.0f, 3.0f, -4.0f));
-  bouncer.AddComponent<MeshComponent>(Mesh::CreateSphere(), CreateRef<Material>(*default_material_));
-  {
-    RigidBodyComponent &rigid = bouncer.AddComponent<RigidBodyComponent>();
-    rigid.friction            = 0.2f;
-    rigid.restitution         = 0.75f;
-  }
-  {
-    ColliderComponent collider;
-    collider.shape         = ColliderComponent::Shape::Sphere;
-    collider.sphere_radius = 0.5f;
-    bouncer.AddComponent<ColliderComponent>(collider);
-  }
-  bouncer.AddComponent<LuaScriptComponent>("scripts/bounce.lua");
-
-  // ---- Emissive HDR "lamp" cubes + matching ECS point lights (bloom) -------
-  // Each small cube is an UNLIT HDR-emissive surface (outputs a colour > 1, so
-  // the bloom pass picks it up and it glows). The same entity also carries a
-  // PointLightComponent - position follows its Transform, so moving / gizmo-ing
-  // a lamp moves both its cube and its light (Light componentization demo).
-  const struct {
-    glm::vec3 pos;
-    glm::vec3 color;
-  } kLamps[] = {
-      {{-4.0f, 1.6f, -4.0f}, {6.0f, 2.5f, 1.0f}},   // warm
-      {{4.0f, 1.6f, -4.0f}, {2.5f, 6.0f, 1.0f}},    // green
-      {{-4.0f, 1.6f, 4.0f}, {1.0f, 4.0f, 7.0f}},    // blue
-      {{4.0f, 1.6f, 4.0f}, {7.0f, 7.0f, 7.0f}},     // white
-  };
-  Ref<Mesh> unit_cube = Mesh::CreateCube();
-  for (const auto &lamp_def : kLamps) {
-    Entity lamp = active_scene_->CreateEntity("Emissive Lamp");
-    lamp.AddComponent<Transform>(lamp_def.pos);
-    lamp.GetComponent<Transform>().scale = glm::vec3(0.3f);
-
-    auto material = CreateRef<Material>();
-    material->SetShader(AssetManager::Instance().GetShader("pbr"));
-    material->SetBaseColorFactor(glm::vec4(lamp_def.color, 1.0f));
-    material->SetUnlit(true);  // output the HDR colour directly -> blooms
-    lamp.AddComponent<MeshComponent>(unit_cube, material);
-
-    PointLightComponent light;
-    light.light.color     = lamp_def.color * 0.2f;  // tint the scene like the lamp
-    light.light.intensity = 1.0f;
-    light.light.radius    = 8.0f;
-    lamp.AddComponent<PointLightComponent>(light);
-  }
-
-  LOG_INFO("Editor")
-      << "Collision playground created (ground + targets + bouncer + camera + "
-         "emissive lamp cubes)";
-}
-
 void Editor::SetGridVisible(bool visible) {
   if (grid_entity_.GetHandle() == entt::null) {
     return;
@@ -3470,23 +3380,8 @@ void Editor::DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size)
   ImDrawList      *draw_list = ImGui::GetWindowDrawList();
   const glm::mat4 view_proj = editor_camera_.GetProjectionMatrix() * editor_camera_.GetViewMatrix();
 
-  const auto world_to_screen = [&](const glm::vec3 &world) -> glm::vec2 {
-    const glm::vec4 clip = view_proj * glm::vec4(world, 1.0f);
-    if (clip.w <= 0.0f) {
-      return glm::vec2(std::numeric_limits<float>::max(), 0.0f);
-    }
-    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-    return glm::vec2(image_pos.x + (ndc.x * 0.5f + 0.5f) * image_size.x,
-                     image_pos.y + (0.5f - ndc.y * 0.5f) * image_size.y);
-  };
-
   const auto draw_line = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color, float thickness = 1.5f) {
-    const glm::vec2 s0 = world_to_screen(a);
-    const glm::vec2 s1 = world_to_screen(b);
-    if (s0.x == std::numeric_limits<float>::max() || s1.x == std::numeric_limits<float>::max()) {
-      return;
-    }
-    draw_list->AddLine(ImVec2(s0.x, s0.y), ImVec2(s1.x, s1.y), color, thickness);
+    DrawWorldLine(draw_list, view_proj, image_pos, image_size, a, b, color, thickness);
   };
 
   for (auto &entity : active_scene_->GetAllEntitiesWith<CameraComponent>()) {
@@ -3570,23 +3465,8 @@ void Editor::DrawLightGizmos(const ImVec2 &image_pos, const ImVec2 &image_size) 
   ImDrawList      *draw_list = ImGui::GetWindowDrawList();
   const glm::mat4 view_proj = editor_camera_.GetProjectionMatrix() * editor_camera_.GetViewMatrix();
 
-  const auto world_to_screen = [&](const glm::vec3 &world) -> glm::vec2 {
-    const glm::vec4 clip = view_proj * glm::vec4(world, 1.0f);
-    if (clip.w <= 0.0f) {
-      return glm::vec2(std::numeric_limits<float>::max(), 0.0f);
-    }
-    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-    return glm::vec2(image_pos.x + (ndc.x * 0.5f + 0.5f) * image_size.x,
-                     image_pos.y + (0.5f - ndc.y * 0.5f) * image_size.y);
-  };
-
   const auto draw_line = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color, float thickness = 1.5f) {
-    const glm::vec2 s0 = world_to_screen(a);
-    const glm::vec2 s1 = world_to_screen(b);
-    if (s0.x == std::numeric_limits<float>::max() || s1.x == std::numeric_limits<float>::max()) {
-      return;
-    }
-    draw_list->AddLine(ImVec2(s0.x, s0.y), ImVec2(s1.x, s1.y), color, thickness);
+    DrawWorldLine(draw_list, view_proj, image_pos, image_size, a, b, color, thickness);
   };
 
   // Ring of `segments` points around `center`, spanning the (right, up) plane.
@@ -3705,23 +3585,8 @@ void Editor::DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_siz
   ImDrawList      *draw_list = ImGui::GetWindowDrawList();
   const glm::mat4 view_proj = editor_camera_.GetProjectionMatrix() * editor_camera_.GetViewMatrix();
 
-  const auto world_to_screen = [&](const glm::vec3 &world) -> glm::vec2 {
-    const glm::vec4 clip = view_proj * glm::vec4(world, 1.0f);
-    if (clip.w <= 0.0f) {
-      return glm::vec2(std::numeric_limits<float>::max(), 0.0f);
-    }
-    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-    return glm::vec2(image_pos.x + (ndc.x * 0.5f + 0.5f) * image_size.x,
-                     image_pos.y + (0.5f - ndc.y * 0.5f) * image_size.y);
-  };
-
   const auto draw_line = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color, float thickness = 1.5f) {
-    const glm::vec2 s0 = world_to_screen(a);
-    const glm::vec2 s1 = world_to_screen(b);
-    if (s0.x == std::numeric_limits<float>::max() || s1.x == std::numeric_limits<float>::max()) {
-      return;
-    }
-    draw_list->AddLine(ImVec2(s0.x, s0.y), ImVec2(s1.x, s1.y), color, thickness);
+    DrawWorldLine(draw_list, view_proj, image_pos, image_size, a, b, color, thickness);
   };
 
   const ImU32 color = IM_COL32(240, 160, 60, 255);
