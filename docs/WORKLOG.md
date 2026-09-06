@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-06 — 视差映射 Parallax Occlusion Mapping（POM，D 项）
+
+- **engine 材质**：`Material` 增 height map 槽 + `height_scale` 因子；`Renderer::DrawMeshInstanced` 把高度图绑到纹理单元 15（避开 shadow/IBL/SSAO/点光阴影 8..11 等），逐 draw 上传 `height_scale`；合批比较加 height map + scale，视差/非视差材质不会误合并。commit `576d9f2`。
+- **shader（pbr/blinn 引擎路径）**：LO 5.3 风格 POM——沿切线空间视线对高度场分层 ray-march + 层间线性插值；用导数法几何 TBN（无需新顶点属性）。仅在有高度图且 `height_scale>0` 的 lit pass 生效；unlit/发光材质不受影响（`blinn_lo` 单色精确路径不动）。
+- **序列化**：`"height"` + `"height_scale"` 往返（MaterialToJson/FromJson/ApplyMaterialJson）。
+- **editor**：共享 `DrawMaterialEditor` 增 Height 缩略图行 + Height Scale 滑条（0..0.2）——Mesh 与 Model 每部位都能用。
+- 验证：`bricks2`(diffuse+normal+disp) 平面 headless 两张截图，视差开/关 mean abs diff≈3.2/255、开时砖块明显浮出；`example_ex_6_2_2_ibl_specular` 输出不变。
+- 下一步：其余引擎增强 / 技术债清理（重复抽象/死码/命名）。
+
+---
+
 ## 2026-09-06 — 单实体多材质模型组件（ModelComponent，C 项）
 
 - **engine 类型正规化**：`ObjModel`/`ObjModelPart` 更名通用 `Model`/`ModelPart`（每 part = 独立 mesh + 材质 + 材质名）。`LoadObjModel` 通过 **MeshLibrary**（此前死代码，现正式接入）按 `"路径|材质组"` 缓存 part 网格 → 同一模型多处导入/多实体共享同一份 GPU 网格，可实例化合批。commit `8b89821`。

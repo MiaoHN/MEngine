@@ -144,6 +144,7 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - `Material`（`render/material.hpp`）：glTF metallic-roughness PBR 材质，持有 albedo / normal / metallic-roughness / AO 四张贴图及 baseColor/metallic/roughness 因子，由 `Renderer::DrawMesh` 负责绑定与 uniform 上传。
 - `MeshComponent` 现在绑定 `Mesh + Material`（取代了之前的 `shader + texture`）。
 - PBR shader：`res/shaders/pbr_{vert,frag}.glsl`——Cook-Torrance GGX 微面元 BRDF + 方向光 + 环境光，支持法线贴图（导数法 TBN，无需切线属性）、金属/粗糙度、AO，以及 Reinhard tone mapping + gamma 校正。
+- **视差遮挡映射（POM）**：pbr/blinn 片段着色器带 LO 5.3 风格 POM——`Material` 可选 height map（红通道）+ `height_scale`（渲染单元 15 绑定、逐 draw 上传）；沿切线空间视线分层 ray-march + 层间插值位移 UV（导数法几何 TBN，无需切线属性）。有高度图且 `height_scale>0` 时生效；高度图 + scale 参与合批比较与场景序列化往返。
 - glTF 加载器新增 `ModelLoader::LoadGltfMaterial`，提取 PBR 贴图与因子。
 - 样例：`sandbox/res/models/damaged_helmet.glb`（Khronos PBR 测试模型）。
 

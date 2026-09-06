@@ -46,7 +46,7 @@ graph TB
 - **Gizmo**：`W`/`E`/`R` 切换移动/旋转/缩放；`F` 聚焦选中实体；`Ctrl+D` 复制实体。
 - **光源方向 = 实体旋转**：选中 Directional / Spot 光实体按 `E` 旋转，光轴（局部 -Z）即传播/照射方向；新建方向/聚光默认朝下（pitch -90°）。**多方向光**：场景里第一个方向光实体是带阴影主光，可再添加多个方向光实体作为无阴影补光（各自 Color 在 Properties 调，旋转即可瞄准）。
 - **模型导入**：从内容浏览器拖 `.obj` / `.gltf` / `.glb` 到视口，自动取景并落在网格上；OBJ 有 `.mtl` 时按 `.mtl` 读取贴图与 `Kd`，否则按文件名约定自动套用同目录贴图（diffuse/normal/roughness/ao）。**多材质 OBJ**（如 nanosuit）导入为**单个实体**的 ModelComponent——六个 `usemtl` 部位各自贴图，整体随实体 Transform 移动/缩放。
-- **材质编辑**：在 Properties → Mesh / Model 里把图片拖到 Albedo/Normal/Roughness/AO 缩略图槽，右键清除；可调 Base Color/Metallic/Roughness/Specular。Model 用 Part 下拉选部位后逐部位编辑。
+- **材质编辑**：在 Properties → Mesh / Model 里把图片拖到 Albedo/Normal/Roughness/AO 缩略图槽，右键清除；可调 Base Color/Metallic/Roughness/Specular。Model 用 Part 下拉选部位后逐部位编辑。**视差**：下方 Height 缩略图拖高度图 + Height Scale 滑条（POM 视差遮挡映射，pbr/blinn 材质有效）。
 - **渲染到纹理**：`Scene::RenderMeshes(..., target_fbo=视口FBO, ...)` 合成到视口纹理，`frame_buffer_->Unbind()` 后再交给 ImGui 显示。
 
 ## 当前局限
