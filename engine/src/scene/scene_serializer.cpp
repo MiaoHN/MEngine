@@ -629,7 +629,7 @@ void Scene::SaveScene(const std::string &path) {
 
   // Directional light (only as a legacy block when no entity carries it).
   if (registry_.view<DirectionalLightComponent>().empty()) {
-    const auto &light = renderer_->GetLight();
+    const auto &light = authored_directional_light_;
     json        j;
     j["direction"] = Vec3ToJson(light.direction);
     j["color"]     = Vec3ToJson(light.color);
@@ -764,8 +764,9 @@ void Scene::LoadScene(const std::string &path) {
   // Directional light.
   if (root.contains("directional_light")) {
     const auto &j = root["directional_light"];
-    renderer_->GetLight().direction = Vec3FromJson(j.value("direction", json()), glm::vec3(-0.3f, -1.0f, -0.4f));
-    renderer_->GetLight().color     = Vec3FromJson(j.value("color", json()), glm::vec3(2.5f));
+    authored_directional_light_.direction = Vec3FromJson(j.value("direction", json()), glm::vec3(-0.3f, -1.0f, -0.4f));
+    authored_directional_light_.color     = Vec3FromJson(j.value("color", json()), glm::vec3(2.5f));
+    renderer_->SetLight(authored_directional_light_);
   }
 
   // Point lights.
@@ -938,8 +939,9 @@ bool Scene::OpenSceneFile(const std::string &path) {
   // Directional light.
   if (root.contains("directional_light")) {
     const auto &j = root["directional_light"];
-    renderer_->GetLight().direction = Vec3FromJson(j.value("direction", json()), glm::vec3(-0.3f, -1.0f, -0.4f));
-    renderer_->GetLight().color     = Vec3FromJson(j.value("color", json()), glm::vec3(2.5f));
+    authored_directional_light_.direction = Vec3FromJson(j.value("direction", json()), glm::vec3(-0.3f, -1.0f, -0.4f));
+    authored_directional_light_.color     = Vec3FromJson(j.value("color", json()), glm::vec3(2.5f));
+    renderer_->SetLight(authored_directional_light_);
   }
 
   // Point lights.

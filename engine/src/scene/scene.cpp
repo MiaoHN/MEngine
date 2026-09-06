@@ -213,6 +213,7 @@ Scene::Scene() {
   default_camera_info_->position        = glm::vec3(0.0f);
 
   renderer_ = CreateRef<Renderer>();
+  authored_directional_light_ = renderer_->GetLight();
 
   physics_world_ = CreateRef<PhysicsWorld>();
 
@@ -1283,15 +1284,34 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
 void Scene::AddPointLight(const PointLight &light) { renderer_->AddPointLight(light); }
 
 void Scene::SyncLightComponents() {
+  // Direction convention: an entity light's local -Z axis is its travel/aim
+  // direction, so rotating the entity (Transform) aims the light - exactly
+  // like rotating a camera. The component's stored `light.direction` is kept
+  // in sync with the derived value each frame (a save then stores the same
+  // number that drives the renderer), but the Transform rotation is the source
+  // of truth. Entities without a Transform keep the raw component fields.
+  constexpr glm::vec3 kLightForward(0.0f, 0.0f, -1.0f);
+
   // A DirectionalLightComponent (single for now) overrides the renderer's
   // directional light every frame. Multi-directional needs shader arrays.
   {
     const auto view = registry_.view<DirectionalLightComponent>();
     if (!view.empty()) {
       for (const auto e : view) {
-        renderer_->SetLight(registry_.get<DirectionalLightComponent>(e).light);
+        auto            &comp = registry_.get<DirectionalLightComponent>(e);
+        DirectionalLight l    = comp.light;
+        if (registry_.all_of<Transform>(e)) {
+          l.direction       = glm::normalize(glm::mat3(GetWorldTransform(e)) * kLightForward);
+          comp.light.direction = l.direction;
+        }
+        renderer_->SetLight(l);
         break;  // renderer supports one directional light
       }
+    } else {
+      // No directional-light entity this frame: fall back to the scene's own
+      // authored sun. Without this, a directional light that was added and then
+      // deleted would linger in the renderer (it was never cleared).
+      renderer_->SetLight(authored_directional_light_);
     }
   }
 
@@ -1326,7 +1346,9 @@ void Scene::SyncLightComponents() {
       auto     &c = registry_.get<SpotLightComponent>(e);
       SpotLight l = c.light;
       if (registry_.all_of<Transform>(e)) {
-        l.position = GetWorldPosition(e);
+        l.position       = GetWorldPosition(e);
+        l.direction      = glm::normalize(glm::mat3(GetWorldTransform(e)) * kLightForward);
+        c.light.direction = l.direction;
       }
       renderer_->AddSpotLight(l);
     }
@@ -1339,11 +1361,14 @@ void Scene::AddSpotLight(const SpotLight &light) { renderer_->AddSpotLight(light
 
 void Scene::ClearSpotLights() { renderer_->ClearSpotLights(); }
 
-const DirectionalLight &Scene::GetLight() const { return renderer_->GetLight(); }
+const DirectionalLight &Scene::GetLight() const { return authored_directional_light_; }
 
-DirectionalLight &Scene::GetLight() { return renderer_->GetLight(); }
+DirectionalLight &Scene::GetLight() { return authored_directional_light_; }
 
-void Scene::SetLight(const DirectionalLight &light) { renderer_->SetLight(light); }
+void Scene::SetLight(const DirectionalLight &light) {
+  authored_directional_light_ = light;
+  renderer_->SetLight(light);  // visible immediately, before the next frame sync
+}
 
 void Scene::SetExposure(float exposure) { renderer_->SetExposure(exposure); }
 

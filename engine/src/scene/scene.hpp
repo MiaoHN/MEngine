@@ -315,6 +315,14 @@ class Scene {
 
   Ref<Renderer> renderer_;
 
+  /// @brief The scene's authored directional "sun" (what the legacy
+  /// Scene::SetLight / Lighting panel configure). A DirectionalLightComponent
+  /// entity overrides it per frame while it exists; when no such entity is
+  /// present the renderer always uses this value - so deleting a directional
+  /// light entity reverts to the scene's own sun instead of leaving the last
+  /// entity's light active.
+  DirectionalLight authored_directional_light_;
+
   Ref<PhysicsWorld> physics_world_;
   bool              simulating_ = false;
 
