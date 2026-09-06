@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-06 — 编辑器通用引擎光照化 + 灯光视觉/操控重构
+
+- **editor 深色主题**：ImGui 整体换成 VS Code 风中性炭灰 + 蓝强调（`SetupImGuiStyle` 全量重写；Log 等级文字/过滤钮、Content Browser hover、提示色同步适配深色）。
+- **场景树遍历安全**：`ShowImGuiScene` 改为先对实体列表**快照**再绘制，杜绝右键 Delete/Duplicate/Create Child 在遍历中改 `entities_` 引起的迭代器失效崩溃。
+- **光源视口示意图**（`DrawLightGizmos`，Edit 常显）：Directional＝太阳圆盘＋方向箭头、Point＝三环灯泡线框＋光晕短线、Spot＝外锥角线框锥体；位置跟实体 Transform、方向同旋转。
+- **灯光方向 = 实体 Rotation**（engine scene）：实体灯传播/照射方向＝世界旋转后的局部 -Z；`SyncLightComponents` 每帧推导并写回 `light.direction`；新建 Directional/Spot 默认 pitch -90°（朝下）；Properties 去掉旧独立 Direction 字段（旋转 gizmo 调方向 + 只读显示）。
+- **方向光删除不再残留（engine）**：Scene 增基准 `authored_directional_light_`（SetLight/Lighting 面板/序列化都读写它）；无 DirectionalLightComponent 实体时每帧用基准恢复 renderer → 删实体光立即消失。
+- **默认场景 → 通用引擎光照（PBR + ACES）**：`CreateEngineDemo`（地板 + Box + 金属球 + 太阳阴影 + 暖点光(开阴影) + 冷点光补光，带 HDR 发光灯泡 bloom）。不再用 LO 精确模式；LO 精确展示由 `examples` LO exe 负责，editor 旧的 LO 展示厅 `CreateLightingDemo` 删除（此前“默认=LO bloom 展示厅”的记录不再适用）。
+- **Lighting 面板 ECS 化**：删除遗留非 ECS `point_lights_` 列表与每帧 renderer 同步；面板改为列出/新增/选中 Directional/Spot/Point **实体灯** + 无方向光实体时的 Scene Sun 兜底；点光默认 `casts_shadow=true`。
+- 提交：`6212d27`(engine) `81f3c8f`(editor) `905f83b`(Lighting 面板重构)。
+
+---
+
 ## 2026-09-06 — `.mtl` 解析（ModelLoader::LoadObjMaterial）+ editor OBJ 导入优先用 .mtl
 
 - **engine**：`ModelLoader::LoadObjMaterial(obj)` 解析 OBJ 引用的 sidecar `.mtl`（首个材质）：

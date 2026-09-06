@@ -22,7 +22,7 @@ graph TB
   2. 初始化 `EditorCamera`（轨道相机）、`ScriptEngine`（加载 `assets/scripts/test.lua`）。
   3. 初始化 ImGui（docking）与 ImGui 渲染后端。
   4. 创建视口 `FrameBuffer`（离屏渲染到纹理）。
-  5. 建立地面网格实体（程序化 grid shader）+ 一个初始立方体。
+  5. 建立地面网格实体（程序化 grid shader）+ 默认通用引擎光照演示场景 `CreateEngineDemo`（PBR 地板/箱子/金属球 + 太阳阴影 + 彩色点光 + HDR 发光灯泡 bloom）。
   6. 设置内容浏览器起始目录（`assets/`）。
 - `Editor::OnUpdate(dt)`：每帧渲染 3D 场景到视口 FBO → 解绑 FBO → `BeginImGui()` → 各面板 → `EndImGui()`。
 
@@ -36,7 +36,7 @@ graph TB
 | 场景层级 | `ShowImGuiScene()` | **父/子层级树**（缩进 + 展开/折叠，子实体随父实体移动/旋转/缩放）；Create（Empty/Cube/Plane/Sphere/Camera）+ Delete（级联删除子树）+ Duplicate（整棵子树深拷贝）；右键节点可 Create Child / Duplicate / Delete / Unparent；**拖拽到另一节点 = 重新父化**，拖到列表下方空区 = 解除父化 |
 | 时间轴 | `ShowImGuiTimeline()` | **关键帧动画（对齐 Godot/Unity/UE 习惯）**：Play/Pause/Stop + Loop + Auto-Key；可设置 **Length(时长)**；可拖/可输入的 **playhead**；下方是**时间标尺 + T/R/S 三条关键帧轨道**——在标尺/轨道上点击拖动 = 移动 playhead，**菱形关键帧可左右拖动改时间**，点击选中后在下方 inspector 编辑 time / xyz / 删除；顶部 Key Translation/Rotation/Scale 在当前 playhead 记录当前位姿；Play 模式自动从 t=0 播放（时长/loop 持久化到场景） |
 | 属性 | `ShowImGuiProperties()` | 编辑选中实体：Tag/Transform/Mesh（材质贴图槽 + 因子）/Camera |
-| 光照 | `ShowImGuiLighting()` | 方向光 + 点光源列表（增删改） |
+| 光照 | `ShowImGuiLighting()` | **ECS 实体灯统一管理**：方向光实体（无实体时退到 Scene Sun 兜底）+ 点/聚光实体列表（Add / 点击选中），数值在 Properties 编辑；视口常显光源示意图（太阳箭头 / 灯泡 / 锥体） |
 | 日志 | 同 | 显示 `mengine.log`，支持 Clear |
 | 信息 | `ShowImGuiInformation()` | FPS + 编辑器相机参数 |
 
@@ -44,13 +44,12 @@ graph TB
 
 - **视口操控**：右键拖动 = 环绕；中键拖动 = 平移；滚轮 = 缩放。
 - **Gizmo**：`W`/`E`/`R` 切换移动/旋转/缩放；`F` 聚焦选中实体；`Ctrl+D` 复制实体。
-- **模型导入**：从内容浏览器拖 `.obj` / `.gltf` / `.glb` 到视口，自动取景并落在网格上；OBJ 自动套用同目录贴图（diffuse/normal/roughness/ao）。
+- **光源方向 = 实体旋转**：选中 Directional / Spot 光实体按 `E` 旋转，光轴（局部 -Z）即传播/照射方向；新建方向/聚光默认朝下（pitch -90°）。
+- **模型导入**：从内容浏览器拖 `.obj` / `.gltf` / `.glb` 到视口，自动取景并落在网格上；OBJ 有 `.mtl` 时按 `.mtl` 读取贴图与 `Kd`，否则按文件名约定自动套用同目录贴图（diffuse/normal/roughness/ao）。
 - **材质编辑**：在 Properties → Mesh 里把图片拖到 Albedo/Normal/Roughness/AO 缩略图槽，右键清除；可调 Base Color/Metallic/Roughness/Specular。
 - **渲染到纹理**：`Scene::RenderMeshes(..., target_fbo=视口FBO, ...)` 合成到视口纹理，`frame_buffer_->Unbind()` 后再交给 ImGui 显示。
 
 ## 当前局限
 
-- OBJ 的 `.mtl` 未解析（贴图靠文件名约定自动套用）。
 - 模型/场景面板尚无多选、撤销/重做。
 - 内容浏览器无面包屑/刷新按钮。
-- M6 新增的渲染选项（Reinhard/LO tone、环境 HDR 路径/翻转、`SetIblSpecular`、背景色等）尚未接入面板。
