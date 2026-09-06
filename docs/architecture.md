@@ -124,5 +124,5 @@ sequenceDiagram
   状态里程碑见 [status.md](./status.md)（M1–M6）；渲染层细节与剩余局限见 [rendering.md](./rendering.md)。
 - **Vulkan 后端是半成品**：`VulkanRHI` 有 swapchain 等初始化代码，但 `Vulkan*ResourceBackend` 大多是空壳。
 - `Scene::LoadScene/SaveScene`（场景序列化）仍为 TODO。
-- `RenderContext` 类与 `RenderPass` 高度相似，疑为未完成的重复抽象，待清理。
+- ~~`RenderContext` 重复抽象~~：`render_context.hpp` 无人引用且无实现，已删除。
 - 光照未组件化：方向光为引擎字段、点光/聚光为场景级列表（计划抽象为 ECS `Light` 组件）。

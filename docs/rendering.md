@@ -276,8 +276,7 @@ class IRHI {
 
 1. **Vulkan 未完成**：后端空壳，无真实 GPU 资源（网格复用 `IVertexArrayBackend`，接口已就位）。
 2. **光照未组件化**：方向光为引擎字段、点光/聚光为场景级列表，尚未抽象为 ECS Light 组件。
-3. **RenderContext 重复**：与 RenderPass 冗余（未被使用，可合并/删除）。
-4. **DrawMesh 逐帧重复 uniform**：后续可引入 material/UBO 批量上传。
-5. **环境 HDR 是 Application 全局静态**：非 per-scene（编辑器运行时切换不灵活）。
-6. **三套 fragment shader 公共部分重复**：BRDF/阴影/IBL/点光循环可收敛为共享 GLSL 头。
-7. **点光阴影无 PCF**：逐面全量重绘，可分层渲染/软阴影优化。
+3. **DrawMesh 逐帧重复 uniform**：后续可引入 material/UBO 批量上传。
+4. **环境 HDR 是 Application 全局静态**：非 per-scene（编辑器运行时切换不灵活）。
+5. **三套 fragment shader 公共部分重复**：BRDF/阴影/IBL/点光循环可收敛为共享 GLSL 头。
+6. **点光阴影无 PCF**：逐面全量重绘，可分层渲染/软阴影优化。

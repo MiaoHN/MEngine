@@ -361,7 +361,6 @@
 - 背面剔除已按材质启用（renderer 每 draw 设 `rhi->SetCullMode(material->GetCullMode())`，默认 Back；2D/UI 前恢复 None）——旧的"全局无剔除"已解决；后续仅需确认新网格绕序符合。
 - 光照参数（方向光方向/颜色）未抽象为完整 Light 体系（点光/聚光为场景级列表，非 ECS 组件）。
 - `Renderer::DrawMesh` 每帧重复设置全部 uniform，后续可引入 material/UBO 批量上传。
-- `RenderContext` 与 `RenderPass` 重复抽象仍未清理。
 - OBJ 的 `.mtl` 未解析，贴图靠文件名约定自动套用。
 - 点光阴影逐面全量重绘、无 PCF，后续可做分层渲染/软阴影优化。
 - 环境 HDR 路径/翻转是 `Application` 全局静态，非 per-scene（编辑器多场景/运行时切换不灵活）。
