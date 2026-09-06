@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-09-06 — 修复 ex_6_2_2 天空盒上下颠倒 + 球/背景不同图层
+
+- **用户反馈**：① 天空盒上下颠倒；② 不同材质球感觉和背景不是一个图层。
+- **根因**：引擎 Skybox 加载 HDR 默认**不翻转**，而 LO 的 2.x demo 都是 `stbi_set_flip_vertically_on_load(true)` → newport_loft 在引擎里上下颠倒（默认 kloppenheim 恰好未被注意）。环境一倒，球上的 IBL 反射（房间/天花灯）与背景互相矛盾 → “不像同一图层”。
+- **引擎**：新增 `Application::SetEnvironmentHdrFlip(bool)`（默认 false，不破坏默认环境）+ Skybox ctor `flip_equirect` 参数（loadf 前 stbi flip true、之后复位）。Renderer 从 Application 静态读 flip。
+- **ex_6_2_2**：设 `SetEnvironmentHdrPath(newport_loft)` + `SetEnvironmentHdrFlip(true)`。
+- **验证**：capture 正常：客厅沙发/书架/木地板/窗户光朝上；金球内可见房间与天花灯反射，与背景同一环境 → 两个问题都消失。
+
+---
+
 ## 2026-09-06 — LO 6.pbr/2.2.2 IBL specular_textured + 引擎：可换环境 HDR + pbr albedo sRGB 解码
 
 - **引擎**：① `Application::SetEnvironmentHdrPath`（静态，Renderer 初始化时用）→ 每个 exe 可选自己的 IBL/天空盒环境（默认仍 kloppenheim）；② `pbr_frag` 新增 `u_albedo_srgb` 解码（albedo=pow(2.2)，uniform 原来已上传，材质 `SetAlbedoSRGB(true)` 开启）——对齐 LO 贴图 PBR 的 albedo 处理。

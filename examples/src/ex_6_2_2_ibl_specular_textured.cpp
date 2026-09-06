@@ -83,8 +83,10 @@ std::shared_ptr<Scene> BuildIblSpecularTextured() {
 
 ::MEngine::Application *CreateApplication() {
   MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
-  // Use LO's exact HDR environment for this IBL demo.
+  // Use LO's exact HDR environment (newport_loft) and its vertical-flip-on-load
+  // convention so the skybox/background and reflections are upright.
   MEngine::Application::SetEnvironmentHdrPath("textures/hdr/newport_loft.hdr");
+  MEngine::Application::SetEnvironmentHdrFlip(true);
   return new MEngine::examples::ExampleApp(
       MEngine::examples::ExampleApp::Setup{BuildIblSpecularTextured, "LO 6.2.2 IBL specular_textured",
                                            {0, 0.0f, 2.0f}, 0.0f, 0.0f, 11.0f, 45.0f});

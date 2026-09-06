@@ -19,7 +19,8 @@ class Shader;
  */
 class Skybox {
  public:
-  Skybox(const std::string &hdr_path, int env_size = 512, int irradiance_size = 32, int prefilter_size = 128);
+  Skybox(const std::string &hdr_path, int env_size = 512, int irradiance_size = 32, int prefilter_size = 128,
+         bool flip_equirect = false);
   ~Skybox();
 
   Skybox(const Skybox &)            = delete;

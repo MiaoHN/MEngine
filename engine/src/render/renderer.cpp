@@ -79,8 +79,9 @@ Renderer::Renderer() {
   ssao_ = CreateRef<SSAO>(0, 0);
 
   // Skybox + IBL environment (equirectangular HDR). LO 6.pbr 2.x demos override
-  // the path (e.g. newport_loft) via Application::SetEnvironmentHdrPath.
-  skybox_ = CreateRef<Skybox>(AssetManager::Instance().Resolve(Application::GetEnvironmentHdrPath()));
+  // the path (e.g. newport_loft) and flip via Application statics.
+  skybox_ = CreateRef<Skybox>(AssetManager::Instance().Resolve(Application::GetEnvironmentHdrPath()), 512, 32, 128,
+                              Application::GetEnvironmentHdrFlip());
 
   LOG_DEBUG("Renderer") << "Renderer initialized (directional shadow map " << shadow_map_->GetWidth() << "x"
                         << shadow_map_->GetHeight() << ", " << kMaxPointShadows

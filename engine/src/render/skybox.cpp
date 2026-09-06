@@ -35,11 +35,15 @@ glm::mat4 CaptureView(int face) {
 glm::mat4 CaptureProjection() { return glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f); }
 }  // namespace
 
-Skybox::Skybox(const std::string &hdr_path, int env_size, int irradiance_size, int prefilter_size)
+Skybox::Skybox(const std::string &hdr_path, int env_size, int irradiance_size, int prefilter_size, bool flip_equirect)
     : env_size_(env_size), irradiance_size_(irradiance_size), prefilter_size_(prefilter_size) {
-  // Load the equirectangular HDR as a floating-point 2D texture.
+  // Load the equirectangular HDR as a floating-point 2D texture. LearnOpenGL
+  // flips its HDRs vertically on load; the engine's default env does not, so
+  // the flip is opt-in per application.
   int    width = 0, height = 0, channels = 0;
+  stbi_set_flip_vertically_on_load(flip_equirect);
   float *hdr_data = stbi_loadf(hdr_path.c_str(), &width, &height, &channels, 4);
+  stbi_set_flip_vertically_on_load(false);
   if (!hdr_data) {
     LOG_WARN("Skybox") << "Failed to load HDR environment: " << hdr_path;
   }

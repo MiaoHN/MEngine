@@ -109,6 +109,11 @@ class Application {
   static void SetEnvironmentHdrPath(const std::string &path) { environment_hdr_path_ = path; }
   [[nodiscard]] static const std::string &GetEnvironmentHdrPath() { return environment_hdr_path_; }
 
+  /// @brief Whether to vertically flip the equirectangular HDR on load (LO
+  /// always flips; the engine's default kloppenheim env does not).
+  static void SetEnvironmentHdrFlip(bool flip) { environment_hdr_flip_ = flip; }
+  [[nodiscard]] static bool GetEnvironmentHdrFlip() { return environment_hdr_flip_; }
+
   /// @brief Captures the backbuffer as PPM after frame `frame` (`--capture-frame
   /// <n>`), writing to `out_path` (default "capture.ppm"). 0 disables capture.
   static void SetCaptureFrame(int frame, const std::string &out_path) {
@@ -166,6 +171,7 @@ class Application {
   static int             startup_window_width_;
   static int             startup_window_height_;
   static std::string     environment_hdr_path_;
+  static bool            environment_hdr_flip_;
 };
 
 }  // namespace MEngine
