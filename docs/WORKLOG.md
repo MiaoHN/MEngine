@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-09-06 — 新增独立 target `voxel`：Minecraft-like 体素演示（A 地形 / B 移动碰撞 / C 放置破坏）
+
+- **需求**：独立新 target 做 Minecraft 复制，A/B/C 全做；**引擎保持通用，只消费公共 API，不为 voxel 加私货**（未改 engine）。
+- **做法**：CMake 根加 `MENGINE_BUILD_VOXEL` 开关 + `add_subdirectory(voxel)`；新目录 `voxel/`（自己 namespace `vox`）。
+  - `voxel_atlas.{hpp,cpp}`：Block 注册表 + **CPU 程序化纹理图集**（16px 瓦片 + 1px 复制边框防线性采样串色），经 `Texture::SetData` 上传为 pbr albedo。
+  - `voxel_world.{hpp,cpp}`：稠密体素存储 + 确定性 value-noise 地形（草/泥土/石头/沙/橡树），`BuildChunkMesh` 逐块剔面建 16×16 区块 Mesh（沿用引擎 cube 绕序/UV，世界坐标顶点）。
+  - `voxel_app.{hpp,cpp}`：`Application` 子类——每区块一个 `Scene` 实体 + 共享材质；太阳/阴影/天空走现有 `Scene::RenderMeshes`；玩家 AABB-体素碰撞（逐轴推进+回退），第一人称鼠标，中屏体素 DDA 拾取，LMB 破坏/RMB 放置 + 黄色 ghost 预览，区块+邻居重网格化。
+- **验证**：capture 截图确认草/石/沙地形 + 橡树冠 + 阳光阴影渲染正确（多次调树密度/树冠后）；debug/release 全链零警告；voxel 长跑 200 帧无崩溃。**交互（行走/碰撞/放/拆）需真机试玩确认手感**。
+- **通用性**：引擎零改动；若后续把体素相关能力通用化（顶点色、任意纹理过滤、线框高亮等）再单独立项。
+
+---
+
 ## 2026-09-06 — Timeline 对齐引擎习惯：动画时长(Length) + 标尺/可拖关键帧（修 playhead 仍锁 0）
 
 - **用户反馈**：playhead/timebar“一直都是 0 改不动”，希望像 Godot/UE/Unity：能**设置动画时长**再调整。

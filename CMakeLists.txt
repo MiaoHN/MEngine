@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 option(MENGINE_ENABLE_VULKAN "Enable Vulkan backend" ON)
 option(MENGINE_BUILD_SANDBOX "Build the sandbox example" ON)
 option(MENGINE_BUILD_EDITOR "Build the editor" ON)
+option(MENGINE_BUILD_VOXEL "Build the voxel (Minecraft-like) example" ON)
 
 if(MENGINE_ENABLE_VULKAN)
   find_package(Vulkan QUIET)
@@ -82,6 +83,10 @@ endif()
 
 if(MENGINE_BUILD_EDITOR)
   add_subdirectory(editor)
+endif()
+
+if(MENGINE_BUILD_VOXEL)
+  add_subdirectory(voxel)
 endif()
 
 # Sync compile_commands.json into the top-level build directory so VS Code
