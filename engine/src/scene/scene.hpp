@@ -190,6 +190,8 @@ class Scene {
   void SetBloomThreshold(float threshold);
   void SetShadowPcfRadius(float radius);
   void SetIblIntensity(float intensity);
+  /// @brief Toggles the specular part of IBL (off = diffuse-only, LO 2.1.2).
+  void SetIblSpecular(bool enabled);
   void SetGodRaysStrength(float strength);
   /// @brief Enables/disables the skybox background (IBL lighting unchanged).
   void SetSkyboxEnabled(bool enabled);

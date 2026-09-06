@@ -401,6 +401,7 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   shader->SetUniform("brdf_lut", 13);
   shader->SetUniform("max_prefilter_mip", skybox_->GetMaxPrefilterMip());
   shader->SetUniform("ibl_intensity", ibl_intensity_);
+  shader->SetUniform("u_ibl_specular", ibl_specular_);
 
   // Screen-space ambient occlusion.
   ssao_->BindTexture(7);

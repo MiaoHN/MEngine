@@ -38,6 +38,7 @@ uniform samplerCube prefiltered_map;
 uniform sampler2D   brdf_lut;
 uniform float       max_prefilter_mip = 4.0;
 uniform float       ibl_intensity     = 1.0;
+uniform int         u_ibl_specular     = 1;  // 0 = diffuse-only IBL (LO 2.1.2)
 
 uniform sampler2D ssao_map;
 uniform int       ssao_enabled = 0;
@@ -280,7 +281,8 @@ void main() {
   vec3 irradiance = texture(irradiance_map, N).rgb;
   vec3 prefiltered = textureLod(prefiltered_map, R, roughness * max_prefilter_mip).rgb;
   vec2 env_brdf    = texture(brdf_lut, vec2(max(dot(N, V), 0.0), roughness)).rg;
-  vec3 spec_ibl    = prefiltered * (F_ibl * env_brdf.x + env_brdf.y) * specular_intensity;
+  vec3 spec_ibl    = prefiltered * (F_ibl * env_brdf.x + env_brdf.y) * specular_intensity *
+                     float(u_ibl_specular);
   float ssao = ssao_enabled == 1 ? texture(ssao_map, gl_FragCoord.xy / viewport_size).r : 1.0;
   vec3 ambient = (kD_ibl * albedo * irradiance + spec_ibl) * ao * ibl_intensity * ssao;
 

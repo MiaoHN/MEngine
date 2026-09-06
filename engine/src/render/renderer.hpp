@@ -141,6 +141,11 @@ class Renderer {
   void SetBloomThreshold(float threshold);
   void SetShadowPcfRadius(float radius);
   void SetIblIntensity(float intensity);
+  /// @brief Toggles the specular (prefiltered + BRDF LUT) part of image-based
+  /// lighting. Off = diffuse-only IBL, which reproduces LO 6.pbr/2.1.2 (the
+  /// step before specular IBL was added). Default on.
+  void SetIblSpecular(bool enabled) { ibl_specular_ = enabled ? 1 : 0; }
+  [[nodiscard]] bool GetIblSpecular() const { return ibl_specular_ == 1; }
   void SetGodRaysStrength(float strength);
 
   /// @brief Toggles drawing the skybox as the scene background (the IBL
@@ -217,6 +222,7 @@ class Renderer {
   std::vector<SpotLight>  spot_lights_;
   float shadow_pcf_radius_ = 2.0f;
   float ibl_intensity_     = 1.0f;
+  int   ibl_specular_      = 1;
   bool  ssao_enabled_      = false;
   bool  skybox_enabled_    = true;
   bool  lo_lighting_       = false;

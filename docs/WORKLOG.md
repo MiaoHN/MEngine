@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-06 — 补完 LO 必要端口：IBL 2.1.2/2.2.1 + model_loading
+
+- 用户确认"先补完再整理"：把剩余必要的 LO 端口补齐，随后进入项目深度整理/engine+editor 增强。
+- **引擎新增 `Scene::SetIblSpecular(bool)` / `Renderer`（默认开）**：pbr_frag 加 `u_ibl_specular`，可只保留漫反射 IBL（irradiance），复刻 LO 2.1.2 的"镜面 IBL 之前"状态。
+- **`ex_6_2_1_ibl_irradiance`**（LO 6.pbr/2.1.2）：7×7 红球阵 + newport_loft + 4×300 灯，`SetIblSpecular(false)` → 金属球偏暗、只反射直射光高光。
+- **`ex_6_2_2_ibl_specular`**（LO 6.pbr/2.2.1）：同场景 + 全 IBL（prefilter + split-sum BRDF LUT）→ 金属球反射房间。与 2.1.2 并排即为 LO 加镜面 IBL 的前后对照。
+- **`ex_3_1_model_loading`**（LO 3.model_loading/1）：backpack.obj + diffuse，`SetUnlit` + `LoScene` 线性输出直出贴图（同 LO 3.1.fs 无光照）；OBJ 原始尺寸很大 → 自动居中归一化取景。
+- 均抓帧验证；更新 PORTING.md。
+
+---
+
 ## 2026-09-06 — 修 Cerberus 渲染：GLB 只内嵌 albedo，其余贴图在 sidecar 文件里
 
 - **现象**：枪渲染成一片浅灰/塑料感，无贴图细节。

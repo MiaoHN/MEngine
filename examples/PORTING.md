@@ -49,7 +49,7 @@
 ## 3. model_loading
 | 目录 | 内容 | 状态 |
 |---|---|---|
-| 1.model_loading | 加载 backpack 等模型 | ⬜（引擎 `ModelLoader::LoadObj`/`LoadGltf` 可用；LO 用 .obj+mtl，计划用其 mesh + 手动贴图做成 `example_model_loading`）|
+| 1.model_loading | 加载 backpack 模型（OBJ+贴图，纯贴图无光照输出）| ✅ `ex_3_1_model_loading`（backpack.obj + diffuse，`SetUnlit` + `LoScene` 线性直出贴图，同 LO 3.1.fs）|
 
 ## 4. advanced_opengl（多数为底层 GL 特性）
 | 目录 | 内容 | 状态 |
@@ -83,6 +83,8 @@
 |---|---|---|
 | 1.1.lighting | PBR 直射 | ✅ `ex_6_1_1_pbr_lighting`（引擎 PBR：7×7 红球，metallic=行/7、roughness=列/7，4×300 白光 1/d²；微环境光≈LO 0.03*albedo、**Reinhard 色调+gamma** `SetReinhardTone`、深背景=LO raw clear）|
 | 1.2.lighting_textured | PBR 直射+贴图 | ✅ `ex_6_1_2_pbr_lighting_textured`（rusted_iron：albedo/normal/ao raw + 合并 MR 贴图 `mr.png`，金属/粗糙逐像素，锈区非金属粗糙→哑光；`tools/make_pbr_mr.ps1` 由 LO 两张灰度生成 R=1/G=rough/B=metal）|
+| 2.1.2.ibl_irradiance | 漫反射 IBL（无镜面 IBL）| ✅ `ex_6_2_1_ibl_irradiance`（同 7×7 红球阵 + newport_loft + 4×300 灯，**引擎新增 `SetIblSpecular(false)`**：只留 irradiance 漫反射，金属球偏暗——LO 2.2.1 之前的“before”步）|
+| 2.2.1.ibl_specular | 镜面 IBL（无贴图）| ✅ `ex_6_2_2_ibl_specular`（同红球阵 + **全 IBL**：prefilter + split-sum BRDF LUT 镜面，金属球反射环境；与 2.1.2 并排看加镜面 IBL 的差异）|
 | 2.2.2.ibl_specular_textured | IBL 镜面+贴图 | ✅ `ex_6_2_2_ibl_specular_textured`（引擎 IBL：newport_loft 环境 + 5 材质球，LO 布局/4×300 灯；albedo sRGB 解码；**引擎新增 split-sum BRDF LUT**：specular=prefiltered*(F*brdf.x+brdf.y)，与 LO 一致）|
 | 2.x ibl 预计算 (irradiance/specular conversion) | IBL 预计算 | ◐ 引擎内部已做（prefilter/irradiance）；环境源现可按 app 覆盖 `Application::SetEnvironmentHdrPath`（默认 kloppenheim；6.2.2 用 newport_loft）|
 | PBR 资源 (rusted_iron/gold 等) | — | ✅ 已镜像到 `assets/textures/pbr/{rusted_iron,gold,grass,plastic,wall}/`（6.1.2 已用 rusted_iron）|
@@ -104,6 +106,7 @@ ex_2_3_materials           -> 2.lighting/3.1.materials (✅ blinn_lo 1:1)
 ex_2_4_lighting_maps       -> 2.lighting/4.2.lighting_maps_specular_map (✅ blinn_lo 1:1)
 ex_2_5_light_casters       -> 2.lighting/5.3.light_casters_spot / 5.4 soft (✅ blinn_lo 1:1，相机手电)
 ex_2_6_multiple_lights     -> 2.lighting/6.multiple_lights (✅ blinn_lo 1:1)
+ex_3_1_model_loading       -> 3.model_loading/1.model_loading (✅ 纯贴图无光照)
 ex_5_3_shadow_mapping      -> 5.advanced_lighting/3.1.3.shadow_mapping (✅ blinn_lo 1:1)
 ex_5_4_normal_mapping      -> 5.advanced_lighting/4.normal_mapping (✅ blinn_lo 1:1)
 ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom (✅ blinn_lo 1:1)
@@ -111,6 +114,8 @@ ex_5_8_deferred_shading   -> 5.advanced_lighting/8.1.deferred_shading (◐ 前�
 ex_5_9_ssao               -> 5.advanced_lighting/9.ssao (✅ 引擎真实 SSAO 演示，空格 on/off)
 ex_6_1_1_pbr_lighting     -> 6.pbr/1.1.lighting (✅ 引擎 PBR 直射：7×7 金属/粗糙矩阵，Reinhard tone)
 ex_6_1_2_pbr_lighting_textured -> 6.pbr/1.2.lighting_textured (✅ 引擎 PBR 贴图：rusted_iron + 合并 MR 贴图 + albedo sRGB 解码)
+ex_6_2_1_ibl_irradiance   -> 6.pbr/2.1.2.ibl_irradiance (✅ 漫反射-only IBL：SetIblSpecular(false))
+ex_6_2_2_ibl_specular     -> 6.pbr/2.2.1.ibl_specular (✅ 7×7 红球阵 + 全 IBL)
 ex_6_2_2_ibl_specular_textured -> 6.pbr/2.2.2.ibl_specular_textured (✅ 引擎 IBL：newport_loft + 5 材质球)
 ```
 > 每个 target 对应 LO 源码：`LearnOpenGL/src/<章>/<小节>/<源码名>.cpp`（CMake 注释里已写死）。

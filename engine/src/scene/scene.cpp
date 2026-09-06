@@ -1300,6 +1300,7 @@ void Scene::SetBloomThreshold(float threshold) { renderer_->SetBloomThreshold(th
 void Scene::SetShadowPcfRadius(float radius) { renderer_->SetShadowPcfRadius(radius); }
 
 void Scene::SetIblIntensity(float intensity) { renderer_->SetIblIntensity(intensity); }
+void Scene::SetIblSpecular(bool enabled) { renderer_->SetIblSpecular(enabled); }
 
 void Scene::SetGodRaysStrength(float strength) { renderer_->SetGodRaysStrength(strength); }
 
