@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-09-06 — ex_5_4 normal_mapping（LO 5.advanced_lighting/4）LO-exact 化
+
+- **用户**：做 5.advanced_lighting 章节（逐场景进行中）。
+- **引擎（blinn_lo 增强）**：
+  - blinn_lo_frag 加 **normal_map** 采样（世界空间 TBN 用 dFdx/dFdy 导数推导，与 pbr 同款；`has_normal_map`）；
+  - `Scene/Renderer::SetLoBlinnSpec(bool)` + uniform `u_lo_blinn_spec`：LO 4.normal_mapping 用的是 **Blinn(halfway)** 高光，而 LO 光照章节其他 .fs 用 Phong(reflect)；`SpecTerm` 按开关二选一。
+- **ex_5_4_normal_mapping** ← LO 4：2×2 砖墙（brickwall.jpg + brickwall_normal.jpg，uv 单次映射，双面不剔除），点光 (0.5,1,0.3) **无衰减**（LO 4 无 attenuation）：ambient .1 / diffuse 1 / specular 1、材质 spec 灰 0.2（= LO 的 vec3(0.2)）；墙按 LO 慢慢翻转（单轴 X euler 累积避免轴向翻转）；白灯小方块 0.1；LoScene 0.1 + NoSun + SetLoBlinnSpec(true)。
+- **验证**：debug 构建过；capture 800×600：砖墙+浮雕+朝灯处亮、上方白色小光点，与 LO 一致。
+- **下一步**：同章节 hdr/bloom（ex_5_6）→ shadow_mapping（ex_5_3）。
+
+---
+
 ## 2026-09-06 — ex_2_5 手电聚光（LO 5.3/5.4）+ 修复无太阳 LO 场景的默认方向光污染
 
 - **用户需求**：做手电聚光（LO 5.3 light_casters spot）。

@@ -206,6 +206,9 @@ class Scene {
   /// @brief LearnOpenGL-exact per-light ambient/diffuse/specular lighting.
   void SetLoLighting(bool enabled);
   [[nodiscard]] bool IsLoLighting() const;
+  /// @brief Use Blinn halfway specular in LO-exact mode (LO 4.normal_mapping).
+  void SetLoBlinnSpec(bool enabled);
+  [[nodiscard]] bool IsLoBlinnSpec() const;
 
   [[nodiscard]] bool       IsSSAOEnabled() const;
   [[nodiscard]] bool       IsTAAEnabled() const;

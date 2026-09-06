@@ -366,6 +366,7 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   shader->SetUniform("u_material_unlit", material->IsUnlit() ? 1 : 0);
   shader->SetUniform("u_render_mode", render_mode_ == RenderMode::Unlit ? 1 : 0);
   shader->SetUniform("u_lo_exact", lo_lighting_ ? 1 : 0);
+  shader->SetUniform("u_lo_blinn_spec", lo_blinn_spec_ ? 1 : 0);
 
   shader->SetUniform("proj_view", proj_view);
   shader->SetUniform("view_pos", view_pos);

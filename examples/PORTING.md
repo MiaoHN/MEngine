@@ -71,7 +71,7 @@
 | 1.advanced_lighting | Blinn-Phong | ✅ LO 2.2 高光即 **Phong/Blinn**；`ex_2_2_blinn_lighting` 是 LO-exact 端口（blinn_lo）|
 | 2.gamma_correction | Gamma | ◐ 引擎输出已含 gamma（post）；无单独场景 |
 | 3.x shadow_mapping (+point/soft/csm) | 阴影映射/点阴影 | ✅ `ex_5_3_shadow_mapping`（方向光+立方体点光阴影）；CSM ⬜（引擎单级）|
-| 4.normal_mapping | 法线贴图 | ✅ `ex_5_4_normal_mapping`（砖墙 albedo+normal，引擎 pbr 法线槽）|
+| 4.normal_mapping | 法线贴图 | ✅ `ex_5_4_normal_mapping`（blinn_lo + 法线贴图：2×2 砖墙，点光 0.5,1,0.3，ambient .1/diffuse 1/spec(材质 0.2 灰)，Blinn 高光 `SetLoBlinnSpec`）|
 | 5.x parallax (incl steep/pom) | 视差映射 | ⬜（引擎 pbr 无视差；需引擎扩展或 ⛔）|
 | 6.hdr | HDR | ◐ 引擎 HDR 内部；`ex_5_6_hdr_bloom` 演示高动态亮度 |
 | 7.bloom | 泛光 | ✅ `ex_5_6_hdr_bloom`（bloom）|

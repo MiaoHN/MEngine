@@ -85,6 +85,22 @@ inline Ref<Material> BlinnLoTextured(const std::string &albedo_path, const std::
   return m;
 }
 
+/// @brief LearnOpenGL-exact textured Blinn material with a normal map (LO
+/// 4.normal_mapping): albedo + brickwall-style normal map. `spec_intensity`
+/// is the scalar specular strength (LO uses a grey vec3(0.2) specular -> 0.2).
+/// Renders double-sided (the LO wall is a two-triangle quad with no culling).
+inline Ref<Material> BlinnLoNormalMapped(const std::string &albedo_path, const std::string &normal_path,
+                                         float shininess = 32.0f, float spec_intensity = 0.2f) {
+  Ref<Material> m = CreateRef<Material>();
+  m->SetShader(AssetManager::Instance().GetShader("blinn_lo"));
+  m->SetAlbedoMap(AssetManager::Instance().GetTexture(albedo_path));
+  m->SetNormalMap(AssetManager::Instance().GetTexture(normal_path));
+  m->SetSpecularFactor(spec_intensity);
+  m->SetShininess(shininess);
+  m->SetCullMode(CullMode::None);
+  return m;
+}
+
 /// @brief Switches a scene to LearnOpenGL-exact parity: per-light
 /// ambient/diffuse/specular lighting, raw linear composite output, no
 /// skybox/IBL/tone/gamma, plain dark background (LO clears to 0.1), no TAA /

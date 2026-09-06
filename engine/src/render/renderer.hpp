@@ -165,6 +165,12 @@ class Renderer {
   void SetLoLighting(bool enabled) { lo_lighting_ = enabled; }
   [[nodiscard]] bool IsLoLighting() const { return lo_lighting_; }
 
+  /// @brief In LO-exact mode, use Blinn-Phong halfway specular instead of
+  /// Phong reflect (LO 4.normal_mapping uses Blinn; the other LO lighting .fs
+  /// use Phong). Default off.
+  void SetLoBlinnSpec(bool enabled) { lo_blinn_spec_ = enabled; }
+  [[nodiscard]] bool IsLoBlinnSpec() const { return lo_blinn_spec_; }
+
   void SetRenderMode(RenderMode mode) { render_mode_ = mode; }
   [[nodiscard]] RenderMode GetRenderMode() const { return render_mode_; }
 
@@ -203,6 +209,7 @@ class Renderer {
   bool  ssao_enabled_      = false;
   bool  skybox_enabled_    = true;
   bool  lo_lighting_       = false;
+  bool  lo_blinn_spec_     = false;
   glm::vec3 background_color_{0.0f};
   RenderMode render_mode_  = RenderMode::Lit;
 

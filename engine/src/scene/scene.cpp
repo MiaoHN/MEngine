@@ -1318,6 +1318,9 @@ bool Scene::IsLinearOutput() const { return renderer_->IsLinearOutput(); }
 void Scene::SetLoLighting(bool enabled) { renderer_->SetLoLighting(enabled); }
 bool Scene::IsLoLighting() const { return renderer_->IsLoLighting(); }
 
+void Scene::SetLoBlinnSpec(bool enabled) { renderer_->SetLoBlinnSpec(enabled); }
+bool Scene::IsLoBlinnSpec() const { return renderer_->IsLoBlinnSpec(); }
+
 bool Scene::IsSSAOEnabled() const { return renderer_->IsSSAOEnabled(); }
 
 bool Scene::IsTAAEnabled() const { return renderer_->IsTAAEnabled(); }
