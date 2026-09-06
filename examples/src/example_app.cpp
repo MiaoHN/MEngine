@@ -49,6 +49,21 @@ void ExampleApp::OnUpdate(float dt) {
     cam_pitch_ = std::clamp(cam_pitch_ - delta.y * 0.25f, -89.0f, 89.0f);
   }
 
+  // WASD / Space / Ctrl: fly the camera - translate the orbit target along the
+  // current view so you can move through the scene (like LO's WASD camera).
+  const float move_speed = 5.0f * dt;
+  const float cyv = std::cos(glm::radians(cam_pitch_));
+  const glm::vec3 fwd(-cyv * std::sin(glm::radians(cam_yaw_)), -std::sin(glm::radians(cam_pitch_)),
+                      -cyv * std::cos(glm::radians(cam_yaw_)));
+  const glm::vec3 rightv = glm::normalize(glm::cross(fwd, glm::vec3(0.0f, 1.0f, 0.0f)));
+  const glm::vec3 upv    = glm::cross(rightv, fwd);
+  if (Input::IsKeyPressed(GLFW_KEY_W)) cam_target_ += fwd * move_speed;
+  if (Input::IsKeyPressed(GLFW_KEY_S)) cam_target_ -= fwd * move_speed;
+  if (Input::IsKeyPressed(GLFW_KEY_A)) cam_target_ -= rightv * move_speed;
+  if (Input::IsKeyPressed(GLFW_KEY_D)) cam_target_ += rightv * move_speed;
+  if (Input::IsKeyPressed(GLFW_KEY_SPACE)) cam_target_ += upv * move_speed;
+  if (Input::IsKeyPressed(GLFW_KEY_LEFT_CONTROL)) cam_target_ -= upv * move_speed;
+
   // LO-style mouse-wheel zoom: wheel up decreases the vertical FOV (zoom in),
   // wheel down increases it (zoom out); LO clamps to [1, 45] so start values
   // above 45 (e.g. 55/60 engine showcases) can still zoom out a bit.

@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-09-06 — example 相机可移动（WASD 飞行）+ Cerberus 模型 viewer
+
+- **用户**：① 6.2.2 球仍有点不一样（后续再对）；② 加了个新模型让加载进去；③ 让摄像头能移动。
+- **相机移动**：ExampleApp host 增加 WASD（前/后/左/右平移轨道目标）+ 空格/左Ctrl 上/下，配合右键轨道与滚轮缩放 → 所有 example 都能像 LO 那样飞行查看（WASD 用的是按当前 yaw/pitch 计算的 view 轴向）。
+- **新模型**：用户加入 `assets/models/Cerberus_by_Andrew_Maximov/`（FBX+TGA）。引擎只支持 OBJ/glTF → 下载 **FBX2glTF 0.9.7**（`build/fbx2gltf/FBX2glTF.exe`）把 `Cerberus_LP.FBX` 转成 `Cerberus_LP.glb`（47MB，贴图内嵌）。
+- **ex_model_viewer**（新示例）：通用模型查看器，加载该 GLB + glTF PBR 材质，自归一化居中（同 sandbox helmet 做法），环境 IBL + 方向光；飞行/轨道/缩放相机可用。27.4k verts/100k idx，capture 正常渲染。
+- **注意**：Cerberus 原始目录约 300MB（TGA/psd 等）留在本地**未提交**（否则 repo/build 拷贝会巨量膨胀；每个 example 的 POST_BUILD 会整目录拷贝 assets，建议后续对“大模型目录”做排除或只留 glb）。
+
+---
+
 ## 2026-09-06 — 引擎 PBR 新增 split-sum BRDF LUT（对齐 LO 2.2 的 IBL 镜面高光）
 
 - **用户**：6.2.2 球体偏亮/偏鲜艳、和背景不像同一图层；问是亮度还是颜色映射。逐项比对 LO 2.2.2.pbr.fs 后：直射/材质/albedo 解码/tone 全一致，唯 IBL 镜面不同——LO `prefiltered*(F*brdf.x+brdf.y)`（split-sum LUT），引擎之前 `prefiltered*F_ibl`（无 LUT）→ IBL 镜面能量分布不对（金属球偏亮/鲜艳），另背景在引擎里也走 tone+gamma（LO 背景 raw）。

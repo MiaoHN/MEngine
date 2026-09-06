@@ -59,6 +59,11 @@ list(APPEND MENGINE_EXAMPLE_DEMOS
   ex_6_2_2_ibl_specular_textured # 6.pbr/2.2.2.ibl_specular_textured (5 materials, newport_loft IBL)
 )
 
+# Utility: engine model viewer (user asset, e.g. Cerberus GLB)
+list(APPEND MENGINE_EXAMPLE_DEMOS
+  ex_model_viewer
+)
+
 function(mengine_add_example name)
   add_executable(example_${name} src/${name}.cpp)
 
