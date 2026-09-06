@@ -73,8 +73,6 @@ class Editor : public Application {
   Ref<Material> grid_material_;
   Ref<Material> default_material_;
 
-  std::vector<PointLight> point_lights_;
-
   ImGuizmo::OPERATION gizmo_operation_ = ImGuizmo::TRANSLATE;
 
   bool show_content_browser_ = true;
@@ -137,7 +135,6 @@ class Editor : public Application {
   void CreateDirectionalLightEntity();
   void CreateModelEntity(const std::filesystem::path &path);
   void CreatePhysicsDemo();
-  void CreateLightingDemo();
   void CreateEngineDemo();
   void DuplicateSelectedEntity();
   /// @brief Deep-copies `source` and its whole child subtree. The copy is

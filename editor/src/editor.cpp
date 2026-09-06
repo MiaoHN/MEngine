@@ -575,12 +575,6 @@ void Editor::OnUpdate(float dt) {
     viewport_resized_ = false;
   }
 
-  // Sync the editor's point lights into the scene renderer.
-  active_scene_->ClearPointLights();
-  for (const auto &light : point_lights_) {
-    active_scene_->AddPointLight(light);
-  }
-
   // Advance the physics simulation and Lua scripts while in Play mode.
   // StepSimulation runs physics, collision dispatch and OnFixedUpdate together
   // on a fixed step; Update drives per-frame OnStart/OnUpdate afterwards.
@@ -1654,21 +1648,38 @@ void Editor::ShowImGuiLighting() {
   PROFILER_FUNCTION();
   ImGui::Begin("Lighting");
 
-  const auto has_dir_entity = [&] {
-    for (auto &entity : active_scene_->GetAllEntities()) {
-      if (entity.HasComponent<DirectionalLightComponent>()) {
-        return true;
-      }
+  ImGui::TextDisabled("Lights are scene entities - move / aim them with the gizmos,");
+  ImGui::TextDisabled("edit Color & intensity in Properties.");
+
+  // --- Directional: the entity (if any) overrides the scene sun -----------
+  ImGui::Separator();
+  ImGui::TextUnformatted("Directional Light");
+  Entity dir_entity;
+  for (auto &e : active_scene_->GetAllEntitiesWith<DirectionalLightComponent>()) {
+    dir_entity = e;
+    break;
+  }
+  if (dir_entity.GetHandle() != entt::null) {
+    const std::string &dir_name = dir_entity.GetComponent<Tag>().tag;
+    if (ImGui::Selectable(dir_name.c_str(), dir_entity == selected_entity_)) {
+      selected_entity_ = dir_entity;
     }
-    return false;
-  }();
-  if (has_dir_entity) {
-    ImGui::TextWrapped(
-        "The directional light is an entity in the scene - select it and edit its "
-        "Directional Light component (Create > Directional Light).");
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("Sun entity - select it, rotate with the gizmo (E) to aim,\n"
+                        "edit Color in Properties.");
+    }
+    ImGui::TextDisabled("Overrides the scene sun below while present.");
   } else {
+    ImGui::TextDisabled("No directional light entity yet.");
+    if (ImGui::Button("Add Directional Light")) {
+      CreateDirectionalLightEntity();
+    }
+  }
+
+  // Scene sun (the fallback used while no directional entity is in the scene).
+  {
     DirectionalLight &dir_light = active_scene_->GetLight();
-    ImGui::Text("Directional Light");
+    ImGui::TextUnformatted("Scene Sun");
     DrawVec3Control("Direction (travel)", dir_light.direction);
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
@@ -1679,35 +1690,60 @@ void Editor::ShowImGuiLighting() {
                         "Filling in the sun position instead makes shading look inverted.");
     }
     ImGui::ColorEdit3("Color", glm::value_ptr(dir_light.color));
+    DrawVec3Control("Ambient", dir_light.ambient);
+    DrawVec3Control("Diffuse", dir_light.diffuse);
+    DrawVec3Control("Specular", dir_light.specular);
   }
 
+  // --- Point lights (ECS entities) ----------------------------------------
   ImGui::Separator();
-  ImGui::Text("Point Lights");
+  ImGui::TextUnformatted("Point Lights");
   if (ImGui::Button("Add Point Light")) {
-    PointLight light;
-    light.position     = glm::vec3(0.0f, 2.0f, 0.0f);
-    light.color        = glm::vec3(1.0f);
-    light.intensity    = 4.0f;
-    light.radius       = 10.0f;
-    light.casts_shadow = true;
-    point_lights_.push_back(light);
+    CreatePointLightEntity();
   }
-
-  for (size_t i = 0; i < point_lights_.size(); ++i) {
-    PointLight       &light = point_lights_[i];
-    const std::string label = "Point Light " + std::to_string(i);
-    if (ImGui::CollapsingHeader(label.c_str())) {
-      DrawVec3Control("Position", light.position);
-      ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
-      ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 100.0f);
-      ImGui::DragFloat("Radius", &light.radius, 0.1f, 0.1f, 100.0f);
-      ImGui::Checkbox("Cast Shadow", &light.casts_shadow);
-      if (ImGui::Button("Remove")) {
-        point_lights_.erase(point_lights_.begin() + static_cast<std::ptrdiff_t>(i));
-        --i;
+  {
+    auto lights = active_scene_->GetAllEntitiesWith<PointLightComponent>();
+    if (lights.empty()) {
+      ImGui::TextDisabled("None yet.");
+    }
+    for (auto &e : lights) {
+      const std::string &name = e.GetComponent<Tag>().tag;
+      if (ImGui::Selectable(name.c_str(), e == selected_entity_)) {
+        selected_entity_ = e;
+      }
+      if (ImGui::IsItemHovered()) {
+        const PointLight &pl = e.GetComponent<PointLightComponent>().light;
+        ImGui::SetTooltip("Color (%.2f, %.2f, %.2f)\nIntensity %.1f  Radius %.1f\nCasts shadow: %s",
+                          pl.color.x, pl.color.y, pl.color.z, pl.intensity, pl.radius,
+                          pl.casts_shadow ? "yes" : "no");
       }
     }
   }
+
+  // --- Spot lights (ECS entities) -----------------------------------------
+  ImGui::Separator();
+  ImGui::TextUnformatted("Spot Lights");
+  if (ImGui::Button("Add Spot Light")) {
+    CreateSpotLightEntity();
+  }
+  {
+    auto lights = active_scene_->GetAllEntitiesWith<SpotLightComponent>();
+    if (lights.empty()) {
+      ImGui::TextDisabled("None yet.");
+    }
+    for (auto &e : lights) {
+      const std::string &name = e.GetComponent<Tag>().tag;
+      if (ImGui::Selectable(name.c_str(), e == selected_entity_)) {
+        selected_entity_ = e;
+      }
+      if (ImGui::IsItemHovered()) {
+        const SpotLight &sl = e.GetComponent<SpotLightComponent>().light;
+        ImGui::SetTooltip("Color (%.2f, %.2f, %.2f)\nRange %.1f  Intensity %.1f", sl.color.x,
+                          sl.color.y, sl.color.z, sl.range, sl.intensity);
+      }
+    }
+  }
+  ImGui::TextDisabled("Delete lights in the Scene panel; edit values in Properties.");
 
   ImGui::End();
 }
@@ -2856,118 +2892,6 @@ void Editor::CreateEngineDemo() {
   active_scene_->SetShadowPcfRadius(4.0f);
 
   LOG_INFO("Editor") << "Created engine lighting demo (PBR floor/boxes + sun + colored point lights + bloom)";
-}
-
-/// @brief The default editor "lighting showroom": an ex_5_6 (LO 7.bloom) look
-/// - wood floor + container crates lit by 4 HDR point lights (1/d^2) that
-/// bloom in a dark room under the LO HDR tone. Each light is an entity
-/// carrying a PointLightComponent + an emissive HDR cube, so both the glow and
-/// the light move together (Light componentization demo).
-void Editor::CreateLightingDemo() {
-  const auto lo_textured = [](const std::string &map) {
-    auto material = CreateRef<Material>();
-    material->SetShader(AssetManager::Instance().GetShader("blinn_lo"));
-    material->SetAlbedoMap(AssetManager::Instance().GetTexture(map, true));  // LO sRGB diffuse
-    material->SetAlbedoSRGB(true);
-    material->SetShininess(32.0f);
-    return material;
-  };
-  const auto put_cube = [&](const glm::vec3 &pos, const glm::vec3 &scale) {
-    Entity e = active_scene_->CreateEntity("Crate");
-    auto   &t = e.AddComponent<Transform>();
-    t.translation = pos;
-    t.scale       = scale;
-    e.AddComponent<MeshComponent>(Mesh::CreateCube(), lo_textured("textures/container2.png"));
-    return e;
-  };
-  const auto put_cube_axis = [&](const glm::vec3 &pos, const glm::vec3 &axis, float degrees, const glm::vec3 &scale) {
-    Entity e = active_scene_->CreateEntity("Crate");
-    auto   &t = e.AddComponent<Transform>();
-    t.translation = pos;
-    t.scale       = scale;
-    t.SetRotationAxisAngle(axis, degrees);
-    e.AddComponent<MeshComponent>(Mesh::CreateCube(), lo_textured("textures/container2.png"));
-    return e;
-  };
-
-  // Wood floor (LO floor cube: translate (0,-1,0), scale (25,1,25)).
-  {
-    Entity floor = active_scene_->CreateEntity("Wood Floor");
-    auto   &t    = floor.AddComponent<Transform>();
-    t.translation = glm::vec3(0.0f, -1.0f, 0.0f);
-    t.scale       = glm::vec3(25.0f, 1.0f, 25.0f);
-    floor.AddComponent<MeshComponent>(Mesh::CreateCube(), lo_textured("textures/wood.png"));
-  }
-
-  // Scenery crates (LO 7.bloom layout/rotations/scales; engine cube is unit so
-  // use the same scale numbers as the example).
-  put_cube({0.0f, 1.5f, 0.0f}, glm::vec3(1.0f));
-  put_cube({2.0f, 0.0f, 1.0f}, glm::vec3(1.0f));
-  put_cube_axis({-1.0f, -1.0f, 2.0f}, glm::normalize(glm::vec3(1.0f, 0.0f, 1.0f)), 60.0f, glm::vec3(2.0f));
-  put_cube_axis({0.0f, 2.7f, 4.0f}, glm::normalize(glm::vec3(1.0f, 0.0f, 1.0f)), 23.0f, glm::vec3(2.5f));
-  put_cube_axis({-2.0f, 1.0f, -3.0f}, glm::normalize(glm::vec3(1.0f, 0.0f, 1.0f)), 124.0f, glm::vec3(2.0f));
-  put_cube({-3.0f, 0.0f, 0.0f}, glm::vec3(1.0f));
-
-  // 4 HDR lights (LO 7.bloom.fs colours/positions, 1/d^2 attenuation) each on
-  // its own entity with a matching HDR-emissive cube so it blooms.
-  const struct {
-    glm::vec3 pos;
-    glm::vec3 color;
-  } kLights[] = {
-      {{0.0f, 0.5f, 1.5f}, {5.0f, 5.0f, 5.0f}},
-      {{-4.0f, 0.5f, -3.0f}, {10.0f, 0.0f, 0.0f}},
-      {{3.0f, 0.5f, 1.0f}, {0.0f, 0.0f, 15.0f}},
-      {{-0.8f, 2.4f, -1.0f}, {0.0f, 5.0f, 0.0f}},
-  };
-  for (const auto &def : kLights) {
-    Entity lamp = active_scene_->CreateEntity("HDR Light");
-    lamp.AddComponent<Transform>(def.pos);
-    lamp.GetComponent<Transform>().scale = glm::vec3(0.5f);  // emissive cube size
-
-    auto emissive = CreateRef<Material>();
-    emissive->SetShader(AssetManager::Instance().GetShader("pbr"));
-    emissive->SetBaseColorFactor(glm::vec4(def.color, 1.0f));
-    emissive->SetUnlit(true);  // >1 HDR colour -> bloom picks it up
-    lamp.AddComponent<MeshComponent>(Mesh::CreateCube(), emissive);
-
-    PointLightComponent pl;
-    pl.light.ambient       = glm::vec3(0.0f);
-    pl.light.diffuse       = def.color;  // LO mode uses diffuse as the HDR colour
-    pl.light.specular      = glm::vec3(0.0f);
-    pl.light.color         = def.color;
-    pl.light.lo_attenuation = true;
-    pl.light.constant      = 0.0f;   // 1 / d^2
-    pl.light.linear        = 0.0f;
-    pl.light.quadratic     = 1.0f;
-    lamp.AddComponent<PointLightComponent>(pl);
-
-    // Press Play: this script orbits the light entity around the scene centre
-    // (the ECS light follows its Transform, so the light moves with the cube).
-    lamp.AddComponent<LuaScriptComponent>("scripts/orbit_light.lua");
-  }
-
-  // ex_5_6 scene/tonemapping settings (LO HDR tone + bloom, dark room, no sun).
-  auto &sun = active_scene_->GetLight();
-  sun.ambient  = glm::vec3(0.0f);
-  sun.diffuse  = glm::vec3(0.0f);
-  sun.specular = glm::vec3(0.0f);
-  sun.color    = glm::vec3(1.0f);
-  active_scene_->SetLoLighting(true);
-  active_scene_->SetLinearOutput(false);
-  active_scene_->SetLoHdrTone(true);
-  active_scene_->SetReinhardTone(false);
-  active_scene_->SetSkyboxEnabled(false);
-  active_scene_->SetBackgroundColor(glm::vec3(0.0f));
-  active_scene_->SetIblIntensity(0.0f);
-  active_scene_->SetExposure(1.5f);
-  active_scene_->SetTAAEnabled(false);
-  active_scene_->SetSSAOEnabled(false);
-  active_scene_->SetGodRaysStrength(0.0f);
-  active_scene_->SetBloomEnabled(true);
-  active_scene_->SetBloomThreshold(1.0f);
-  active_scene_->SetBloomStrength(1.0f);
-
-  LOG_INFO("Editor") << "Created lighting/bloom demo (wood floor + crates + 4 HDR lights)";
 }
 
 void Editor::CreatePhysicsDemo() {
