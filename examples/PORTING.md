@@ -75,8 +75,8 @@
 | 5.x parallax (incl steep/pom) | 视差映射 | ⬜（引擎 pbr 无视差；需引擎扩展或 ⛔）|
 | 6.hdr | HDR | ✅ `ex_5_6_hdr_bloom`（blinn_lo，LO 曝光色调 `1-exp(-x)`+gamma，`SetLoHdrTone`）|
 | 7.bloom | 泛光 | ✅ `ex_5_6_hdr_bloom`（引擎 bloom：亮度阈值>1 + 高斯模糊；木地板 + container 方块 + 4 HDR 点光 1/d²）|
-| 8.x deferred (+volumes) | 延迟着色 | ⛔ 引擎为前向+实例化 |
-| 9.ssao | 屏幕空间环境光遮蔽 | ◐ 引擎已有 SSAO（内部开关）；可做一个 SSAO 开关演示 exe ⬜ |
+| 8.x deferred (+volumes) | 延迟着色 | ◐ `ex_5_8_deferred_shading` = **前向等效版**（引擎为前向，非延迟；仅复刻 LO 8.1 场景：3×3 背包网格 + 全部 32 盏 srand(13) 随机彩点光 + LO 衰减，见下）|
+| 9.ssao | 屏幕空间环境光遮蔽 | ✅ `ex_5_9_ssao` = **引擎真实 SSAO 演示**（LO 9.ssao 场景精神的木地板+木箱+背包；SSAO 默认开，**空格切换** on/off 对照）|
 
 ## 6. pbr
 | 目录 | 内容 | 状态 |
@@ -103,8 +103,10 @@ ex_2_4_lighting_maps       -> 2.lighting/4.2.lighting_maps_specular_map (✅ bli
 ex_2_5_light_casters       -> 2.lighting/5.3.light_casters_spot / 5.4 soft (✅ blinn_lo 1:1，相机手电)
 ex_2_6_multiple_lights     -> 2.lighting/6.multiple_lights (✅ blinn_lo 1:1)
 ex_5_3_shadow_mapping      -> 5.advanced_lighting/3.1.3.shadow_mapping (✅ blinn_lo 1:1)
+ex_5_4_normal_mapping      -> 5.advanced_lighting/4.normal_mapping (✅ blinn_lo 1:1)
 ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom (✅ blinn_lo 1:1)
-ex_5_4_normal_mapping      -> 5.advanced_lighting/4.normal_mapping (PBR 演示)
+ex_5_8_deferred_shading   -> 5.advanced_lighting/8.1.deferred_shading (◐ 前向等效：9 背包 + 32 盏彩点光；引擎为前向、点光上限 32 blinn_lo)
+ex_5_9_ssao               -> 5.advanced_lighting/9.ssao (✅ 引擎真实 SSAO 演示，空格 on/off)
 ```
 > 每个 target 对应 LO 源码：`LearnOpenGL/src/<章>/<小节>/<源码名>.cpp`（CMake 注释里已写死）。
 > 新建端口一律沿用该命名，如 `ex_3_1_model_loading`、`ex_6_1_1_pbr_lighting` 等。

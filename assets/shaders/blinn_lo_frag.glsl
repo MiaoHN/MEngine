@@ -57,7 +57,7 @@ uniform float     shadow_map_size   = 2048.0;
 uniform float     shadow_pcf_radius = 2.0;
 uniform int       u_lo_dir_shadow   = 0;
 
-#define MAX_POINT_LIGHTS 8
+#define MAX_POINT_LIGHTS 32
 uniform int   point_light_count = 0;
 uniform vec3  point_light_positions[MAX_POINT_LIGHTS];
 uniform vec3  point_light_ambients[MAX_POINT_LIGHTS];

@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-06 — ex_5_9_ssao（引擎真实 SSAO 演示）+ ex_5_8_deferred_shading（前向等效 32 盏光）
+
+- **用户**：advanced_lighting 里延迟着色与 SSAO 两个示例还没做，能不能加一下。
+- **引擎（blinn_lo 点光上限 8→32）**：LO 8.1 的卖点是 **32 盏点光**，前向要复刻就得支持 32。`blinn_lo_frag.glsl` 的 `MAX_POINT_LIGHTS 8→32`（该着色器无 shadow-sampler 数组，弱驱动安全；classic blinn/pbr 仍 8，往数组越界上传是静默 no-op），`renderer.cpp` `kMaxPointLights 8→32`。既有 demo 点光数 ≤8 完全不变。
+- **ex_5_8_deferred_shading**（◐ 前向等效，非延迟）：引擎为前向+实例化，无 G-buffer 延迟管线；只复刻 LO 8.1 的**场景与数据** → 3×3 背包网格（`assets/models/backpack/backpack.obj`，LoadObj 需带 `assets/` 前缀；scale .5，LO 位姿）+ **全部 32 盏** srand(13) 随机彩点光（LO 位置/颜色 + 衰减 1/(1+0.7d+1.8d²)）+ 32 发光小方块；**无太阳、用方向光做 LO 硬编码环境光 Diffuse×0.1**（blinn_lo 方向光 ambient 未衰减 ×albedo = LO 的 `Diffuse*0.1`；此前 NoSun 全黑看不到背包——LO deferred 截图能看清正是靠这个 0.1 ambient）；albedo 用 raw（LO G-buffer 存 sRGB 原字节不解码）；LoScene 黑底线性直出。相机 (0,0,5) FOV45 4:3。
+- **ex_5_9_ssao**（✅ 引擎真实 SSAO）：LO 9.ssao 是独立 deferred-style SSAO 链，引擎不能照搬内部；改以 **classic blinn + 引擎 SSAO**（blinn 整段光照乘 AO，效果比 pbr 只压 IBL 明显）：木地板 + container2 木箱簇 + LO 背包（直立）；一盏高亮顶光 + 暖填充；经典后处理但关 bloom/god-rays/TAA；**SSAO 默认开，空格 on/off 实时对照**。相机 (0,0,5) FOV45。
+- **验证**：debug 构建通过；SSAO on/off capture 像素差 YAVG 0.166（YMAX 157），AO 集中在物体/地板接触处；既有 5 个 demo（ex_2_1/2_6/5_3/5_4/5_6）hidden 冒烟 exit=0 无回归；deferred capture 可见背包网格被彩色点光照明 + 0.1 ambient。
+- **教训**：`ModelLoader::LoadObj` 打开的是裸相对路径（不像 AssetManager 自带 assets 根前缀）→ exe 目录里必须写 `assets/models/...`。
+
+---
+
 ## 2026-09-06 — ex_5_6 泛光 sRGB 处理与 LO 对齐（最终：shader 侧解码，防驱动黑屏）
 
 - **用户反馈**：泛光比 LO 亮、白色块下过渡不自然；随后“压得啥都看不到”→ 要求处理/参数与 LO 一致且要看得见。

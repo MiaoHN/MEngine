@@ -46,8 +46,10 @@ set(MENGINE_EXAMPLE_DEMOS
 # 5.advanced_lighting
 list(APPEND MENGINE_EXAMPLE_DEMOS
   ex_5_3_shadow_mapping          # 5.advanced_lighting/3.1.x shadow_mapping + 3.2 point_shadows
-  ex_5_6_hdr_bloom               # 5.advanced_lighting/6.hdr + 7.bloom
   ex_5_4_normal_mapping          # 5.advanced_lighting/4.normal_mapping
+  ex_5_6_hdr_bloom               # 5.advanced_lighting/6.hdr + 7.bloom
+  ex_5_8_deferred_shading        # 5.advanced_lighting/8.1.deferred_shading (forward eq., 8 lights)
+  ex_5_9_ssao                    # 5.advanced_lighting/9.ssao (engine SSAO pass, Space toggles)
 )
 
 function(mengine_add_example name)

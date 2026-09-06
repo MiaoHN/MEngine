@@ -404,7 +404,11 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
                      glm::vec2(static_cast<float>(ssao_->GetWidth()), static_cast<float>(ssao_->GetHeight())));
 
   // Point lights (indexed uniform arrays, capped to the shader's MAX).
-  constexpr int kMaxPointLights = 8;
+  // Point lights (indexed uniform arrays). The blinn_lo shader declares 32
+  // (it has no shadow-sampler arrays, so it stays cheap on weak drivers); the
+  // classic blinn/pbr shaders only declare 8 and uploading past their arrays
+  // is a silent no-op, so a single cap serves both.
+  constexpr int kMaxPointLights = 32;
   const int     point_light_count = static_cast<int>(point_lights_.size()) < kMaxPointLights
                                          ? static_cast<int>(point_lights_.size())
                                          : kMaxPointLights;
