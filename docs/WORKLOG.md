@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-09-06 — LO 光衰减 + examples 命名规则（为 1:1 复刻铺路）
+
+- **需求**：1:1 复刻 LO 前，先把 LO 的点/聚光衰减（constant/linear/quadratic）做进引擎；给示例 target 起名时能直接对上 LO 章节/源码。
+- **改动**：
+  - **LO 光衰减（307256a）**：`PointLight`/`SpotLight` 增加 `lo_attenuation`(bool,默认 false) + `constant/linear/quadratic`（默认 1/0.09/0.032）。Renderer 上传每组灯光的 c/l/q 与开关数组；`pbr_frag` 与 `blinn_frag` 都支持：开 → `1/(c+l·d+q·d²)`；关 → 沿用原 radius 衰减（旧场景不受影响）。已验证编译+运行。
+  - **命名规则（15362f6）**：示例 target/源文件统一为 **`ex_<LO顶层章>_<LO小节>_<名>`**（如 `ex_2_6_multiple_lights` = src/2.lighting/6.multiple_lights）。现有 10 个全部改名，CMake 注释里写死 LO 源码路径，`examples/PORTING.md` 更新为完整对照表。
+- **发现/待决**：LO 常绕任意 axis-angle 旋转立方体；MEngine `Transform.rotation` 只有欧拉角(XYZ,度)。做像素级 1:1 前需决定：给 Transform 加 axis-angle，还是每场景按欧拉近似。下一步从 2.lighting 逐场景 1:1 端口（Blinn 管线 + LO 数值 + lo_attenuation）时定。
+
+---
+
 ## 2026-09-06 — 引擎新增第二套 Blinn-Phong 光照管线（可与 PBR 二选一）
 
 - **需求**：为让 LO 示例能 **1:1** 复刻（LO 本身是 Blinn-Phong），希望引擎提供“两套可选”的光照管线。
