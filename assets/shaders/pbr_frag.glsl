@@ -35,6 +35,7 @@ uniform float     shadow_pcf_radius = 2.0;
 
 uniform samplerCube irradiance_map;
 uniform samplerCube prefiltered_map;
+uniform sampler2D   brdf_lut;
 uniform float       max_prefilter_mip = 4.0;
 uniform float       ibl_intensity     = 1.0;
 
@@ -271,14 +272,17 @@ void main() {
   direct *= ShadowCalculation(FragPos, N, L);
 
   // Image-based lighting: diffuse from the irradiance map, specular from the
-  // prefiltered environment cubemap (roughness selects the mip level).
+  // prefiltered environment cubemap. Specular IBL uses the split-sum BRDF LUT
+  // (LO): specular = prefiltered * (F * brdf.x + brdf.y).
   vec3 R          = reflect(-V, N);
   vec3 F_ibl      = FresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
   vec3 kD_ibl     = (1.0 - F_ibl) * (1.0 - metallic);
   vec3 irradiance = texture(irradiance_map, N).rgb;
   vec3 prefiltered = textureLod(prefiltered_map, R, roughness * max_prefilter_mip).rgb;
+  vec2 env_brdf    = texture(brdf_lut, vec2(max(dot(N, V), 0.0), roughness)).rg;
+  vec3 spec_ibl    = prefiltered * (F_ibl * env_brdf.x + env_brdf.y) * specular_intensity;
   float ssao = ssao_enabled == 1 ? texture(ssao_map, gl_FragCoord.xy / viewport_size).r : 1.0;
-  vec3 ambient = (kD_ibl * albedo * irradiance + prefiltered * F_ibl * specular_intensity) * ao * ibl_intensity * ssao;
+  vec3 ambient = (kD_ibl * albedo * irradiance + spec_ibl) * ao * ibl_intensity * ssao;
 
   vec3 color = ambient + direct;
   for (int i = 0; i < point_light_count && i < MAX_POINT_LIGHTS; ++i) {

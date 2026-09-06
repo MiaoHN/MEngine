@@ -83,7 +83,7 @@
 |---|---|---|
 | 1.1.lighting | PBR 直射 | ✅ `ex_6_1_1_pbr_lighting`（引擎 PBR：7×7 红球，metallic=行/7、roughness=列/7，4×300 白光 1/d²；微环境光≈LO 0.03*albedo、**Reinhard 色调+gamma** `SetReinhardTone`、深背景=LO raw clear）|
 | 1.2.lighting_textured | PBR 直射+贴图 | ✅ `ex_6_1_2_pbr_lighting_textured`（rusted_iron：albedo/normal/ao raw + 合并 MR 贴图 `mr.png`，金属/粗糙逐像素，锈区非金属粗糙→哑光；`tools/make_pbr_mr.ps1` 由 LO 两张灰度生成 R=1/G=rough/B=metal）|
-| 2.2.2.ibl_specular_textured | IBL 镜面+贴图 | ✅ `ex_6_2_2_ibl_specular_textured`（引擎 IBL：newport_loft 环境 + 5 材质球 rusted_iron/gold/grass/plastic/wall，LO 布局/4×300 灯；albedo sRGB 解码 `SetAlbedoSRGB`→pbr `u_albedo_srgb`；无 BRDF LUT，用简化 prefiltered*F_ibl）|
+| 2.2.2.ibl_specular_textured | IBL 镜面+贴图 | ✅ `ex_6_2_2_ibl_specular_textured`（引擎 IBL：newport_loft 环境 + 5 材质球，LO 布局/4×300 灯；albedo sRGB 解码；**引擎新增 split-sum BRDF LUT**：specular=prefiltered*(F*brdf.x+brdf.y)，与 LO 一致）|
 | 2.x ibl 预计算 (irradiance/specular conversion) | IBL 预计算 | ◐ 引擎内部已做（prefilter/irradiance）；环境源现可按 app 覆盖 `Application::SetEnvironmentHdrPath`（默认 kloppenheim；6.2.2 用 newport_loft）|
 | PBR 资源 (rusted_iron/gold 等) | — | ✅ 已镜像到 `assets/textures/pbr/{rusted_iron,gold,grass,plastic,wall}/`（6.1.2 已用 rusted_iron）|
 

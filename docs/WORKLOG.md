@@ -5,6 +5,14 @@
 
 ---
 
+## 2026-09-06 — 引擎 PBR 新增 split-sum BRDF LUT（对齐 LO 2.2 的 IBL 镜面高光）
+
+- **用户**：6.2.2 球体偏亮/偏鲜艳、和背景不像同一图层；问是亮度还是颜色映射。逐项比对 LO 2.2.2.pbr.fs 后：直射/材质/albedo 解码/tone 全一致，唯 IBL 镜面不同——LO `prefiltered*(F*brdf.x+brdf.y)`（split-sum LUT），引擎之前 `prefiltered*F_ibl`（无 LUT）→ IBL 镜面能量分布不对（金属球偏亮/鲜艳），另背景在引擎里也走 tone+gamma（LO 背景 raw）。
+- **引擎**：新增 BRDF LUT：`assets/shaders/brdf_frag.glsl`（LO 2.2 brdf.fs，1024 样本积分 NdotV×roughness→512 RG16F）+ manifest `brdf`（复用 post_vert 全屏三角形）；`Skybox` 生成 LUT（`GenerateBRDF`/`BindBRDF`，RG16F 2D、fullscreen VAO）；Renderer 绑到 slot13；`pbr_frag` spec IBL 改为 LO 形式 `prefiltered*(F_ibl*brdf.x+brdf.y)*specular_intensity`。
+- **验证**：6.2.2 capture 正常；ex_2_1/ex_2_2_basic hidden 冒烟 exit=0（走 IBL 的 PBR 场景无回归）。球体 IBL 高光能量现与 LO 一致。
+
+---
+
 ## 2026-09-06 — 修复 ex_6_2_2 天空盒上下颠倒 + 球/背景不同图层
 
 - **用户反馈**：① 天空盒上下颠倒；② 不同材质球感觉和背景不是一个图层。

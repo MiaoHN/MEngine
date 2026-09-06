@@ -392,11 +392,13 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   shader->SetUniform("shadow_map_size", static_cast<float>(shadow_map_->GetWidth()));
   shader->SetUniform("shadow_pcf_radius", shadow_pcf_radius_);
 
-  // IBL environment (irradiance + prefiltered specular cubemaps).
+  // IBL environment (irradiance + prefiltered specular cubemaps) + BRDF LUT.
   skybox_->BindIrradiance(5);
   skybox_->BindPrefilter(6);
+  skybox_->BindBRDF(13);
   shader->SetUniform("irradiance_map", 5);
   shader->SetUniform("prefiltered_map", 6);
+  shader->SetUniform("brdf_lut", 13);
   shader->SetUniform("max_prefilter_mip", skybox_->GetMaxPrefilterMip());
   shader->SetUniform("ibl_intensity", ibl_intensity_);
 

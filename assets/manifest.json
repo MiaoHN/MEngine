@@ -10,6 +10,7 @@
     "irradiance":         ["shaders/skybox_vert.glsl", "shaders/irradiance_frag.glsl"],
     "prefilter":          ["shaders/skybox_vert.glsl", "shaders/prefilter_frag.glsl"],
     "equirect_to_cube":   ["shaders/skybox_vert.glsl", "shaders/equirect_to_cube_frag.glsl"],
+    "brdf":               ["shaders/post_vert.glsl", "shaders/brdf_frag.glsl"],
     "brightness":         ["shaders/post_vert.glsl", "shaders/brightness_frag.glsl"],
     "blur":               ["shaders/post_vert.glsl", "shaders/blur_frag.glsl"],
     "composite":          ["shaders/post_vert.glsl", "shaders/composite_frag.glsl"],

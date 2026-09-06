@@ -113,10 +113,22 @@ Skybox::Skybox(const std::string &hdr_path, int env_size, int irradiance_size, i
   irradiance_shader_ = AssetManager::Instance().GetShader("irradiance");
   prefilter_shader_  = AssetManager::Instance().GetShader("prefilter");
   equirect_shader_   = AssetManager::Instance().GetShader("equirect_to_cube");
+  brdf_shader_       = AssetManager::Instance().GetShader("brdf");
+
+  // Split-sum environment BRDF LUT (RG16F 2D, fullscreen triangle via vertex id).
+  glGenTextures(1, &brdf_lut_texture_);
+  glBindTexture(GL_TEXTURE_2D, brdf_lut_texture_);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, brdf_lut_size_, brdf_lut_size_, 0, GL_RG, GL_FLOAT, nullptr);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glGenVertexArrays(1, &fullscreen_vao_);
 
   GenerateEnvironment();
   GenerateIrradiance();
   GeneratePrefilter();
+  GenerateBRDF();
 }
 
 Skybox::~Skybox() {
@@ -124,6 +136,8 @@ Skybox::~Skybox() {
   glDeleteTextures(1, &irradiance_cubemap_);
   glDeleteTextures(1, &prefilter_cubemap_);
   glDeleteTextures(1, &equirect_texture_);
+  glDeleteTextures(1, &brdf_lut_texture_);
+  glDeleteVertexArrays(1, &fullscreen_vao_);
   glDeleteFramebuffers(1, &capture_fbo_);
   glDeleteRenderbuffers(1, &capture_rbo_);
 }
@@ -233,6 +247,23 @@ void Skybox::BindEnvironment(unsigned int slot) const {
 void Skybox::BindIrradiance(unsigned int slot) const {
   glActiveTexture(GL_TEXTURE0 + slot);
   glBindTexture(GL_TEXTURE_CUBE_MAP, irradiance_cubemap_);
+}
+
+void Skybox::GenerateBRDF() {
+  brdf_shader_->Bind();
+  glBindFramebuffer(GL_FRAMEBUFFER, capture_fbo_);
+  glViewport(0, 0, brdf_lut_size_, brdf_lut_size_);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, brdf_lut_texture_, 0);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  glBindVertexArray(fullscreen_vao_);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+  glBindVertexArray(0);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Skybox::BindBRDF(unsigned int slot) const {
+  glActiveTexture(GL_TEXTURE0 + slot);
+  glBindTexture(GL_TEXTURE_2D, brdf_lut_texture_);
 }
 
 void Skybox::BindPrefilter(unsigned int slot) const {

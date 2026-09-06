@@ -32,6 +32,8 @@ class Skybox {
   void BindEnvironment(unsigned int slot) const;
   void BindIrradiance(unsigned int slot) const;
   void BindPrefilter(unsigned int slot) const;
+  /// @brief Binds the split-sum environment BRDF LUT (RG16F 2D) to a unit.
+  void BindBRDF(unsigned int slot) const;
 
   /// @brief Highest valid mip level of the prefiltered cubemap (0..max).
   [[nodiscard]] float GetMaxPrefilterMip() const { return static_cast<float>(prefilter_mip_levels_ - 1); }
@@ -40,24 +42,29 @@ class Skybox {
   void GenerateEnvironment();
   void GenerateIrradiance();
   void GeneratePrefilter();
+  void GenerateBRDF();
   void RenderCube() const;
 
   unsigned int env_cubemap_        = 0;
   unsigned int irradiance_cubemap_ = 0;
   unsigned int prefilter_cubemap_  = 0;
   unsigned int equirect_texture_   = 0;
+  unsigned int brdf_lut_texture_   = 0;  // split-sum env BRDF LUT (RG16F 2D)
   unsigned int capture_fbo_        = 0;
   unsigned int capture_rbo_        = 0;
+  unsigned int fullscreen_vao_     = 0;
 
   int env_size_             = 512;
   int irradiance_size_      = 32;
   int prefilter_size_       = 128;
   int prefilter_mip_levels_ = 5;
+  int brdf_lut_size_        = 512;
 
   Ref<Shader> skybox_shader_;
   Ref<Shader> irradiance_shader_;
   Ref<Shader> prefilter_shader_;
   Ref<Shader> equirect_shader_;
+  Ref<Shader> brdf_shader_;
   Ref<Mesh>   cube_;
 };
 
