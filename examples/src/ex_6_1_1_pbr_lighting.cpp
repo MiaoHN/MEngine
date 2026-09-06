@@ -53,13 +53,14 @@ std::shared_ptr<Scene> BuildPbrLighting() {
     s->AddPointLight(l);
   }
 
-  // LO 1.1: faint ambient 0.03*albedo (no IBL yet), Reinhard tone + gamma,
-  // raw 0.1 clear (~RGB 25). Engine: drive IBL intensity low for the faint
-  // ambient, use the new LO Reinhard tone, and feed a small linear background
-  // so the tonemapped result stays dark like LO's raw clear. Engine PBR path;
-  // kill bloom/god-rays/TAA/SSAO for the clean LO figure.
+  // LO 1.1: pure direct lighting (no IBL/env) + Reinhard tone + gamma + raw
+  // 0.1 clear (~RGB 25). Engine: skybox off, IBL off (0) so no skybox-env tint
+  // washes the spheres (LO's faint ambient is a flat 0.03*albedo, which the
+  // engine has no flat knob for - a skybox env would add an unnatural tint),
+  // Reinhard tone, and a small linear background so it reads dark like LO.
+  // Kill bloom/god-rays/TAA/SSAO for the clean LO figure.
   examples::NoSun(*s);
-  examples::SolidBackground(*s, glm::vec3(0.0065f, 0.0065f, 0.0065f), 0.03f);
+  examples::SolidBackground(*s, glm::vec3(0.0065f, 0.0065f, 0.0065f), 0.0f);
   s->SetReinhardTone(true);
   s->SetBloomEnabled(false);
   s->SetGodRaysStrength(0.0f);

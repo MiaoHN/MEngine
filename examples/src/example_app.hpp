@@ -58,6 +58,7 @@ class ExampleApp : public MEngine::Application {
   float cam_yaw_   = 0.0f;
   float cam_pitch_ = 18.0f;
   float cam_dist_  = 10.0f;
+  float cam_fov_   = 55.0f;  // runtime FOV; the mouse wheel zooms it (LO-style)
 };
 
 }  // namespace examples

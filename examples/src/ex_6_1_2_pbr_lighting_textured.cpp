@@ -72,11 +72,12 @@ std::shared_ptr<Scene> BuildPbrTextured() {
   l.quadratic      = 1.0f;
   s->AddPointLight(l);
 
-  // LO 1.2: faint ambient 0.03*albedo, Reinhard tone + gamma, raw 0.1 clear.
-  // Engine: low IBL for the faint ambient + Reinhard tone + small linear bg so
-  // it reads dark like LO. Clean LO figure (no bloom / god rays / TAA / SSAO).
+  // LO 1.2: pure direct lighting (no env) + Reinhard tone + gamma + raw 0.1
+  // clear. Engine: skybox off, IBL off so the skybox-env ambient doesn't wash
+  // the rust grey/blue; Reinhard tone; small linear bg reads dark like LO.
+  // Clean LO figure (no bloom / god rays / TAA / SSAO).
   examples::NoSun(*s);
-  examples::SolidBackground(*s, glm::vec3(0.0065f, 0.0065f, 0.0065f), 0.03f);
+  examples::SolidBackground(*s, glm::vec3(0.0065f, 0.0065f, 0.0065f), 0.0f);
   s->SetReinhardTone(true);
   s->SetBloomEnabled(false);
   s->SetGodRaysStrength(0.0f);
