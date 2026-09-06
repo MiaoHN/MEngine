@@ -138,6 +138,7 @@ class Editor : public Application {
   void CreateModelEntity(const std::filesystem::path &path);
   void CreatePhysicsDemo();
   void CreateLightingDemo();
+  void CreateEngineDemo();
   void DuplicateSelectedEntity();
   /// @brief Deep-copies `source` and its whole child subtree. The copy is
   /// parented under `parent_copy` (entt::null = root) when `source` had one.
@@ -150,6 +151,7 @@ class Editor : public Application {
   void ApplyDefaultLayout(ImGuiID dockspace_id);
   void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
   void DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
+  void DrawLightGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
   void DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
   void SetGridVisible(bool visible);
   void LaunchStandalone();

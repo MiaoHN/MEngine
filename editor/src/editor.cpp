@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -286,19 +287,19 @@ LogLevel ParseLogLevel(const std::string &line) {
 ImVec4 LogLevelColor(LogLevel level) {
   switch (level) {
     case LogLevel::Trace:
-      return {0.52f, 0.54f, 0.57f, 1.0f};
+      return {0.55f, 0.57f, 0.62f, 1.0f};
     case LogLevel::Debug:
-      return {0.10f, 0.45f, 0.78f, 1.0f};
+      return {0.35f, 0.64f, 0.95f, 1.0f};
     case LogLevel::Info:
-      return {0.16f, 0.18f, 0.22f, 1.0f};
+      return {0.78f, 0.80f, 0.84f, 1.0f};
     case LogLevel::Warn:
-      return {0.80f, 0.55f, 0.05f, 1.0f};
+      return {0.98f, 0.80f, 0.28f, 1.0f};
     case LogLevel::Error:
-      return {0.80f, 0.15f, 0.15f, 1.0f};
+      return {1.00f, 0.42f, 0.42f, 1.0f};
     case LogLevel::Fatal:
-      return {0.65f, 0.05f, 0.05f, 1.0f};
+      return {1.00f, 0.30f, 0.42f, 1.0f};
     default:
-      return {0.30f, 0.32f, 0.36f, 1.0f};
+      return {0.62f, 0.64f, 0.68f, 1.0f};
   }
 }
 
@@ -310,9 +311,10 @@ bool ContainsIgnoreCase(const std::string &haystack, const std::string &needle) 
   return it != haystack.end();
 }
 
-/// @brief Applies a polished light theme to the ImGui style.
+/// @brief Applies a polished dark theme (VS Code / Visual Studio-style neutral
+/// charcoal base + blue accent) to the ImGui style.
 void SetupImGuiStyle() {
-  ImGui::StyleColorsLight();
+  ImGui::StyleColorsDark();
 
   ImGuiStyle &style = ImGui::GetStyle();
 
@@ -345,42 +347,66 @@ void SetupImGuiStyle() {
   style.PopupBorderSize  = 1.0f;
   style.TabBorderSize    = 1.0f;
 
-  // Calmer blue-gray accent palette on top of the light base.
-  ImVec4 *colors                      = style.Colors;
-  colors[ImGuiCol_WindowBg]           = ImVec4(0.96f, 0.96f, 0.97f, 1.00f);
-  colors[ImGuiCol_ChildBg]            = ImVec4(0.93f, 0.93f, 0.95f, 1.00f);
-  colors[ImGuiCol_PopupBg]            = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
-  colors[ImGuiCol_Text]               = ImVec4(0.15f, 0.17f, 0.20f, 1.00f);
-  colors[ImGuiCol_TextDisabled]       = ImVec4(0.55f, 0.57f, 0.62f, 1.00f);
-  colors[ImGuiCol_FrameBg]            = ImVec4(0.86f, 0.87f, 0.90f, 1.00f);
-  colors[ImGuiCol_FrameBgHovered]     = ImVec4(0.80f, 0.82f, 0.86f, 1.00f);
-  colors[ImGuiCol_FrameBgActive]      = ImVec4(0.74f, 0.77f, 0.83f, 1.00f);
-  colors[ImGuiCol_TitleBg]            = ImVec4(0.90f, 0.91f, 0.94f, 1.00f);
-  colors[ImGuiCol_TitleBgActive]      = ImVec4(0.70f, 0.78f, 0.92f, 1.00f);
-  colors[ImGuiCol_TitleBgCollapsed]   = ImVec4(0.90f, 0.91f, 0.94f, 1.00f);
-  colors[ImGuiCol_MenuBarBg]          = ImVec4(0.93f, 0.94f, 0.96f, 1.00f);
-  colors[ImGuiCol_Header]             = ImVec4(0.83f, 0.86f, 0.91f, 0.80f);
-  colors[ImGuiCol_HeaderHovered]      = ImVec4(0.76f, 0.80f, 0.87f, 0.80f);
-  colors[ImGuiCol_HeaderActive]       = ImVec4(0.68f, 0.74f, 0.83f, 1.00f);
-  colors[ImGuiCol_Button]             = ImVec4(0.82f, 0.84f, 0.89f, 1.00f);
-  colors[ImGuiCol_ButtonHovered]      = ImVec4(0.73f, 0.77f, 0.84f, 1.00f);
-  colors[ImGuiCol_ButtonActive]       = ImVec4(0.63f, 0.68f, 0.78f, 1.00f);
-  colors[ImGuiCol_CheckMark]          = ImVec4(0.16f, 0.35f, 0.62f, 1.00f);
-  colors[ImGuiCol_SliderGrab]         = ImVec4(0.40f, 0.52f, 0.72f, 1.00f);
-  colors[ImGuiCol_SliderGrabActive]   = ImVec4(0.26f, 0.40f, 0.62f, 1.00f);
-  colors[ImGuiCol_Separator]          = ImVec4(0.60f, 0.62f, 0.67f, 0.50f);
-  colors[ImGuiCol_SeparatorHovered]   = ImVec4(0.40f, 0.50f, 0.66f, 0.80f);
-  colors[ImGuiCol_SeparatorActive]    = ImVec4(0.30f, 0.42f, 0.60f, 1.00f);
-  colors[ImGuiCol_Tab]                = ImVec4(0.86f, 0.88f, 0.92f, 1.00f);
-  colors[ImGuiCol_TabHovered]         = ImVec4(0.73f, 0.77f, 0.84f, 1.00f);
-  colors[ImGuiCol_TabActive]          = ImVec4(0.62f, 0.70f, 0.86f, 1.00f);
-  colors[ImGuiCol_TabUnfocused]       = ImVec4(0.88f, 0.89f, 0.92f, 1.00f);
-  colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.73f, 0.77f, 0.85f, 1.00f);
-  colors[ImGuiCol_DockingPreview]     = ImVec4(0.30f, 0.50f, 0.78f, 0.70f);
+  // ---- Neutral-charcoal base (VS Code / Visual Studio dark) + blue accent --
+  ImVec4 *colors                          = style.Colors;
+  const ImVec4 accent(0.24f, 0.53f, 0.92f, 1.00f);  // friendly VS blue
+
+  // Surfaces.
+  colors[ImGuiCol_WindowBg]           = ImVec4(0.145f, 0.145f, 0.152f, 1.00f);  // panels
+  colors[ImGuiCol_ChildBg]            = ImVec4(0.115f, 0.115f, 0.122f, 1.00f);  // wells / editors
+  colors[ImGuiCol_PopupBg]            = ImVec4(0.160f, 0.160f, 0.170f, 0.98f);
+  colors[ImGuiCol_MenuBarBg]          = ImVec4(0.158f, 0.158f, 0.166f, 1.00f);
+  colors[ImGuiCol_TitleBg]            = ImVec4(0.152f, 0.152f, 0.162f, 1.00f);
+  colors[ImGuiCol_TitleBgActive]      = ImVec4(0.205f, 0.208f, 0.222f, 1.00f);
+  colors[ImGuiCol_TitleBgCollapsed]   = ImVec4(0.150f, 0.150f, 0.158f, 1.00f);
+  colors[ImGuiCol_DockingEmptyBg]     = ImVec4(0.102f, 0.102f, 0.108f, 1.00f);
+  colors[ImGuiCol_ModalWindowDimBg]   = ImVec4(0.00f, 0.00f, 0.00f, 0.55f);
+
+  // Text.
+  colors[ImGuiCol_Text]               = ImVec4(0.82f, 0.83f, 0.86f, 1.00f);
+  colors[ImGuiCol_TextDisabled]       = ImVec4(0.45f, 0.46f, 0.51f, 1.00f);
+  colors[ImGuiCol_TextSelectedBg]     = ImVec4(accent.x, accent.y, accent.z, 0.35f);
+
+  // Borders / separators.
+  colors[ImGuiCol_Border]             = ImVec4(0.235f, 0.235f, 0.255f, 1.00f);
+  colors[ImGuiCol_BorderShadow]       = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+  colors[ImGuiCol_Separator]          = ImVec4(0.260f, 0.262f, 0.285f, 0.85f);
+  colors[ImGuiCol_SeparatorHovered]   = ImVec4(0.35f, 0.55f, 0.85f, 0.80f);
+  colors[ImGuiCol_SeparatorActive]    = accent;
+
+  // Interactive frames (buttons, inputs, combos, slider tracks).
+  colors[ImGuiCol_FrameBg]            = ImVec4(0.195f, 0.196f, 0.215f, 1.00f);
+  colors[ImGuiCol_FrameBgHovered]     = ImVec4(0.275f, 0.285f, 0.315f, 1.00f);
+  colors[ImGuiCol_FrameBgActive]      = ImVec4(0.315f, 0.330f, 0.365f, 1.00f);
+  colors[ImGuiCol_Button]             = ImVec4(0.215f, 0.220f, 0.240f, 1.00f);
+  colors[ImGuiCol_ButtonHovered]      = ImVec4(0.320f, 0.355f, 0.410f, 1.00f);
+  colors[ImGuiCol_ButtonActive]       = ImVec4(0.380f, 0.420f, 0.490f, 1.00f);
+  colors[ImGuiCol_CheckMark]          = ImVec4(0.35f, 0.62f, 1.00f, 1.00f);
+  colors[ImGuiCol_SliderGrab]         = ImVec4(0.34f, 0.55f, 0.86f, 1.00f);
+  colors[ImGuiCol_SliderGrabActive]   = ImVec4(0.44f, 0.66f, 0.95f, 1.00f);
+  colors[ImGuiCol_ScrollbarBg]        = ImVec4(0.102f, 0.102f, 0.108f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrab]      = ImVec4(0.300f, 0.305f, 0.330f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.380f, 0.390f, 0.425f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrabActive]  = ImVec4(0.460f, 0.475f, 0.520f, 1.00f);
+
+  // Selection headers (scene-tree rows, collapsing headers, menu highlight).
+  colors[ImGuiCol_Header]             = ImVec4(accent.x, accent.y, accent.z, 0.22f);
+  colors[ImGuiCol_HeaderHovered]      = ImVec4(accent.x, accent.y, accent.z, 0.34f);
+  colors[ImGuiCol_HeaderActive]       = ImVec4(accent.x, accent.y, accent.z, 0.46f);
+
+  // Tabs (dock tab bar).
+  colors[ImGuiCol_Tab]                = ImVec4(0.150f, 0.150f, 0.162f, 1.00f);
+  colors[ImGuiCol_TabHovered]         = ImVec4(0.255f, 0.290f, 0.345f, 1.00f);
+  colors[ImGuiCol_TabActive]          = ImVec4(0.235f, 0.325f, 0.455f, 1.00f);
+  colors[ImGuiCol_TabUnfocused]       = ImVec4(0.145f, 0.145f, 0.155f, 1.00f);
+  colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.185f, 0.188f, 0.210f, 1.00f);
+
+  // Docking / resize preview.
+  colors[ImGuiCol_DockingPreview]     = ImVec4(accent.x, accent.y, accent.z, 0.70f);
 }
 
 /// @brief Draws a crisp amber folder icon with the draw list (clearly visible
-/// on the light theme, unlike the old near-white folder texture).
+/// on the dark theme).
 void DrawFolderIcon(ImDrawList *draw, const ImVec2 &min, const ImVec2 &max) {
   const ImU32 body  = ImGui::GetColorU32(ImVec4(0.96f, 0.78f, 0.30f, 1.00f));
   const ImU32 tab   = ImGui::GetColorU32(ImVec4(0.86f, 0.60f, 0.12f, 1.00f));
@@ -500,9 +526,12 @@ default_material_ = CreateDefaultMaterial();
   grid_entity_.AddComponent<Transform>();
   grid_entity_.AddComponent<MeshComponent>(grid_mesh_, grid_material_);
 
-  // Default scene: a LO 7.bloom / ex_5_6-style lighting showroom (wood floor +
-  // crates + 4 HDR point lights that bloom). Everything sits at rest until Play.
-  CreateLightingDemo();
+  // Default scene: a general-engine (PBR + ACES) lighting showroom - matte
+  // floor + boxes + a metallic sphere lit by the sun (shadows) and two colored
+  // point lights with HDR-emissive lamp cubes (bloom). Everything at rest until
+  // Play. This deliberately avoids the LO-exact path so light Color/Intensity
+  // edits and shadows behave like a normal engine light.
+  CreateEngineDemo();
 
   // No scene-level main script by default: pressing Play only runs the light
   // entities' own orbit_light.lua scripts. (Set one via the Scene panel.)
@@ -1005,8 +1034,16 @@ void Editor::ShowImGuiScene() {
   };
 
   if (!filtering) {
+    // Snapshot the hierarchy before drawing: the per-node context menus can
+    // delete / duplicate / create-child WHILE we iterate (they mutate the
+    // scene's live entity vector), which would invalidate the loop's
+    // iterators mid-frame and crash (an erased iterator is dereferenced on the
+    // next step). Iterating a copy keeps the draw stable; entries whose entity
+    // was just destroyed are skipped by the validity checks in draw_node().
+    const std::vector<Entity> snapshot = active_scene_->GetAllEntities();
+
     // Roots first (entities without a parent), then their subtrees recursively.
-    for (auto &entity : active_scene_->GetAllEntities()) {
+    for (const auto &entity : snapshot) {
       if (entity == grid_entity_) {
         continue;
       }
@@ -1181,6 +1218,7 @@ void Editor::ShowImGuiViewport() {
   if (game_mode_ == GameMode::Edit) {
     ShowGizmo(image_pos, image_area);
     DrawCameraGizmos(image_pos, image_area);
+    DrawLightGizmos(image_pos, image_area);
     if (show_colliders_) {
       DrawColliderGizmos(image_pos, image_area);
     }
@@ -1427,7 +1465,7 @@ void Editor::ShowImGuiProperties() {
       ImGui::TextDisabled("Position = the entity's Transform (move it with the gizmo).");
     });
 
-    DrawComponent<SpotLightComponent>("Spot Light", selected_entity_, [](auto &component) {
+    DrawComponent<SpotLightComponent>("Spot Light", selected_entity_, [&](auto &component) {
       SpotLight &light = component.light;
       ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
       ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 500.0f);
@@ -1440,18 +1478,27 @@ void Editor::ShowImGuiProperties() {
       if (ImGui::DragFloat("Outer Cone", &outer, 0.5f, 0.0f, 90.0f)) {
         light.outer_cutoff = glm::cos(glm::radians(outer));
       }
-      DrawVec3Control("Direction", light.direction);
+      if (selected_entity_.HasComponent<Transform>()) {
+        const glm::vec3 &d = light.direction;  // derived each frame (see SyncLightComponents)
+        ImGui::TextWrapped("Aim follows the entity's Rotation (local -Z): rotate with the gizmo (E).");
+        ImGui::Text("Aim dir: (%.2f, %.2f, %.2f)", d.x, d.y, d.z);
+      } else {
+        DrawVec3Control("Direction", light.direction);
+      }
       ImGui::TextDisabled("Position = the entity's Transform (move it with the gizmo).");
     });
 
-    DrawComponent<DirectionalLightComponent>("Directional Light", selected_entity_, [](auto &component) {
+    DrawComponent<DirectionalLightComponent>("Directional Light", selected_entity_, [&](auto &component) {
       DirectionalLight &light = component.light;
-      DrawVec3Control("Direction (travel)", light.direction);
-      ImGui::SameLine();
-      ImGui::TextDisabled("(?)");
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Direction the light TRAVELS (away from the sun);\n"
-                          "e.g. (0, -1, 0) = sun straight above.");
+      if (selected_entity_.HasComponent<Transform>()) {
+        ImGui::TextWrapped("Direction follows the entity's Rotation (local -Z): "
+                            "select it and rotate with the gizmo (E).");
+        const glm::vec3 &d = light.direction;  // derived each frame (see SyncLightComponents)
+        ImGui::Text("Travel dir: (%.2f, %.2f, %.2f)", d.x, d.y, d.z);
+        ImGui::Separator();
+      } else {
+        // No Transform: fall back to editing the raw component direction.
+        DrawVec3Control("Direction (travel)", light.direction);
       }
       ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
       DrawVec3Control("Ambient", light.ambient);
@@ -1640,9 +1687,9 @@ void Editor::ShowImGuiLighting() {
     PointLight light;
     light.position     = glm::vec3(0.0f, 2.0f, 0.0f);
     light.color        = glm::vec3(1.0f);
-    light.intensity    = 2.0f;
-    light.radius       = 6.0f;
-    light.casts_shadow = false;
+    light.intensity    = 4.0f;
+    light.radius       = 10.0f;
+    light.casts_shadow = true;
     point_lights_.push_back(light);
   }
 
@@ -1761,7 +1808,7 @@ void Editor::ShowImGuiRendering() {
   }
   ImGui::GetWindowDrawList()->AddRect(env_min, env_max, ImGui::GetColorU32(ImGuiCol_Separator));
   ImGui::SetCursorScreenPos(ImVec2(env_min.x + 6.0f, env_min.y + 3.0f));
-  ImGui::TextColored(ImVec4(0.4f, 0.5f, 0.9f, 1.0f), "( .hdr )");
+  ImGui::TextColored(ImVec4(0.55f, 0.70f, 1.0f, 1.0f), "( .hdr )");
   if (ImGui::Checkbox("Flip V (glTF)", &env_hdr_flip_)) {
     active_scene_->SetEnvironmentHdr(Application::GetEnvironmentHdrPath(), env_hdr_flip_);
   }
@@ -1820,12 +1867,12 @@ void Editor::ShowImGuiLog() {
     ImVec4      color;
   };
   static const LevelToggle toggles[] = {
-      {"TRACE", &show_trace, {0.76f, 0.77f, 0.80f, 1.0f}}, {"DEBUG", &show_debug, {0.72f, 0.83f, 0.96f, 1.0f}},
-      {"INFO", &show_info, {0.80f, 0.88f, 0.96f, 1.0f}},   {"WARN", &show_warn, {0.98f, 0.90f, 0.66f, 1.0f}},
-      {"ERROR", &show_error, {0.98f, 0.78f, 0.78f, 1.0f}}, {"FATAL", &show_fatal, {0.94f, 0.66f, 0.66f, 1.0f}},
+      {"TRACE", &show_trace, {0.58f, 0.61f, 0.65f, 1.0f}}, {"DEBUG", &show_debug, {0.33f, 0.62f, 0.95f, 1.0f}},
+      {"INFO", &show_info, {0.42f, 0.78f, 0.64f, 1.0f}},   {"WARN", &show_warn, {0.93f, 0.74f, 0.20f, 1.0f}},
+      {"ERROR", &show_error, {0.90f, 0.34f, 0.34f, 1.0f}}, {"FATAL", &show_fatal, {0.82f, 0.30f, 0.55f, 1.0f}},
   };
   for (const auto &toggle : toggles) {
-    const ImVec4 c = *toggle.flag ? toggle.color : ImVec4(0.88f, 0.89f, 0.92f, 1.0f);
+    const ImVec4 c = *toggle.flag ? toggle.color : ImVec4(0.28f, 0.29f, 0.31f, 1.0f);
     ImGui::PushStyleColor(ImGuiCol_Button, c);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, c);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, c);
@@ -1997,7 +2044,7 @@ void Editor::ShowImGuiContentBrowser() {
 
     // Hover highlight behind the thumbnail.
     if (hovered) {
-      draw->AddRectFilled(thumb_min, thumb_max, ImGui::GetColorU32(ImVec4(0.55f, 0.66f, 0.86f, 0.45f)));
+      draw->AddRectFilled(thumb_min, thumb_max, ImGui::GetColorU32(ImVec4(0.22f, 0.45f, 0.90f, 0.40f)));
     }
 
     // Thumbnail: folder icon / image preview / file icon.
@@ -2681,9 +2728,10 @@ void Editor::CreatePointLightEntity() {
   Entity entity = CreateEntityWithUniqueName("Point Light");
   entity.AddComponent<Transform>(glm::vec3(0.0f, 2.0f, 0.0f));
   PointLightComponent component;
-  component.light.color     = glm::vec3(1.0f);
-  component.light.intensity = 2.0f;
-  component.light.radius    = 6.0f;
+  component.light.color        = glm::vec3(1.0f);
+  component.light.intensity    = 5.0f;
+  component.light.radius       = 10.0f;
+  component.light.casts_shadow = true;
   entity.AddComponent<PointLightComponent>(component);
   selected_entity_ = entity;
   LOG_DEBUG("Editor") << "Created point light '" << entity.GetComponent<Tag>().tag << "'";
@@ -2691,7 +2739,9 @@ void Editor::CreatePointLightEntity() {
 
 void Editor::CreateSpotLightEntity() {
   Entity entity = CreateEntityWithUniqueName("Spot Light");
-  entity.AddComponent<Transform>(glm::vec3(0.0f, 2.0f, 0.0f));
+  auto   &t     = entity.AddComponent<Transform>(glm::vec3(0.0f, 2.0f, 0.0f));
+  // Aim down (-Z -> -Y) so a fresh spot shines onto the ground grid.
+  t.rotation = glm::radians(glm::vec3(-90.0f, 0.0f, 0.0f));
   SpotLightComponent component;
   component.light.color     = glm::vec3(1.0f);
   component.light.intensity = 2.0f;
@@ -2703,11 +2753,109 @@ void Editor::CreateSpotLightEntity() {
 
 void Editor::CreateDirectionalLightEntity() {
   Entity entity = CreateEntityWithUniqueName("Directional Light");
-  entity.AddComponent<Transform>(glm::vec3(0.0f, 0.0f, 0.0f));
+  auto   &t     = entity.AddComponent<Transform>(glm::vec3(0.0f, 0.0f, 0.0f));
+  // Aim down (-Z -> -Y) so a fresh sun shines straight down; rotate to tilt it.
+  t.rotation = glm::radians(glm::vec3(-90.0f, 0.0f, 0.0f));
   DirectionalLightComponent component;  // defaults match the engine's sun
   entity.AddComponent<DirectionalLightComponent>(component);
   selected_entity_ = entity;
   LOG_DEBUG("Editor") << "Created directional light '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+/// @brief The default editor scene: a general-engine (PBR + ACES) lighting
+/// showroom - a matte floor with a few boxes + a metallic sphere under the
+/// directional sun (so it casts shadows), plus two colored point lights with
+/// matching HDR-emissive lamp cubes (so they bloom). This is the opposite of
+/// the LO-exact demo: here light Color / Intensity edits take effect on PBR
+/// materials and the directional + shadow-casting point light both shadow the
+/// floor, which is the behaviour users expect from a normal engine light.
+void Editor::CreateEngineDemo() {
+  const auto pbr_material = [&](const glm::vec3 &color, float roughness, float metallic) {
+    auto m = CreateRef<Material>(*default_material_);
+    m->SetBaseColorFactor(glm::vec4(color, 1.0f));
+    m->SetRoughnessFactor(roughness);
+    m->SetMetallicFactor(metallic);
+    return m;
+  };
+  const Ref<Mesh> cube = Mesh::CreateCube();
+
+  // Matte floor (receives the directional + point shadows).
+  {
+    Entity floor = active_scene_->CreateEntity("Floor");
+    auto   &t    = floor.AddComponent<Transform>();
+    t.translation = glm::vec3(0.0f, -0.5f, 0.0f);
+    t.scale       = glm::vec3(24.0f, 1.0f, 24.0f);
+    floor.AddComponent<MeshComponent>(cube, pbr_material(glm::vec3(0.78f), 0.92f, 0.0f));
+  }
+
+  const auto put_box = [&](const glm::vec3 &pos, const glm::vec3 &scale, const glm::vec3 &color, float rough) {
+    Entity e = CreateEntityWithUniqueName("Box");
+    auto   &t = e.AddComponent<Transform>();
+    t.translation = pos;
+    t.scale       = scale;
+    e.AddComponent<MeshComponent>(cube, pbr_material(color, rough, 0.0f));
+    return e;
+  };
+  put_box({0.0f, 0.6f, -1.5f}, glm::vec3(1.2f), glm::vec3(0.70f, 0.48f, 0.34f), 0.8f);         // wood crate
+  put_box({-1.8f, 0.5f, 1.1f}, glm::vec3(1.0f), glm::vec3(0.42f, 0.55f, 0.86f), 0.6f);         // blue crate
+  put_box({1.7f, 0.5f, -0.6f}, glm::vec3(1.0f), glm::vec3(0.55f, 0.72f, 0.40f), 0.7f);         // green crate
+  put_box({-0.4f, 1.0f, 2.2f}, glm::vec3(1.0f, 2.0f, 1.0f), glm::vec3(0.88f, 0.82f, 0.55f), 0.75f);  // tall pillar
+
+  // Metallic sphere (shows the specular highlight / mirror-like response).
+  {
+    Entity ball = active_scene_->CreateEntity("Ball");
+    auto   &t   = ball.AddComponent<Transform>();
+    t.translation = glm::vec3(-3.4f, 0.5f, 0.7f);
+    ball.AddComponent<MeshComponent>(Mesh::CreateSphere(), pbr_material(glm::vec3(0.95f), 0.22f, 0.95f));
+  }
+
+  // Colored point lights + matching HDR-emissive lamp cubes (bloom). The warm
+  // light casts a shadow (casts_shadow), the cool one is a non-shadowing fill.
+  const auto put_lamp = [&](const glm::vec3 &pos, const glm::vec3 &color, float intensity, float radius,
+                            bool cast_shadow) {
+    Entity lamp = active_scene_->CreateEntity("Lamp");
+    auto   &t   = lamp.AddComponent<Transform>(pos);
+    t.scale     = glm::vec3(0.30f);
+
+    auto emissive = CreateRef<Material>(*default_material_);
+    emissive->SetBaseColorFactor(glm::vec4(color * 4.0f, 1.0f));  // HDR -> blooms
+    emissive->SetUnlit(true);
+    lamp.AddComponent<MeshComponent>(cube, emissive);
+
+    PointLightComponent pl;
+    pl.light.color        = color;
+    pl.light.intensity    = intensity;
+    pl.light.radius       = radius;
+    pl.light.casts_shadow = cast_shadow;
+    lamp.AddComponent<PointLightComponent>(pl);
+    return lamp;
+  };
+  put_lamp({2.6f, 2.2f, 2.6f}, glm::vec3(1.0f, 0.55f, 0.25f), 7.0f, 16.0f, true);
+  put_lamp({-2.6f, 1.8f, -2.2f}, glm::vec3(0.35f, 0.60f, 1.0f), 5.0f, 14.0f, false);
+
+  // General-engine presentation settings (ACES + gamma, sun + skybox, bloom).
+  auto &sun = active_scene_->GetLight();
+  sun.direction = glm::normalize(glm::vec3(-0.4f, -1.0f, -0.3f));
+  sun.color     = glm::vec3(1.6f);
+  sun.ambient   = glm::vec3(0.04f);
+  sun.diffuse   = glm::vec3(1.0f);
+  sun.specular  = glm::vec3(1.0f);
+  active_scene_->SetLoLighting(false);
+  active_scene_->SetLinearOutput(false);
+  active_scene_->SetLoHdrTone(false);
+  active_scene_->SetReinhardTone(false);
+  active_scene_->SetSkyboxEnabled(true);
+  active_scene_->SetIblIntensity(0.35f);
+  active_scene_->SetExposure(1.0f);
+  active_scene_->SetBloomEnabled(true);
+  active_scene_->SetBloomThreshold(1.0f);
+  active_scene_->SetBloomStrength(0.45f);
+  active_scene_->SetTAAEnabled(false);
+  active_scene_->SetSSAOEnabled(false);
+  active_scene_->SetGodRaysStrength(0.0f);
+  active_scene_->SetShadowPcfRadius(4.0f);
+
+  LOG_INFO("Editor") << "Created engine lighting demo (PBR floor/boxes + sun + colored point lights + bloom)";
 }
 
 /// @brief The default editor "lighting showroom": an ex_5_6 (LO 7.bloom) look
@@ -3143,7 +3291,7 @@ void Editor::RunSceneFileSelftest(const std::string &path) {
 
   // 4. Restore the default demo scene so interactive use still has content.
   NewScene();
-  CreateLightingDemo();
+  CreateEngineDemo();
   current_scene_path_.clear();
 
   LOG_INFO("Editor") << "[selftest] scene-file ops " << (ok ? "PASSED" : "FAILED") << " (base=" << base_content
@@ -3431,6 +3579,149 @@ void Editor::DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size)
     for (const auto &edge : edges) {
       draw_line(box[edge[0]], box[edge[1]], color);
     }
+  }
+}
+
+/// @brief Draws in-scene icons for entity lights (Edit mode only), one shape
+/// per light type, so lights read like camera gizmos:
+///   directional  -> a "sun" disc + an arrow along its travel direction
+///   point        -> a small wireframe bulb (3 axis rings) + sparkle rays
+///   spot         -> a wireframe cone (outer angle) from the entity's origin
+/// Positions come from each entity's world Transform; the travel / aim
+/// direction is the transform's rotated local -Z (matching the engine's
+/// SyncLightComponents convention, so what you see == what renders).
+void Editor::DrawLightGizmos(const ImVec2 &image_pos, const ImVec2 &image_size) {
+  if (image_size.x <= 0.0f || image_size.y <= 0.0f) {
+    return;
+  }
+
+  ImDrawList      *draw_list = ImGui::GetWindowDrawList();
+  const glm::mat4 view_proj = editor_camera_.GetProjectionMatrix() * editor_camera_.GetViewMatrix();
+
+  const auto world_to_screen = [&](const glm::vec3 &world) -> glm::vec2 {
+    const glm::vec4 clip = view_proj * glm::vec4(world, 1.0f);
+    if (clip.w <= 0.0f) {
+      return glm::vec2(std::numeric_limits<float>::max(), 0.0f);
+    }
+    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+    return glm::vec2(image_pos.x + (ndc.x * 0.5f + 0.5f) * image_size.x,
+                     image_pos.y + (0.5f - ndc.y * 0.5f) * image_size.y);
+  };
+
+  const auto draw_line = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color, float thickness = 1.5f) {
+    const glm::vec2 s0 = world_to_screen(a);
+    const glm::vec2 s1 = world_to_screen(b);
+    if (s0.x == std::numeric_limits<float>::max() || s1.x == std::numeric_limits<float>::max()) {
+      return;
+    }
+    draw_list->AddLine(ImVec2(s0.x, s0.y), ImVec2(s1.x, s1.y), color, thickness);
+  };
+
+  // Ring of `segments` points around `center`, spanning the (right, up) plane.
+  const auto draw_ring = [&](const glm::vec3 &center, const glm::vec3 &right, const glm::vec3 &up,
+                             float radius, int segments, ImU32 color) {
+    constexpr float two_pi = 6.28318530718f;
+    glm::vec3       prev  = center + right * radius;
+    for (int i = 1; i <= segments; ++i) {
+      const float    a = two_pi * static_cast<float>(i) / static_cast<float>(segments);
+      const glm::vec3 p = center + right * (glm::cos(a) * radius) + up * (glm::sin(a) * radius);
+      draw_line(prev, p, color);
+      prev = p;
+    }
+  };
+
+  // Local -Z is the light's travel / aim direction (see Scene::SyncLightComponents).
+  const glm::vec3 kLightForward(0.0f, 0.0f, -1.0f);
+
+  // Builds an orthonormal frame (right, up) around a (normalized) direction.
+  const auto make_basis = [&](const glm::vec3 &d, glm::vec3 &right, glm::vec3 &up) {
+    const glm::vec3 world_up(0.0f, 1.0f, 0.0f);
+    right = std::abs(glm::dot(d, world_up)) > 0.99f ? glm::normalize(glm::cross(d, glm::vec3(1.0f, 0.0f, 0.0f)))
+                                                    : glm::normalize(glm::cross(d, world_up));
+    up = glm::normalize(glm::cross(right, d));
+  };
+
+  // Light travel/aim direction from an entity's world transform (-Z mapped).
+  const auto forward_dir = [&](const glm::mat4 &world, const glm::vec3 &fallback) {
+    const glm::vec3 d = glm::normalize(glm::mat3(world) * kLightForward);
+    return glm::length(d) > 0.5f ? d : fallback;
+  };
+
+  // ---- Directional: sun disc + travel arrow --------------------------------
+  const ImU32 kDirCol = IM_COL32(255, 190, 80, 240);
+  for (auto &entity : active_scene_->GetAllEntitiesWith<DirectionalLightComponent, Transform>()) {
+    const glm::mat4 world = active_scene_->GetWorldTransform(entity.GetHandle());
+    const glm::vec3 pos   = glm::vec3(world[3]);
+    const glm::vec3 d     = forward_dir(world, glm::vec3(0.0f, -1.0f, 0.0f));
+    glm::vec3       right;
+    glm::vec3       up;
+    make_basis(d, right, up);
+
+    const float r = 0.32f;
+    draw_ring(pos, right, up, r, 24, kDirCol);
+
+    // Travel-direction arrow sticking out of the sun disc.
+    const glm::vec3 base = pos + d * (r + 0.06f);
+    const glm::vec3 tip  = pos + d * 1.15f;
+    draw_line(base, tip, kDirCol, 2.0f);
+    const float head = 0.18f;
+    draw_line(tip, tip - d * head + right * head, kDirCol);
+    draw_line(tip, tip - d * head - right * head, kDirCol);
+    draw_line(tip, tip - d * head + up * head, kDirCol);
+    draw_line(tip, tip - d * head - up * head, kDirCol);
+  }
+
+  // ---- Point: wireframe bulb (3 axis rings) + glow rays --------------------
+  const ImU32 kPtCol = IM_COL32(255, 224, 150, 240);
+  for (auto &entity : active_scene_->GetAllEntitiesWith<PointLightComponent, Transform>()) {
+    const glm::mat4 world = active_scene_->GetWorldTransform(entity.GetHandle());
+    const glm::vec3 pos   = glm::vec3(world[3]);
+
+    const float r = 0.28f;
+    const glm::vec3 axes[3] = {glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)};
+    for (int axis = 0; axis < 3; ++axis) {
+      const glm::vec3 helper = axis == 1 ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+      const glm::vec3 b1     = glm::normalize(glm::cross(axes[axis], helper));
+      const glm::vec3 b2     = glm::cross(axes[axis], b1);
+      draw_ring(pos, b1, b2, r, 20, kPtCol);
+    }
+    // Short sparkle rays suggest an omnidirectional glow.
+    const glm::vec3 rays[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    for (const glm::vec3 &ray : rays) {
+      draw_line(pos + ray * r, pos + ray * (r + 0.32f), kPtCol, 1.5f);
+    }
+  }
+
+  // ---- Spot: wireframe cone (outer angle) ----------------------------------
+  const ImU32 kSpCol = IM_COL32(255, 205, 120, 240);
+  for (auto &entity : active_scene_->GetAllEntitiesWith<SpotLightComponent, Transform>()) {
+    const glm::mat4 world = active_scene_->GetWorldTransform(entity.GetHandle());
+    const glm::vec3 pos   = glm::vec3(world[3]);
+    const glm::vec3 d     = forward_dir(world, glm::vec3(0.0f, -1.0f, 0.0f));
+    glm::vec3       right;
+    glm::vec3       up;
+    make_basis(d, right, up);
+
+    const float half = glm::acos(std::clamp(entity.GetComponent<SpotLightComponent>().light.outer_cutoff, -1.0f, 1.0f));
+    const float len  = 1.2f;
+    const float radius = len * std::tan(std::min(half, 1.45f));  // cap ~83deg
+    const glm::vec3 center = pos + d * len;
+
+    draw_ring(center, right, up, radius, 24, kSpCol);
+    // Four cone edges from the apex to the outer ring.
+    for (int i = 0; i < 4; ++i) {
+      const float    a   = static_cast<float>(i) * 1.57079632679f;
+      const glm::vec3 dir = right * (glm::cos(a) * radius) + up * (glm::sin(a) * radius);
+      draw_line(pos, center + dir, kSpCol);
+    }
+    // A short centre arrow shows the cone axis (travel) direction.
+    const glm::vec3 tip = pos + d * (len + 0.25f);
+    draw_line(pos, tip, kSpCol, 2.0f);
+    const float head = 0.15f;
+    draw_line(tip, tip - d * head + right * head, kSpCol);
+    draw_line(tip, tip - d * head - right * head, kSpCol);
+    draw_line(tip, tip - d * head + up * head, kSpCol);
+    draw_line(tip, tip - d * head - up * head, kSpCol);
   }
 }
 
