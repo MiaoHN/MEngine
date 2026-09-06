@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/audio.hpp"
 #include "core/application.hpp"
 #include "core/entry_point.hpp"
 #include "core/input.hpp"

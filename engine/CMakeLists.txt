@@ -43,12 +43,17 @@ set(SOURCE_UTILS
   src/utils/profiler.cpp
 )
 
+set(SOURCE_AUDIO
+  src/audio/audio.cpp
+)
+
 add_library(engine
   ${SOURCE_CORE}
   ${SOURCE_RENDER}
   ${SOURCE_SCENE}
   ${SOURCE_PHYSICS}
   ${SOURCE_UTILS}
+  ${SOURCE_AUDIO}
   ${PROJECT_SOURCE_DIR}/deps/glad/src/glad.c
 )
 
@@ -67,6 +72,7 @@ target_include_directories(engine SYSTEM PRIVATE
   ${PROJECT_SOURCE_DIR}/deps/lua
   ${PROJECT_SOURCE_DIR}/deps/tinygltf
   ${PROJECT_SOURCE_DIR}/deps/nlohmann
+  ${PROJECT_SOURCE_DIR}/deps/miniaudio
 )
 
 # _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING is an MSVC/STL-only define;
@@ -86,6 +92,7 @@ target_link_libraries(engine
   imgui
   ImGuizmo
   Jolt
+  miniaudio
   Threads::Threads
 )
 

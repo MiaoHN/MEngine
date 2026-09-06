@@ -63,6 +63,16 @@ target_include_directories(ImGuizmo SYSTEM PUBLIC
 )
 mengine_quiet_third_party(ImGuizmo)
 
+# setup miniaudio (single-header audio library; implementation compiled exactly
+# once into its own static lib so the engine stays free of third-party noise)
+add_library(miniaudio STATIC deps/miniaudio/ma.c)
+target_include_directories(miniaudio SYSTEM PUBLIC deps/miniaudio)
+mengine_quiet_third_party(miniaudio)
+if(WIN32)
+  # WASAPI / DirectSound / WinMM backends need the Windows COM + multimedia libs.
+  target_link_libraries(miniaudio PRIVATE ole32 winmm)
+endif()
+
 # setup JoltPhysics (CPU-only; options tuned to not clobber MEngine flags)
 set(ENABLE_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
 set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)

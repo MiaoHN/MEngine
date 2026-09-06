@@ -2,6 +2,7 @@
 
 #include <fstream>
 
+#include "audio/audio.hpp"
 #include "core/logger.hpp"
 #include "render/asset_manager.hpp"
 #include "utils/profiler.h"
@@ -80,9 +81,16 @@ Application::Application(GraphicsAPI api) : graphics_api_(api) {
   }
 
   LOG_INFO("Application") << "Application initialized";
+
+  // Engine-wide audio subsystem (device opens lazily on first playback).
+  audio_ = CreateRef<AudioSystem>();
 }
 
 Application::~Application() {
+  // Stop audio before tearing down the window / RHI (no GL dependency, but
+  // keep device shutdown deterministic).
+  audio_.reset();
+
   rhi_.reset();
 
   if (window_) {

@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-09-06 — engine 新增 sound 模块 P1（miniaudio：2D 音效播放）
+
+- **用户澄清**：要给 engine 加的是 **sound（音频播放）**，不是 voice（语音识别/合成）；范围 2D/3D 都要，先做 2D。
+- **现状**：引擎此前**无任何音频子系统**（deps 无音频库、engine 无 audio 代码）。
+- **改动**：
+  - **vendor miniaudio 0.11.21**（单头文件 C，公共领域/MIT）到 `deps/miniaudio/`；实现只在 `deps/miniaudio/ma.c` 编译一次并自建 `miniaudio` 静态库（`mengine_quiet_third_party`），Windows 链 `ole32/winmm`，不污染引擎告警。
+  - **`engine/src/audio/audio.hpp/.cpp`**：公共 API（**pimpl**，miniaudio 类型绝不外泄到引擎头文件）：
+    - `AudioSystem`：**懒初始化**输出设备（`Initialize`/`IsAvailable`）、主音量、`LoadSound`/`Play`/`StopAll`，以及**无设备也可用的静态 `ProbeFile`**（解码探测时长）。miniaudio 0.11 引擎自己跑线程，**无需每帧 update**。
+    - `Sound`：`Play/Stop/Pause/Resume`、`SetVolume/SetPitch/SetLooping/SetPan(2D 立体声平衡)`、`IsPlaying`、`GetDuration`；持 `Ref<AudioSystem>` 保证设备比声音活得久。
+  - **`Application` 持有 `Ref<AudioSystem>`**（`GetAudio()`），构造创建/析构回收；**设备首次播放才打开**，无声卡环境自动降级为无害 no-op。
+  - `mengine.hpp` 纳入 audio；新增测试资源 `assets/audio/beep.wav`（440Hz、0.7s）；`sandbox` 加 **`MENGINE_AUDIO_SELFTEST`** 环境门控自检（解码探测 + 有设备则试播 + 限帧退出）。
+- **验证**：自检输出 `probe ok dur=0.699977s` → `Audio system ready (48000 Hz)` → `playing duration=0.699958s`；debug/release **全量零警告**（engine/sandbox/editor/voxel）。
+- **下一步（P2/P3）**：OGG(stb_vorbis)/MP3/流式长音频 → **3D 定位**（ma_engine 底层已支持 listener+position；加 `AudioSourceComponent` + 场景序列化 + 编辑器 Audio 面板 + Lua `MEngine.sound.*` 桥）。
+
+---
+
 ## 2026-09-06 — voxel 打磨③：水半透明 + 水下可视（引擎新增通用半透明通道）
 
 - **用户反馈**：水应该是半透明的、可以看到底下；但“到水底下只看到穿模的感觉，看不到水底的方块”。

@@ -21,6 +21,7 @@ struct GLFWwindow;
 
 namespace MEngine {
 
+class AudioSystem;
 class FrameBuffer;
 class ScriptEngine;
 class Scene;
@@ -64,6 +65,10 @@ class Application {
   [[nodiscard]] int GetFPS() const { return fps_; }
 
   Ref<Scene> GetScene() { return scene_; }
+
+  /// @brief The engine-wide audio subsystem (owned by this Application). Audio
+  /// output opens lazily on first use; see AudioSystem::Initialize().
+  [[nodiscard]] Ref<AudioSystem> GetAudio() const { return audio_; }
 
   static Application *GetInstance();
 
@@ -121,6 +126,8 @@ class Application {
   float frame_time_;
 
   Ref<ScriptEngine> script_engine_;
+
+  Ref<AudioSystem> audio_;
 
   Ref<IRHI> rhi_;
 

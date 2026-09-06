@@ -1,12 +1,38 @@
 #include "sandbox.hpp"
 
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 
+#include "audio/audio.hpp"
 #include "core/input.hpp"
+#include "core/logger.hpp"
 #include "render/asset_manager.hpp"
 #include "render/model_loader.hpp"
 #include "utils/profiler.h"
+
+namespace {
+
+/// @brief True when MENGINE_AUDIO_SELFTEST is set (unattended audio check).
+bool AudioSelftestRequested() {
+#if defined(_WIN32)
+  char  *buffer = nullptr;
+  size_t len    = 0;
+  if (_dupenv_s(&buffer, &len, "MENGINE_AUDIO_SELFTEST") == 0 && buffer != nullptr && buffer[0] != '\0') {
+    free(buffer);
+    return true;
+  }
+  if (buffer != nullptr) {
+    free(buffer);
+  }
+  return false;
+#else
+  const char *env = std::getenv("MENGINE_AUDIO_SELFTEST");
+  return env != nullptr && env[0] != '\0';
+#endif
+}
+
+}  // namespace
 
 Sandbox::Sandbox() : Application(Application::GetStartupApi()) {
   active_scene_ = std::make_shared<Scene>();
@@ -127,7 +153,37 @@ Sandbox::Sandbox() : Application(Application::GetStartupApi()) {
 
 Sandbox::~Sandbox() {}
 
-void Sandbox::Initialize() {}
+void Sandbox::Initialize() {
+  // Env-gated audio self-test (MENGINE_AUDIO_SELFTEST=1): probes the bundled
+  // WAV (decode, no device needed), plays it when an output endpoint exists,
+  // then quits after a short bounded run. Ordinary runs are unaffected.
+  if (AudioSelftestRequested()) {
+    auto audio = MEngine::Application::GetInstance()->GetAudio();
+    if (audio) {
+      const std::string path = AssetManager::Instance().Resolve("audio/beep.wav");
+      float             duration = 0.0f;
+      const bool        probe_ok = MEngine::AudioSystem::ProbeFile(path, &duration);
+      LOG_INFO("AudioTest") << "probe '" << path << "' ok=" << (probe_ok ? 1 : 0) << " dur=" << duration << "s";
+      if (probe_ok) {
+        audio->SetMasterVolume(0.8f);
+        if (audio->Initialize()) {
+          if (Ref<Sound> s = audio->Play(path, 0.5f, false)) {
+            LOG_INFO("AudioTest") << "playing, sound duration=" << s->GetDuration() << "s";
+          } else {
+            LOG_ERROR("AudioTest") << "Play() returned null";
+          }
+        }
+      }
+    } else {
+      LOG_ERROR("AudioTest") << "No AudioSystem available";
+    }
+    // Bound the run so the self test exits quickly (a --frames arg wins).
+    if (Application::GetMaxFrames() <= 0) {
+      Application::SetMaxFrames(40);
+    }
+    return;
+  }
+}
 
 void Sandbox::OnUpdate(float dt) {
   PROFILER_FUNCTION();
