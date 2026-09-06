@@ -10,11 +10,15 @@ uniform sampler2D albedo_map;
 uniform sampler2D normal_map;
 uniform sampler2D metallic_roughness_map;
 uniform sampler2D ao_map;
+uniform sampler2D specular_map;    // OBJ map_Ks (slot 12)
+uniform sampler2D reflection_map;  // OBJ map_Ka equirect env (slot 14)
 
 uniform int  has_albedo_map              = 0;
 uniform int  has_normal_map              = 0;
 uniform int  has_metallic_roughness_map  = 0;
 uniform int  has_ao_map                  = 0;
+uniform int  has_specular_map            = 0;
+uniform int  has_reflection_map          = 0;
 uniform int  u_albedo_srgb               = 0;  // 1 = decode albedo map sRGB -> linear
 
 uniform vec4  base_color_factor = vec4(1.0);
@@ -277,6 +281,13 @@ void main() {
   vec3 H = normalize(V + L);
 
   vec3 F0 = mix(vec3(0.04), albedo, metallic);
+  // Specular-workflow OBJ material: the per-pixel specular map (map_Ks) drives
+  // the F0 - as a tinted dielectric (metals use its colour directly).
+  if (has_specular_map == 1) {
+    vec3 spec_col = texture(specular_map, TexCoord).rgb;
+    F0 = metallic > 0.5 ? clamp(spec_col, vec3(0.0), vec3(1.0))
+                        : clamp(vec3(0.04) + spec_col * 0.5, vec3(0.04), vec3(1.0));
+  }
   vec3 F  = FresnelSchlick(max(dot(H, V), 0.0), F0);
 
   float NDF = DistributionGGX(N, H, roughness);
@@ -303,8 +314,19 @@ void main() {
   vec2 env_brdf    = texture(brdf_lut, vec2(max(dot(N, V), 0.0), roughness)).rg;
   vec3 spec_ibl    = prefiltered * (F_ibl * env_brdf.x + env_brdf.y) * specular_intensity *
                      float(u_ibl_specular);
+
+  // Optional baked equirect reflection map (OBJ `map_Ka`): sample the stored
+  // environment in the reflection direction and blend it like the IBL specular.
+  vec3 baked_refl = vec3(0.0);
+  if (has_reflection_map == 1) {
+    vec2 env_uv = vec2(atan(R.z, R.x) * 0.159154943 + 0.5,
+                       acos(clamp(R.y, -1.0, 1.0)) * 0.318309886);
+    baked_refl = pow(texture(reflection_map, env_uv).rgb, vec3(2.2));  // sRGB decode
+    baked_refl *= (F_ibl * env_brdf.x + env_brdf.y) * specular_intensity * float(u_ibl_specular);
+  }
+
   float ssao = ssao_enabled == 1 ? texture(ssao_map, gl_FragCoord.xy / viewport_size).r : 1.0;
-  vec3 ambient = (kD_ibl * albedo * irradiance + spec_ibl) * ao * ibl_intensity * ssao;
+  vec3 ambient = (kD_ibl * albedo * irradiance + spec_ibl + baked_refl) * ao * ibl_intensity * ssao;
 
   vec3 color = ambient + direct;
   for (int i = 0; i < point_light_count && i < MAX_POINT_LIGHTS; ++i) {

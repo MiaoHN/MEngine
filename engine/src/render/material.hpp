@@ -32,16 +32,19 @@ class Material {
   void SetNormalMap(Ref<Texture> texture) { normal_map_ = std::move(texture); }
   void SetMetallicRoughnessMap(Ref<Texture> texture) { metallic_roughness_map_ = std::move(texture); }
   void SetAOMap(Ref<Texture> texture) { ao_map_ = std::move(texture); }
-  /// @brief Per-pixel specular strength map (LearnOpenGL's `material.specular`
-  /// texture, e.g. container2_specular.png). Only sampled by the "blinn" shader
-  /// in LO-exact lighting mode; the pbr shader ignores it.
+  /// @brief Per-pixel specular map (OBJ `map_Ks` / LearnOpenGL). Drives the
+  /// pbr shader's F0 and the blinn LO-exact specular term.
   void SetSpecularMap(Ref<Texture> texture) { specular_map_ = std::move(texture); }
+  /// @brief Optional equirectangular environment/reflection map (OBJ `map_Ka`),
+  /// sampled by the pbr shader for baked reflections.
+  void SetReflectionMap(Ref<Texture> texture) { reflection_map_ = std::move(texture); }
 
   [[nodiscard]] Ref<Texture> GetAlbedoMap() const { return albedo_map_; }
   [[nodiscard]] Ref<Texture> GetNormalMap() const { return normal_map_; }
   [[nodiscard]] Ref<Texture> GetMetallicRoughnessMap() const { return metallic_roughness_map_; }
   [[nodiscard]] Ref<Texture> GetAOMap() const { return ao_map_; }
   [[nodiscard]] Ref<Texture> GetSpecularMap() const { return specular_map_; }
+  [[nodiscard]] Ref<Texture> GetReflectionMap() const { return reflection_map_; }
 
   /// @brief Marks the albedo map as sRGB-encoded (LearnOpenGL loads its albedo
   /// maps this way in the gamma-correct HDR/bloom demos). The shader decodes
@@ -91,6 +94,7 @@ class Material {
   Ref<Texture> metallic_roughness_map_;
   Ref<Texture> ao_map_;
   Ref<Texture> specular_map_;
+  Ref<Texture> reflection_map_;
 
   glm::vec4 base_color_factor_{1.0f};
   float     metallic_factor_  = 1.0f;

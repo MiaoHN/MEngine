@@ -370,9 +370,11 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   bind_texture(material->GetNormalMap(), 1, "normal_map", "has_normal_map");
   bind_texture(material->GetMetallicRoughnessMap(), 2, "metallic_roughness_map", "has_metallic_roughness_map");
   bind_texture(material->GetAOMap(), 3, "ao_map", "has_ao_map");
-  // LearnOpenGL specular map (slot 12 keeps clear of the point-light shadow
-  // cube maps on 8..11). Only the "blinn" shader's LO-exact path samples it.
+  // Specular map (slot 12) feeds the pbr shader's F0 and the blinn LO-exact
+  // specular term; an optional equirect reflection map (OBJ map_Ka) lives on
+  // slot 14 (kept clear of textures 0..13).
   bind_texture(material->GetSpecularMap(), 12, "specular_map", "has_specular_map");
+  bind_texture(material->GetReflectionMap(), 14, "reflection_map", "has_reflection_map");
 
   shader->SetUniform("base_color_factor", material->GetBaseColorFactor());
   shader->SetUniform("metallic_factor", material->GetMetallicFactor());
