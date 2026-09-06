@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-09-06 — 多材质模型 + OBJ spec/反射资源 + 点光软阴影 + 默认调暗
+
+- **点光软阴影（PCF）**：`pbr/blinn` 前向着色器把点阴影改为切线空间 5×5 PCF（`point_shadow_size` 上传 cube 面分辨率）→ Rendering 面板 `Shadow PCF Radius` 可调软硬。commit `1fc4cd8`。
+- **多材质 OBJ 支持（nanosuit）**：`ModelLoader::LoadObjModel()` 按 `usemtl` 把几何拆成多 part（`ObjModel`/`ObjModelPart`，各 part 单独子网格+对应 `.mtl newmtl` 材质）；修复旧 `LoadObjMaterial` 现在真正解析第一个 newmtl 块。editor 拖入多材质 OBJ → 根实体 + 每 part 一个子实体（各自 mesh+材质、自动整体取景）。
+- **OBJ spec/反射资源**：`.mtl` 现读 `map_Ks`(spec)、`map_Ka`(equirect 反射)、`Ns`；`Material` 增 reflection map 槽（renderer slot 14）；pbr 采样 spec 贴图驱动 F0（介质 `0.04+spec*0.5`、金属直接用颜色）、并按反射方向 equirect 采样 `map_Ka` 做 baked 反射；带 spec 的 part 默认转低粗糙介质(rough≈0.4)。commit `6c9bf93`。
+- **editor**：多材质 OBJ 以“根 + 每材质子实体”导入（nanosuit 六部位各贴各图）；默认 PBR/ACES 演示调暗（IBL 0.35→0.18、sun 1.6→1.35/amb 0.02）。commit `a5f71a3`。
+- 回归：engine/editor 编译通过；单材质 OBJ（backpack 等）仍走原 .mtl/文件名启发式路径，行为不变。
+
+---
+
 ## 2026-09-06 — 编辑器通用引擎光照化 + 灯光视觉/操控重构
 
 - **editor 深色主题**：ImGui 整体换成 VS Code 风中性炭灰 + 蓝强调（`SetupImGuiStyle` 全量重写；Log 等级文字/过滤钮、Content Browser hover、提示色同步适配深色）。
