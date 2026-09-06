@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-06 — ex_2_2（LO 2.2）高光微调 + 投光物绕立方旋转
+
+- **用户反馈**：2.2 blinn 版高光“bling”还是稍微亮一点；希望投光物能围绕正方体旋转。
+- **宿主（example_app）**：`ExampleApp::Setup` 末尾加可选 **`update(Scene&, float dt)`** 每帧钩子
+  （放在 fov 之后，保证既有 `Setup{build,name,...}` 位置初始化不错位），OnUpdate 在渲染前调用。
+- **ex_2_2_blinn_lighting**：高光从 LO 的 0.5 微调为 **0.4**（ambient 0.08 / diffuse 0.9，整体略暗一点）；
+  点光 + 白色灯源方块以 LO 初始位 (1.2,1,2) 为起点、半径 ~2.33、y=1 绕立方 **轨道旋转**
+  （每帧 `ClearPointLights`+`AddPointLight` 刷新光位 + 移动 lamp entity 的 Transform）。验证：debug+release
+  全量构建通过；capture frame20 vs frame600 灯已从右上转到左侧（亮面/高光随灯移动），高光明显变柔。
+- 说明：此微调相对 LO 1:1 数值有意下调一档（用户观感），如要严格对照可回到 0.5/1.0/0.1。
+
+---
+
 ## 2026-09-06 — 引擎 LO-exact 光照（blinn_lo）+ 固定 800×600 + 2.x 光照章节 1:1 复刻
 
 - **用户选择 A**：把复刻路径做成 LO-exact；固定 800:600；批量对齐其它场景参数。

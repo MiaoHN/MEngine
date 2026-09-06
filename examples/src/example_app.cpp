@@ -27,8 +27,6 @@ void ExampleApp::Initialize() {
 }
 
 void ExampleApp::OnUpdate(float dt) {
-  (void)dt;
-
   // Right-drag orbits the camera around the demo target.
   const glm::vec2 delta = Input::GetMouseDelta();
   if (Input::IsMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT)) {
@@ -48,6 +46,10 @@ void ExampleApp::OnUpdate(float dt) {
   const glm::mat4 proj = glm::perspective(glm::radians(setup_.fov), aspect, 0.05f, 400.0f);
 
   if (ready_) {
+    // Optional per-scene animation hook (move lights / objects before render).
+    if (setup_.update) {
+      setup_.update(*scene_, dt);
+    }
     scene_->RenderMeshes(view, proj, eye);
   }
 }
