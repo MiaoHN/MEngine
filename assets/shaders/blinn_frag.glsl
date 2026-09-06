@@ -37,6 +37,7 @@ uniform float roughness_factor    = 1.0;   // ignored
 uniform float specular_intensity  = 1.0;
 uniform float material_shininess  = 32.0;
 uniform int   u_render_mode       = 0;     // 0 = lit, 1 = unlit albedo
+uniform int   u_material_unlit    = 0;     // per-material emissive (light cubes)
 
 uniform vec3 view_pos;
 uniform vec3 light_dir   = normalize(vec3(-0.3, -1.0, -0.4));
@@ -133,7 +134,7 @@ void main() {
   vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, TexCoord).rgb : vec3(1.0);
   albedo *= base_color_factor.rgb;
 
-  if (u_render_mode == 1) {  // Unlit: flat albedo (debug view).
+  if (u_render_mode == 1 || u_material_unlit == 1) {  // Unlit / emissive
     FragColor = vec4(albedo, base_color_factor.a);
     return;
   }

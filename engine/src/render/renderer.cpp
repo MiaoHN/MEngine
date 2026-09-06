@@ -355,6 +355,7 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   shader->SetUniform("roughness_factor", material->GetRoughnessFactor());
   shader->SetUniform("specular_intensity", material->GetSpecularFactor());
   shader->SetUniform("material_shininess", material->GetShininess());
+  shader->SetUniform("u_material_unlit", material->IsUnlit() ? 1 : 0);
   shader->SetUniform("u_render_mode", render_mode_ == RenderMode::Unlit ? 1 : 0);
 
   shader->SetUniform("proj_view", proj_view);

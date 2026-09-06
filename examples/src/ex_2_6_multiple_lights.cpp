@@ -36,8 +36,6 @@ std::shared_ptr<Scene> BuildMultipleLights() {
   // --- 4 point lights at LO positions, LO attenuation, white ~0.8 diffuse
   const glm::vec3 point_pos[4] = {
       {0.7f, 0.2f, 2.0f}, {2.3f, -3.3f, -4.0f}, {-4.0f, 2.0f, -12.0f}, {0.0f, 0.0f, -3.0f}};
-  const glm::vec3 lamp_col[4] = {
-      {1.0f, 0.9f, 0.6f}, {0.7f, 0.9f, 1.0f}, {1.0f, 0.6f, 0.6f}, {0.8f, 1.0f, 0.8f}};
   for (int i = 0; i < 4; ++i) {
     PointLight l;
     l.position      = point_pos[i];
@@ -48,12 +46,16 @@ std::shared_ptr<Scene> BuildMultipleLights() {
     l.linear        = 0.09f;
     l.quadratic     = 0.032f;
     s->AddPointLight(l);
-    Put(*s, Mesh::CreateCube(), examples::Blinn(lamp_col[i], 32.0f, 0.3f), point_pos[i], 0.2f);  // lamp marker
+    // pure-white emissive light cube (like LO's light_cube shader)
+    Put(*s, Mesh::CreateCube(), examples::Unlit(glm::vec3(1.0f)), point_pos[i], 0.2f);
   }
 
-  // --- dim directional light + small ambient + LO grey background
+  // --- dim directional light, near-black background, no ambient (LO look)
   examples::Sun(*s, {-0.2f, -1.0f, -0.3f}, glm::vec3(0.6f, 0.6f, 0.6f));
-  examples::SolidBackground(*s, glm::vec3(0.10f, 0.10f, 0.10f), 0.5f);  // ibl = small ambient
+  // Linear clear colour must be tiny: the engine's post gamma-corrects, so a
+  // raw "0.1" would come out as mid-grey. ~0.01 renders near-black like LO.
+  examples::SolidBackground(*s, glm::vec3(0.008f, 0.008f, 0.008f), 0.0f);
+  s->SetExposure(0.85f);
   return s;
 }
 }  // namespace

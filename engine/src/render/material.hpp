@@ -53,6 +53,11 @@ class Material {
   void SetShininess(float shininess) { shininess_ = shininess; }
   [[nodiscard]] float GetShininess() const { return shininess_; }
 
+  /// @brief Emissive / unlit: the surface outputs its albedo directly (no
+  /// lighting), like LearnOpenGL's small light-source cubes.
+  void SetUnlit(bool unlit) { unlit_ = unlit; }
+  [[nodiscard]] bool IsUnlit() const { return unlit_; }
+
   [[nodiscard]] const glm::vec4 &GetBaseColorFactor() const { return base_color_factor_; }
   [[nodiscard]] float GetMetallicFactor() const { return metallic_factor_; }
   [[nodiscard]] float GetRoughnessFactor() const { return roughness_factor_; }
@@ -71,6 +76,7 @@ class Material {
   float     specular_factor_  = 1.0f;
   float     shininess_        = 32.0f;
   bool      translucent_      = false;
+  bool      unlit_            = false;
   // Closed, opaque meshes are the norm (primitives, models, stress grids), so
   // back-face culling is on by default: interior/back faces of tightly packed
   // geometry (e.g. adjacent cubes) are not rasterised, which removes the

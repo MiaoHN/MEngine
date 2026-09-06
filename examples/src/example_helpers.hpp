@@ -60,6 +60,16 @@ inline Ref<Material> BlinnTextured(const std::string &albedo_path, float shinine
   return m;
 }
 
+/// @brief Unlit / emissive material (outputs `color` directly, no lighting) -
+/// used for LearnOpenGL's small light-source cubes.
+inline Ref<Material> Unlit(const glm::vec3 &color) {
+  Ref<Material> m = CreateRef<Material>();
+  m->SetShader(PbrShader());
+  m->SetBaseColorFactor(glm::vec4(color, 1.0f));
+  m->SetUnlit(true);
+  return m;
+}
+
 /// @brief A PBR material with an albedo texture (asset-relative path) and
 /// optional normal map + roughness.
 inline Ref<Material> PbrTextured(const std::string &albedo_path, const std::string &normal_path = "",
