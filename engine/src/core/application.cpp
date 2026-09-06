@@ -20,6 +20,7 @@ int         Application::capture_frame_  = 0;  // 0 = disabled
 std::string Application::capture_out_path_ = "capture.ppm";
 int         Application::startup_window_width_  = 1600;
 int         Application::startup_window_height_ = 900;
+std::string Application::environment_hdr_path_ = "textures/hdr/kloppenheim_06_puresky_1k.hdr";
 
 Application *Application::GetInstance() { return s_app; }
 

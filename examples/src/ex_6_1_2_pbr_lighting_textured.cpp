@@ -33,6 +33,7 @@ Ref<Material> RustedIron() {
   Ref<Material> m = CreateRef<Material>();
   m->SetShader(examples::PbrShader());
   m->SetAlbedoMap(tex("albedo.png"));
+  m->SetAlbedoSRGB(true);  // LO decodes albedo maps sRGB->linear (pow 2.2)
   m->SetNormalMap(tex("normal.png"));
   m->SetMetallicRoughnessMap(tex("mr.png"));
   m->SetAOMap(tex("ao.png"));

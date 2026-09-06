@@ -1,5 +1,6 @@
 #include "render/renderer.hpp"
 
+#include "core/application.hpp"
 #include "core/command.hpp"
 #include <cstdlib>
 
@@ -77,8 +78,9 @@ Renderer::Renderer() {
   // Screen-space ambient occlusion.
   ssao_ = CreateRef<SSAO>(0, 0);
 
-  // Skybox + IBL environment (equirectangular HDR).
-  skybox_ = CreateRef<Skybox>(AssetManager::Instance().Resolve("textures/hdr/kloppenheim_06_puresky_1k.hdr"));
+  // Skybox + IBL environment (equirectangular HDR). LO 6.pbr 2.x demos override
+  // the path (e.g. newport_loft) via Application::SetEnvironmentHdrPath.
+  skybox_ = CreateRef<Skybox>(AssetManager::Instance().Resolve(Application::GetEnvironmentHdrPath()));
 
   LOG_DEBUG("Renderer") << "Renderer initialized (directional shadow map " << shadow_map_->GetWidth() << "x"
                         << shadow_map_->GetHeight() << ", " << kMaxPointShadows

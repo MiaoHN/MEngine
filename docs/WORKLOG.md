@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-09-06 — LO 6.pbr/2.2.2 IBL specular_textured + 引擎：可换环境 HDR + pbr albedo sRGB 解码
+
+- **引擎**：① `Application::SetEnvironmentHdrPath`（静态，Renderer 初始化时用）→ 每个 exe 可选自己的 IBL/天空盒环境（默认仍 kloppenheim）；② `pbr_frag` 新增 `u_albedo_srgb` 解码（albedo=pow(2.2)，uniform 原来已上传，材质 `SetAlbedoSRGB(true)` 开启）——对齐 LO 贴图 PBR 的 albedo 处理。
+- **ex_6_2_2_ibl_specular_textured** ← LO 6.pbr/2.2.2：newport_loft.hdr 环境 + 5 颗材质球（rusted_iron/gold/grass/plastic/wall，x=-5..3 y0 z2）+ LO 4×300 直射灯 + IBL；引擎 pbr（irradiance+prefiltered 简化 specular，无 BRDF LUT）+ Reinhard + 环境当背景。观感=LO 经典 5 材质球图。
+- **ex_6_1_2 修复**：查 LO 1.2.pbr.fs 确认 **albedo 也是 pow(2.2) 解码** → 之前 6.1.2 不解码正是“锈灰/不红”根因；现开 `SetAlbedoSRGB(true)` → 锈呈棕黑锈蚀而非灰。
+- **验证**：capture：6.2.2 = 新波特客厅背景 + 金/草/塑料/砖墙/锈铁球；6.1.2 锈球棕黑不灰。
+- 2.2.1（无贴图金属/粗糙矩阵 IBL）未做，可续。
+
+---
+
 ## 2026-09-06 — ex_6.1 观感再对齐：滚轮缩放 + 去掉环境光（锈/红“花、灰”主因是天空盒环境光染色）
 
 - **用户反馈**：① 红球仍稍鲜艳；② 锈铁球锈处已不反光，但相比 LO 不自然、锈不红、颜色“花”；③ 想要滚轮放大缩小查看。

@@ -15,6 +15,7 @@ uniform int  has_albedo_map              = 0;
 uniform int  has_normal_map              = 0;
 uniform int  has_metallic_roughness_map  = 0;
 uniform int  has_ao_map                  = 0;
+uniform int  u_albedo_srgb               = 0;  // 1 = decode albedo map sRGB -> linear
 
 uniform vec4  base_color_factor = vec4(1.0);
 uniform float metallic_factor   = 1.0;
@@ -213,6 +214,11 @@ vec3 SpotLightContribution(vec3 light_pos, vec3 light_dir, vec3 light_color, flo
 void main() {
   vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, TexCoord).rgb : vec3(1.0);
   albedo *= base_color_factor.rgb;
+  // LearnOpenGL decodes albedo maps sRGB->linear (pow 2.2) in its PBR shaders;
+  // do the same when the material opts in (SetAlbedoSRGB).
+  if (u_albedo_srgb == 1) {
+    albedo = pow(albedo, vec3(2.2));
+  }
 
   if (u_render_mode == 1 || u_material_unlit == 1) {  // Unlit / emissive
     FragColor = vec4(albedo, base_color_factor.a);

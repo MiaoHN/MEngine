@@ -103,6 +103,12 @@ class Application {
   [[nodiscard]] static int GetStartupWindowWidth() { return startup_window_width_; }
   [[nodiscard]] static int GetStartupWindowHeight() { return startup_window_height_; }
 
+  /// @brief Asset-root-relative equirectangular HDR used as the IBL/skybox
+  /// environment. Defaults to the engine skybox; LO IBL demos (6.pbr 2.x) set it
+  /// to newport_loft.hdr before constructing their Application.
+  static void SetEnvironmentHdrPath(const std::string &path) { environment_hdr_path_ = path; }
+  [[nodiscard]] static const std::string &GetEnvironmentHdrPath() { return environment_hdr_path_; }
+
   /// @brief Captures the backbuffer as PPM after frame `frame` (`--capture-frame
   /// <n>`), writing to `out_path` (default "capture.ppm"). 0 disables capture.
   static void SetCaptureFrame(int frame, const std::string &out_path) {
@@ -159,6 +165,7 @@ class Application {
   static std::string     capture_out_path_;
   static int             startup_window_width_;
   static int             startup_window_height_;
+  static std::string     environment_hdr_path_;
 };
 
 }  // namespace MEngine
