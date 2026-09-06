@@ -5,13 +5,24 @@
 
 ---
 
+## 2026-09-06 — 单实体多材质模型组件（ModelComponent，C 项）
+
+- **engine 类型正规化**：`ObjModel`/`ObjModelPart` 更名通用 `Model`/`ModelPart`（每 part = 独立 mesh + 材质 + 材质名）。`LoadObjModel` 通过 **MeshLibrary**（此前死代码，现正式接入）按 `"路径|材质组"` 缓存 part 网格 → 同一模型多处导入/多实体共享同一份 GPU 网格，可实例化合批。commit `8b89821`。
+- **ModelComponent（ECS）**：单实体携带多材质模型；`Scene::RenderMeshes` 把 parts 在**同一实体 Transform** 下展开为渲染项（阴影 / SSAO / 主 pass / 视锥剔除 / 合批与 MeshComponent 完全一致）。
+- **序列化**：实体写 `"model"`（source + 每 part 材质覆盖）；读时 `LoadObjModel` 重建 `.mtl` 材质再用 `ApplyMaterialJson` 叠加已存因子/贴图——保留 spec/反射贴图、shininess 等未序列化通道。旧存档“根 + 每材质子实体”写法仍可加载。
+- **editor**：多材质 OBJ 拖入 → **单个实体** + ModelComponent（不再是“根 + 每材质子实体”），自动整体取景；Properties 新增 Model 检查器（part 下拉逐部位编辑材质，复用从 Mesh 抽取的 `DrawMaterialEditor`）；Duplicate 一并复制。
+- 验证：nanosuit 以 6 part 单实体 headless 渲染正常（六部位各贴各图）；`example_ex_6_2_2_ibl_specular` pbr 输出不变。
+- 下一步：D（引擎视差/反射等能力增强）与剩余技术债清理。
+
+---
+
 ## 2026-09-06 — 引擎多方向光（带阴影主光 + 最多 4 个无阴影补光）
 
 - **engine 多方向光**：`DirectionalLightComponent` 实体可多个——第一个是**带阴影主光**（沿用原 shadow-map 路径），其余变成额外的无阴影方向光（补光/彩色填充）。renderer 增 `directional_extras_`（`Set/Clear/GetDirectionalExtras`，上限 `kMaxDirectionalExtras=4`）；`SyncLightComponents` 每帧收集全部方向光实体、推导方向后拆分主光 + extras。
 - **着色器**：`pbr_frag` / `blinn_frag`（引擎路径）声明 `MAX_DIR_EXTRA 4` + `dir_extra_count/dir_extra_dir[]/dir_extra_color[]` 数组 uniform；主方向光块之后叠加无阴影补光（pbr 加 BRDF 项、blinn 加 diffuse+spec 项）。upload 放在 per-pass uniform cache 守卫内（同 shader 只传一次）。LO 精确 `blinn_lo` **保持单方向光不动**。
 - **editor**：Lighting 面板方向光区改为列出**全部**方向光实体（点击选中），首个标注“Primary（cast shadows）”，其余为无阴影补光；无实体时仍显示 Scene Sun 兜底 + “Add Directional Light”。光源示意图本就可为每个方向光实体各画一个太阳盘+箭头，天然支持补光瞄准。
 - 回归：editor / `example_ex_6_2_2_ibl_specular`（pbr）编译运行通过，headless 30 帧截图与改造前一致（`dir_extra_count=0` 默认不改变渲染）；LO exe、默认 PBR/ACES 编辑器场景不受影响。
-- 下一步：C（引擎 Model/MeshLibrary 正规化：把“导入拆子实体”升级为单实体多材质模型组件）。
+- 下一步：C 已完成（见下条）；后续 D（引擎视差/反射增强）。
 
 ---
 

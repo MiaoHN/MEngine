@@ -30,7 +30,7 @@
 | `Texture` | `engine/src/render/texture.hpp/.cpp` | stb_image 加载 2D 纹理 / 内存数据 | 按路径构造、`SetData` 手动上传 |
 | `TextureLibrary` | 同上 | 名字 → `Ref<Texture>` 缓存 | 已存在，但引擎核心**未使用** |
 | `Mesh` | `engine/src/render/mesh.hpp/.cpp` | 顶点/索引缓冲 + `CreateCube/CreatePlane` | 程序化或由加载器创建 |
-| `MeshLibrary` | 同上 | 名字 → `Ref<Mesh>` 缓存 | 已存在，但引擎核心**未使用** |
+| `MeshLibrary` | 同上 | 名字 → `Ref<Mesh>` 缓存 | 已存在；现被多材质 Model 的 part 网格缓存使用（`LoadObjModel`） |
 
 ### 1.2 痛点
 

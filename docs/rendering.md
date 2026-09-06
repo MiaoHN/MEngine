@@ -134,9 +134,10 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
   - **glTF 2.0**（`.gltf` / `.glb`，基于 tinygltf）：取第一个 mesh 的第一个 primitive，使用 POSITION / NORMAL（缺时生成平面法线）/ TEXCOORD_0 属性；`LoadGltfBaseColorTexture` 可提取第一份材质的 baseColor 贴图。
   - 返回 `nullptr` 表示加载失败。
 - 依赖：`deps/tinygltf/tiny_gltf.h` + `deps/nlohmann/json.hpp`（vendored 单头文件，MIT）。
-- `MeshLibrary`（`mesh.hpp`）：按名字缓存 `Mesh`，与 `ShaderLibrary`/`TextureLibrary` 对齐。
+- `MeshLibrary`（`mesh.hpp`）：按名字缓存 `Mesh`，与 `ShaderLibrary`/`TextureLibrary` 对齐。多材质 `Model` 的 part 网格即用其缓存（键 `"模型路径|材质组"`），同一模型多次导入/多实体共享同一份 GPU 网格并合批。
+- **单实体多材质 `Model`**（`render/model_loader.hpp`）：`Model`/`ModelPart`（每 part = mesh + 材质 + 名）；`LoadObjModel` 按 OBJ `usemtl` 拆成多 part。实体通过 `ModelComponent` 携带，`Scene::RenderMeshes` 在同一实体 Transform 下把每 part 展开为渲染项（阴影/SSAO/主 pass/合批与 MeshComponent 一致）。
 - 示例资源：`sandbox/res/models/sphere.obj`（由 `tools/gen_sphere.py` 生成）、`sandbox/res/models/duck.glb`（Khronos glTF 样例）。
-- 后续扩展点：Assimp 多格式、多网格/多材质 `Model`。
+- 后续扩展点：Assimp 多格式、glTF 多网格节点树。
 
 ## 材质与光照（M3a 新增）
 
