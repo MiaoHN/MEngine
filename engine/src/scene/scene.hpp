@@ -212,6 +212,10 @@ class Scene {
   /// @brief Use Blinn halfway specular in LO-exact mode (LO 4.normal_mapping).
   void SetLoBlinnSpec(bool enabled);
   [[nodiscard]] bool IsLoBlinnSpec() const;
+  /// @brief Apply the engine directional shadow to the LO-exact directional
+  /// light (LO 3.1.3.shadow_mapping).
+  void SetLoDirShadow(bool enabled);
+  [[nodiscard]] bool IsLoDirShadow() const;
 
   [[nodiscard]] bool       IsSSAOEnabled() const;
   [[nodiscard]] bool       IsTAAEnabled() const;

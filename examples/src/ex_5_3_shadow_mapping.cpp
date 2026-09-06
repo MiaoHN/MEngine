@@ -1,49 +1,53 @@
-// LearnOpenGL "Shadow Mapping" - directional shadows (floor + wall + boxes)
-// plus a shadow-casting point light with spheres.
+// = LearnOpenGL 5.advanced_lighting/3.1.3.shadow_mapping
+//   source: LearnOpenGL/src/5.advanced_lighting/3.1.3.shadow_mapping/shadow_mapping.cpp
+//
+// LO-exact directional shadow port on the "blinn_lo" path with the engine's
+// directional shadow map applied to the LO directional light
+// (Scene::SetLoDirShadow). Blinn-Phong halfway specular (LO 3.1.3.fs), wood
+// everywhere.
+//   - 50x50 wood floor (UV 0..25) + three wood cubes (LO positions/scales)
+//   - a single dim directional "sun": ambient 0.09 / diffuse 0.3 / specular 0.3
+//     (LO lightColor 0.3, ambient 0.3*0.3), Blinn shininess 64
+//   - LO camera (0,0,3) FOV 45, 4:3 window, clear 0.1, raw linear output
+#include <memory>
+
 #include "example_app.hpp"
 #include "example_helpers.hpp"
 
 using namespace MEngine;
 using MEngine::examples::Put;
+using MEngine::examples::PutAxis;
 
 namespace {
 std::shared_ptr<Scene> BuildShadowMapping() {
   auto s = std::make_shared<Scene>();
-  Put(*s, Mesh::CreatePlane(40.0f), examples::Pbr(glm::vec3(0.55f, 0.55f, 0.58f), 0.0f, 0.92f), {0, 0, 0});
 
-  // Receiving wall.
-  {
-    Entity wall = s->CreateEntity("wall");
-    auto &tw    = wall.AddComponent<Transform>();
-    tw.translation = {-6.0f, 3.0f, -7.0f};
-    tw.scale       = {10.0f, 6.0f, 0.8f};
-    wall.AddComponent<MeshComponent>(Mesh::CreateCube(), examples::Pbr(glm::vec3(0.8f, 0.8f, 0.85f), 0.0f, 0.8f));
-  }
+  // --- wood floor: LO 50x50 plane at y=-0.5, wood tiled 25x.
+  Put(*s, examples::TiledPlane(50.0f, 25.0f), examples::BlinnLoDiffuse("textures/wood.png", 64.0f),
+      {0.0f, -0.5f, 0.0f});
 
-  const glm::vec3 box_pos[4] = {{-2.0f, 0.5f, 1.5f}, {0.5f, 0.5f, -1.5f}, {3.0f, 0.5f, 1.0f}, {0.0f, 1.5f, 0.0f}};
-  const glm::vec3 box_col[4] = {{0.9f, 0.3f, 0.3f}, {0.3f, 0.8f, 0.4f}, {0.3f, 0.5f, 1.0f}, {0.9f, 0.8f, 0.3f}};
-  for (int i = 0; i < 4; ++i) {
-    Put(*s, Mesh::CreateCube(), examples::Pbr(box_col[i], 0.05f, 0.6f), box_pos[i], i == 3 ? 1.2f : 1.0f);
-  }
+  // --- three wood cubes (LO positions; engine cube is unit sized so scale =
+  //     2 x LO's (LO's renderCube is a +/-1 cube)).
+  const auto wood = []() { return examples::BlinnLoDiffuse("textures/wood.png", 64.0f); };
+  Put(*s, Mesh::CreateCube(), wood(), {0.0f, 1.5f, 0.0f}, 1.0f);              // LO scale .5
+  Put(*s, Mesh::CreateCube(), wood(), {2.0f, 0.0f, 1.0f}, 1.0f);              // LO scale .5
+  PutAxis(*s, Mesh::CreateCube(), wood(), {-1.0f, 0.0f, 2.0f},
+          glm::normalize(glm::vec3(1, 0, 1)), 60.0f, 0.5f);                   // LO scale .25
 
-  // Point-light shadow cluster with spheres.
-  PointLight pl;
-  pl.position     = {4.5f, 2.6f, 4.5f};
-  pl.color        = glm::vec3(1.0f, 0.95f, 0.9f);
-  pl.intensity    = 34.0f;
-  pl.radius       = 12.0f;
-  pl.casts_shadow = true;
-  s->AddPointLight(pl);
-  const glm::vec3 sph_pos[3] = {{2.6f, 0.6f, 2.6f}, {4.5f, 0.6f, 6.6f}, {6.2f, 0.6f, 3.2f}};
-  for (int i = 0; i < 3; ++i) {
-    Put(*s, Mesh::CreateSphere(0.6f, 24), examples::Pbr(glm::vec3(0.9f, 0.85f, 0.8f), 0.3f, 0.25f), sph_pos[i]);
-  }
+  // --- the dim directional sun (LO: lightColor 0.3, ambient 0.3*0.3, Blinn
+  //     shininess 64). LO's lightPos (-2,4,-1) shines toward the origin, so the
+  //     travel direction is origin - lightPos = (2,-4,1).
+  s->GetLight().direction = glm::normalize(glm::vec3(2.0f, -4.0f, 1.0f));
+  s->GetLight().ambient   = glm::vec3(0.09f);
+  s->GetLight().diffuse   = glm::vec3(0.3f);
+  s->GetLight().specular  = glm::vec3(0.3f);
 
-  examples::Sun(*s, {-0.5f, -1.0f, -0.25f}, glm::vec3(1.25f, 1.2f, 1.1f));
-  examples::SolidBackground(*s, glm::vec3(0.11f, 0.11f, 0.13f), 0.20f);
-  s->SetExposure(1.0f);
-  s->SetTAAEnabled(true);
-  s->SetShadowPcfRadius(4.0f);
+  // LO 3.1.3 uses a Blinn halfway specular AND a real directional shadow.
+  s->SetLoBlinnSpec(true);
+  s->SetLoDirShadow(true);
+
+  // LO clears to 0.1 and writes the raw (untonemapped) result.
+  examples::LoScene(*s, glm::vec3(0.1f, 0.1f, 0.1f));
   return s;
 }
 }  // namespace
@@ -51,5 +55,6 @@ std::shared_ptr<Scene> BuildShadowMapping() {
 ::MEngine::Application *CreateApplication() {
   MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
-      MEngine::examples::ExampleApp::Setup{BuildShadowMapping, "Shadow Mapping", {0, 1.5f, 0}, 35.0f, 24.0f, 16.0f});
+      MEngine::examples::ExampleApp::Setup{BuildShadowMapping, "LO 5.3 shadow_mapping", {0, 0, 0}, 0.0f, 0.0f,
+                                           3.0f, 45.0f});
 }

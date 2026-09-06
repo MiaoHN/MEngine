@@ -70,7 +70,7 @@
 |---|---|---|
 | 1.advanced_lighting | Blinn-Phong | ✅ LO 2.2 高光即 **Phong/Blinn**；`ex_2_2_blinn_lighting` 是 LO-exact 端口（blinn_lo）|
 | 2.gamma_correction | Gamma | ◐ 引擎输出已含 gamma（post）；无单独场景 |
-| 3.x shadow_mapping (+point/soft/csm) | 阴影映射/点阴影 | ✅ `ex_5_3_shadow_mapping`（方向光+立方体点光阴影）；CSM ⬜（引擎单级）|
+| 3.x shadow_mapping (+point/soft/csm) | 阴影映射/点阴影 | ✅ `ex_5_3_shadow_mapping`（blinn_lo 方向光阴影 `SetLoDirShadow`，LO 3.1.3：木地板+木箱，Blinn^64，光 0.3）；点阴影/CSM ⬜ |
 | 4.normal_mapping | 法线贴图 | ✅ `ex_5_4_normal_mapping`（blinn_lo + 法线贴图：2×2 砖墙，点光 0.5,1,0.3，ambient .1/diffuse 1/spec(材质 0.2 灰)，Blinn 高光 `SetLoBlinnSpec`）|
 | 5.x parallax (incl steep/pom) | 视差映射 | ⬜（引擎 pbr 无视差；需引擎扩展或 ⛔）|
 | 6.hdr | HDR | ✅ `ex_5_6_hdr_bloom`（blinn_lo，LO 曝光色调 `1-exp(-x)`+gamma，`SetLoHdrTone`）|
@@ -102,7 +102,7 @@ ex_2_3_materials           -> 2.lighting/3.1.materials (✅ blinn_lo 1:1)
 ex_2_4_lighting_maps       -> 2.lighting/4.2.lighting_maps_specular_map (✅ blinn_lo 1:1)
 ex_2_5_light_casters       -> 2.lighting/5.3.light_casters_spot / 5.4 soft (✅ blinn_lo 1:1，相机手电)
 ex_2_6_multiple_lights     -> 2.lighting/6.multiple_lights (✅ blinn_lo 1:1)
-ex_5_3_shadow_mapping      -> 5.advanced_lighting/3.1.x shadow_mapping + 3.2 point_shadows (PBR 演示)
+ex_5_3_shadow_mapping      -> 5.advanced_lighting/3.1.3.shadow_mapping (✅ blinn_lo 1:1)
 ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom (✅ blinn_lo 1:1)
 ex_5_4_normal_mapping      -> 5.advanced_lighting/4.normal_mapping (PBR 演示)
 ```

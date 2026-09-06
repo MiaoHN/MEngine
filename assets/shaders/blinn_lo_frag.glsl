@@ -48,6 +48,14 @@ uniform vec3 light_ambient  = vec3(0.05);
 uniform vec3 light_diffuse  = vec3(0.4);
 uniform vec3 light_specular = vec3(0.5);
 
+// Optional directional shadow (engine shadow map, uploaded for every material).
+// Only applied when u_lo_dir_shadow == 1 (LO 3.1.3.shadow_mapping).
+uniform sampler2D shadow_map;
+uniform mat4      light_view_proj;
+uniform float     shadow_map_size   = 2048.0;
+uniform float     shadow_pcf_radius = 2.0;
+uniform int       u_lo_dir_shadow   = 0;
+
 #define MAX_POINT_LIGHTS 8
 uniform int   point_light_count = 0;
 uniform vec3  point_light_positions[MAX_POINT_LIGHTS];
@@ -98,6 +106,35 @@ float SpecTerm(vec3 N, vec3 L, vec3 V) {
   return pow(max(dot(V, R), 0.0), s);
 }
 
+/// @brief Directional shadow: returns the fraction of the fragment that is LIT
+/// (1.0 = fully lit), sampled from the engine's directional shadow map with
+/// 5x5 PCF. Mirrors the classic blinn/pbr ShadowCalculation.
+float DirShadowLit(vec3 frag_pos_world, vec3 N, vec3 L) {
+  vec4 clip = light_view_proj * vec4(frag_pos_world, 1.0);
+  vec3 proj = clip.xyz / clip.w;
+  proj      = proj * 0.5 + 0.5;
+  if (proj.z > 1.0) {
+    return 1.0;
+  }
+  float current = proj.z;
+  float bias    = max(0.002 * (1.0 - dot(N, L)), 0.0005) * max(shadow_pcf_radius, 1.0) * 2.0;
+
+  vec2  texel  = 1.0 / vec2(shadow_map_size);
+  float lit    = 0.0;
+  for (int x = -2; x <= 2; ++x) {
+    for (int y = -2; y <= 2; ++y) {
+      vec2 uv = proj.xy + vec2(x, y) * texel * shadow_pcf_radius;
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        lit += 1.0;
+        continue;
+      }
+      float closest = texture(shadow_map, uv).r;
+      lit += (current - bias > closest) ? 0.0 : 1.0;
+    }
+  }
+  return lit / 25.0;
+}
+
 void main() {
   vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, TexCoord).rgb : vec3(1.0);
   albedo *= base_color_factor.rgb;
@@ -125,14 +162,16 @@ void main() {
   vec3 V = normalize(view_pos - FragPos);
   vec3 spec_sample = SpecularSample();
 
-  // --- directional light (LO CalcDirLight) ---
+  // --- directional light (LO CalcDirLight; optional engine shadow) ---
   {
     vec3  L    = normalize(-light_dir);
     float diff = max(dot(N, L), 0.0);
-    vec3  ambient  = light_ambient * albedo;
-    vec3  diffuse  = light_diffuse * diff * albedo;
-    vec3 specular = light_specular * SpecTerm(N, L, V) * spec_sample;
-    FragColor = vec4(ambient + diffuse + specular, base_color_factor.a);
+    vec3  ambient = light_ambient * albedo;
+    vec3  direct  = light_diffuse * diff * albedo + light_specular * SpecTerm(N, L, V) * spec_sample;
+    if (u_lo_dir_shadow == 1) {
+      direct *= DirShadowLit(FragPos, N, L);  // LO 3.1.3: (1 - shadow)
+    }
+    FragColor = vec4(ambient + direct, base_color_factor.a);
   }
 
   // --- point lights (LO CalcPointLight) ---

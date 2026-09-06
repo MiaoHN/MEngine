@@ -1324,6 +1324,9 @@ bool Scene::IsLoLighting() const { return renderer_->IsLoLighting(); }
 void Scene::SetLoBlinnSpec(bool enabled) { renderer_->SetLoBlinnSpec(enabled); }
 bool Scene::IsLoBlinnSpec() const { return renderer_->IsLoBlinnSpec(); }
 
+void Scene::SetLoDirShadow(bool enabled) { renderer_->SetLoDirShadow(enabled); }
+bool Scene::IsLoDirShadow() const { return renderer_->IsLoDirShadow(); }
+
 bool Scene::IsSSAOEnabled() const { return renderer_->IsSSAOEnabled(); }
 
 bool Scene::IsTAAEnabled() const { return renderer_->IsTAAEnabled(); }

@@ -175,6 +175,12 @@ class Renderer {
   void SetLoBlinnSpec(bool enabled) { lo_blinn_spec_ = enabled; }
   [[nodiscard]] bool IsLoBlinnSpec() const { return lo_blinn_spec_; }
 
+  /// @brief In LO-exact mode, apply the engine directional shadow map to the
+  /// directional light's diffuse+specular (LO 3.1.3.shadow_mapping). Default
+  /// off so LO ports without shadows stay exact.
+  void SetLoDirShadow(bool enabled) { lo_dir_shadow_ = enabled; }
+  [[nodiscard]] bool IsLoDirShadow() const { return lo_dir_shadow_; }
+
   void SetRenderMode(RenderMode mode) { render_mode_ = mode; }
   [[nodiscard]] RenderMode GetRenderMode() const { return render_mode_; }
 
@@ -214,6 +220,7 @@ class Renderer {
   bool  skybox_enabled_    = true;
   bool  lo_lighting_       = false;
   bool  lo_blinn_spec_     = false;
+  bool  lo_dir_shadow_     = false;
   glm::vec3 background_color_{0.0f};
   RenderMode render_mode_  = RenderMode::Lit;
 

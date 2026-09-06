@@ -5,6 +5,15 @@
 
 ---
 
+## 2026-09-06 — ex_5_3 shadow_mapping（LO 5.advanced_lighting/3.1.3）LO-exact 化（5 章完成）
+
+- **引擎（blinn_lo）**：新增 **方向光阴影** 可选开关 `Scene/Renderer::SetLoDirShadow(bool)` → `u_lo_dir_shadow`：blinn_lo 声明引擎 shadow map（slot4/light_view_proj/PCF）并加 `DirShadowLit`（5×5 PCF 亮部比例，同 classic blinn），LO-exact 方向光的 diffuse+spec 乘该因子（=LO 的 (1-shadow)）。默认关，其它 LO 无阴影端口不变。
+- **ex_5_3_shadow_mapping** ← LO 3.1.3：50×50 木地板（UV 0..25 平铺）+ 3 个木箱（LO 位姿/绕 (1,0,1) 旋转；引擎 cube scale=2×LO）；单一暗方向光 ambient .09/diffuse .3/spec .3（LO lightColor 0.3、ambient 0.3×0.3），Blinn halfway shininess 64（SetLoBlinnSpec）；太阳 travel=normalize(2,-4,1)（LO lightPos(-2,4,-1)→原点）；LoScene 0.1 线性直出 + SetLoDirShadow(true)；相机 (0,0,3) FOV45 4:3。
+- **验证**：debug 构建过；capture 800×600：木地板 + 木箱 + 地面方向光阴影 + 暗背景，与 LO 3.1.3（本来就偏暗）相符。
+- **至此 5.advanced_lighting 章节示例全部 LO-exact**：normal_mapping / shadow_mapping / hdr_bloom。
+
+---
+
 ## 2026-09-06 — ex_5_6 hdr/bloom（LO 5.advanced_lighting/7.bloom）LO-exact 化
 
 - **引擎（composite）**：新增 **`u_lo_hdr_tone`**（PostProcessing/Renderer/Scene::SetLoHdrTone）：LO 6.hdr/7.bloom 的色调 `1 - exp(-x*exposure)` 后接 gamma（区别于默认 ACES+gamma 与线性直出两种模式）。引擎 bloom（亮度阈值 luminance>threshold + 高斯模糊 + composite 叠加）本就与 LO 同构。
