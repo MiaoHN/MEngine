@@ -47,10 +47,9 @@ class ModelLoader {
   /// `map_Kn` normal and `map_Ks` specular. Returns nullptr when there is no
   /// readable `.mtl`, so callers can fall back to name-based heuristics.
   ///
-  /// The shader is not assigned here; callers should set it. Note: OBJ files
-  /// using SEVERAL materials (`usemtl`) are not yet split into per-face
-  /// submeshes (that is the future Model refactor) - only the first material
-  /// is returned.
+  /// The shader is not assigned here; callers should set it. For OBJ files
+  /// using SEVERAL materials (`usemtl`), use LoadObjModel instead - this only
+  /// returns the FIRST material block.
   static Ref<Material> LoadObjMaterial(const std::string &obj_path);
 
   /// @brief Loads a multi-material OBJ into an ObjModel: geometry is split per

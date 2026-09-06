@@ -3245,13 +3245,6 @@ void Editor::CreateModelEntity(const std::filesystem::path &path) {
         ObjModelPart &part = model->parts[i];
         if (!part.material) part.material = CreateDefaultMaterial();
         part.material->SetShader(pbr);
-        // OBJ .mtl files are specular-workflow: no metallic/roughness maps. Map
-        // that onto a low-roughness dielectric when a specular map is present so
-        // the model keeps its sheen under the engine's PBR shader.
-        if (part.material->GetSpecularMap()) {
-          part.material->SetMetallicFactor(0.0f);
-          part.material->SetRoughnessFactor(0.4f);
-        }
         for (const auto &v : part.mesh->GetVertices()) {
           bmin = glm::min(bmin, v.position);
           bmax = glm::max(bmax, v.position);
