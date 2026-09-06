@@ -25,6 +25,7 @@
 #include "render/light.hpp"
 #include "render/material.hpp"
 #include "render/mesh.hpp"
+#include "render/model_loader.hpp"
 #include "render/texture.hpp"
 #include "scene/camera.hpp"
 
@@ -159,6 +160,27 @@ struct MeshComponent {
       : mesh(std::move(mesh)), material(std::move(material)) {}
 };
 
+/**
+ * @brief Attaches a multi-material 3D model to a single entity.
+ *
+ * Requires a `Transform` component; every part of `model` is drawn under that
+ * same entity transform (the model formalization of the old "root + one child
+ * MeshComponent per material" import). Each part keeps its own mesh + material
+ * (see `Model` / `ModelPart`); `source` is the model file path used to (re)load
+ * it during scene serialization.
+ */
+struct ModelComponent {
+  Ref<Model>  model;
+  std::string source;  // model file path, for scene (de)serialization
+
+  ModelComponent() = default;
+  ModelComponent(Ref<Model> model, std::string source)
+      : model(std::move(model)), source(std::move(source)) {}
+
+  /// @brief Number of renderable parts (0 when there is no model).
+  [[nodiscard]] size_t PartCount() const { return model ? model->parts.size() : 0; }
+};
+
 /// @brief Attaches a rigid body to an entity (requires a ColliderComponent).
 /// @brief A point light carried by an entity (ECS). When at least one entity in
 /// the scene has a PointLightComponent the scene drives the renderer's point
@@ -184,11 +206,11 @@ struct SpotLightComponent {
 };
 
 /// @brief A directional light carried by an entity. When an entity has a
-/// DirectionalLightComponent the scene copies it into the renderer's (single)
-/// directional light each frame - so a scene whose sun is an entity is edited
-/// by selecting that entity. The renderer still supports exactly one
-/// directional light (multi-directional needs shader arrays - future work);
-/// scenes without the component keep using the legacy Scene::GetLight/SetLight.
+/// DirectionalLightComponent the scene copies it into the renderer's directional
+/// light each frame - the FIRST such entity becomes the shadow-casting primary
+/// sun and any further ones become additional (unshadowed) directional lights
+/// (engine pbr/blinn shader arrays). Scenes without the component keep using the
+/// legacy Scene::GetLight/SetLight authored sun.
 struct DirectionalLightComponent {
   DirectionalLight light;
 

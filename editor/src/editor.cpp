@@ -1285,6 +1285,78 @@ void Editor::ShowImGuiViewport() {
   ImGui::PopStyleVar();
 }
 
+/// @brief Edits one PBR material in place: the four texture-map thumbnails
+/// (drag from the Content Browser, right-click to clear) plus the scalar
+/// factors. Shared by the Mesh and Model (per-part) component inspectors.
+void DrawMaterialEditor(Material *material) {
+  if (!material) {
+    ImGui::TextDisabled("No material.");
+    return;
+  }
+
+  // Texture maps: thumbnails in a row, label underneath. Drag an image from
+  // the Content Browser to assign; right-click to clear.
+  const float thumb    = 64.0f;
+  auto        draw_map = [&](const char *label, const Ref<Texture> &get, auto &&set) {
+    ImGui::BeginGroup();
+    if (get) {
+      ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(get->GetID())), {thumb, thumb}, ImVec2(0, 1),
+                   ImVec2(1, 0));
+    } else {
+      ImGui::Button("None", {thumb, thumb});
+    }
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+        const auto *path = static_cast<const wchar_t *>(payload->Data);
+        set(Texture::Create(std::filesystem::path(path).string()));
+      }
+      ImGui::EndDragDropTarget();
+    }
+    if (get && ImGui::BeginPopupContextItem(label)) {
+      if (ImGui::MenuItem("Clear")) {
+        set(nullptr);
+      }
+      ImGui::EndPopup();
+    }
+    const float text_w = ImGui::CalcTextSize(label).x;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (thumb - text_w) * 0.5f);
+    ImGui::Text("%s", label);
+    ImGui::EndGroup();
+  };
+
+  draw_map("Albedo", material->GetAlbedoMap(), [&](Ref<Texture> t) { material->SetAlbedoMap(t); });
+  ImGui::SameLine();
+  draw_map("Normal", material->GetNormalMap(), [&](Ref<Texture> t) { material->SetNormalMap(t); });
+  ImGui::SameLine();
+  draw_map("Roughness", material->GetMetallicRoughnessMap(),
+           [&](Ref<Texture> t) { material->SetMetallicRoughnessMap(t); });
+  ImGui::SameLine();
+  draw_map("AO", material->GetAOMap(), [&](Ref<Texture> t) { material->SetAOMap(t); });
+
+  ImGui::Separator();
+  ImGui::Text("Properties");
+
+  glm::vec4 base_color = material->GetBaseColorFactor();
+  if (ImGui::ColorEdit4("Base Color", glm::value_ptr(base_color))) {
+    material->SetBaseColorFactor(base_color);
+  }
+
+  float metallic = material->GetMetallicFactor();
+  if (ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f)) {
+    material->SetMetallicFactor(metallic);
+  }
+
+  float roughness = material->GetRoughnessFactor();
+  if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f)) {
+    material->SetRoughnessFactor(roughness);
+  }
+
+  float specular = material->GetSpecularFactor();
+  if (ImGui::SliderFloat("Specular", &specular, 0.0f, 1.0f)) {
+    material->SetSpecularFactor(specular);
+  }
+}
+
 void Editor::ShowImGuiProperties() {
   PROFILER_FUNCTION();
   ImGui::Begin("Properties");
@@ -1371,70 +1443,51 @@ void Editor::ShowImGuiProperties() {
         component.material = CreateDefaultMaterial();
       }
 
-      {
-        Material *material = component.material.get();
+      DrawMaterialEditor(component.material.get());
+    });
 
-        // Texture maps: thumbnails in a row, label underneath. Drag an image
-        // from the Content Browser to assign; right-click to clear.
-        const float thumb    = 64.0f;
-        auto        draw_map = [&](const char *label, const Ref<Texture> &get, auto &&set) {
-          ImGui::BeginGroup();
-          if (get) {
-            ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(get->GetID())), {thumb, thumb},
-                         ImVec2(0, 1), ImVec2(1, 0));
-          } else {
-            ImGui::Button("None", {thumb, thumb});
+    DrawComponent<ModelComponent>("Model", selected_entity_, [&](auto &component) {
+      if (!component.model || component.model->parts.empty()) {
+        ImGui::TextDisabled("No model loaded.");
+        return;
+      }
+      ImGui::Text("Source: %s", component.source.empty() ? "(none)" : component.source.c_str());
+      ImGui::Text("Parts: %zu", component.model->parts.size());
+      ImGui::TextDisabled("Single entity - every part shares its Transform. Pick a part\n"
+                          "below to edit its material; parts all cast shadows.");
+
+      // Keep the edited part across frames, resetting when the model changes.
+      static const Model *s_part_owner = nullptr;
+      static int          s_part        = 0;
+      if (s_part_owner != component.model.get()) {
+        s_part_owner = component.model.get();
+        s_part       = 0;
+      }
+      if (s_part < 0 || s_part >= static_cast<int>(component.model->parts.size())) {
+        s_part = 0;
+      }
+
+      const auto part_label = [&](size_t i) {
+        return component.model->parts[i].name.empty() ? "Part " + std::to_string(i)
+                                                      : component.model->parts[i].name;
+      };
+      if (ImGui::BeginCombo("Part", part_label(static_cast<size_t>(s_part)).c_str())) {
+        for (size_t i = 0; i < component.model->parts.size(); ++i) {
+          if (ImGui::Selectable(part_label(i).c_str(), static_cast<size_t>(s_part) == i)) {
+            s_part = static_cast<int>(i);
           }
-          if (ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-              const auto *path = static_cast<const wchar_t *>(payload->Data);
-              set(Texture::Create(std::filesystem::path(path).string()));
-            }
-            ImGui::EndDragDropTarget();
-          }
-          if (get && ImGui::BeginPopupContextItem(label)) {
-            if (ImGui::MenuItem("Clear")) {
-              set(nullptr);
-            }
-            ImGui::EndPopup();
-          }
-          const float text_w = ImGui::CalcTextSize(label).x;
-          ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (thumb - text_w) * 0.5f);
-          ImGui::Text("%s", label);
-          ImGui::EndGroup();
-        };
-
-        draw_map("Albedo", material->GetAlbedoMap(), [&](Ref<Texture> t) { material->SetAlbedoMap(t); });
-        ImGui::SameLine();
-        draw_map("Normal", material->GetNormalMap(), [&](Ref<Texture> t) { material->SetNormalMap(t); });
-        ImGui::SameLine();
-        draw_map("Roughness", material->GetMetallicRoughnessMap(),
-                 [&](Ref<Texture> t) { material->SetMetallicRoughnessMap(t); });
-        ImGui::SameLine();
-        draw_map("AO", material->GetAOMap(), [&](Ref<Texture> t) { material->SetAOMap(t); });
-
-        ImGui::Separator();
-        ImGui::Text("Properties");
-
-        glm::vec4 base_color = material->GetBaseColorFactor();
-        if (ImGui::ColorEdit4("Base Color", glm::value_ptr(base_color))) {
-          material->SetBaseColorFactor(base_color);
         }
+        ImGui::EndCombo();
+      }
 
-        float metallic = material->GetMetallicFactor();
-        if (ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f)) {
-          material->SetMetallicFactor(metallic);
-        }
-
-        float roughness = material->GetRoughnessFactor();
-        if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f)) {
-          material->SetRoughnessFactor(roughness);
-        }
-
-        float specular = material->GetSpecularFactor();
-        if (ImGui::SliderFloat("Specular", &specular, 0.0f, 1.0f)) {
-          material->SetSpecularFactor(specular);
-        }
+      ModelPart &part = component.model->parts[static_cast<size_t>(s_part)];
+      ImGui::Text("Triangles: %d", part.mesh ? part.mesh->GetIndexCount() / 3 : 0);
+      if (part.material) {
+        ImGui::PushID(s_part);
+        DrawMaterialEditor(part.material.get());
+        ImGui::PopID();
+      } else {
+        ImGui::TextDisabled("This part has no material yet.");
       }
     });
 
@@ -3139,15 +3192,13 @@ void Editor::RunSceneFileSelftest(const std::string &path) {
 void Editor::CreateModelEntity(const std::filesystem::path &path) {
   LOG_INFO("Editor") << "Importing model: " << path.filename().string();
 
-  // Multi-material OBJ (e.g. the nanosuit): import as a root entity with one
-  // CHILD per `usemtl` part, so each part keeps its own texture/material. The
-  // root carries the auto-fit transform; children are identity-posed.
+  // Multi-material OBJ (e.g. the nanosuit): import as ONE entity carrying a
+  // ModelComponent - every `usemtl` part stays a sub-part that shares the
+  // entity's transform (see the Model / ModelPart engine types).
+  // Single-material OBJs and glTF fall through to the legacy single-mesh path
+  // so their .mtl / sibling-texture heuristic and behaviour stay unchanged.
   if (path.extension() == ".obj") {
-    // Only import as a grouped entity tree for genuinely multi-material OBJs
-    // (several `usemtl` parts, e.g. the nanosuit). Single-material OBJs fall
-    // through to the legacy path so their .mtl / sibling-texture heuristic and
-    // single-entity behaviour stay unchanged.
-    if (Ref<ObjModel> model = ModelLoader::LoadObjModel(path.string()); model && model->parts.size() > 1) {
+    if (Ref<Model> model = ModelLoader::LoadObjModel(path.string()); model && model->parts.size() > 1) {
       const std::string stem = path.stem().string();
       Entity            root = CreateEntityWithUniqueName(stem);
       auto             &rt   = root.AddComponent<Transform>();
@@ -3155,30 +3206,25 @@ void Editor::CreateModelEntity(const std::filesystem::path &path) {
       const Ref<Shader> pbr = AssetManager::Instance().GetShader("pbr");
       glm::vec3         bmin(std::numeric_limits<float>::max());
       glm::vec3         bmax(std::numeric_limits<float>::lowest());
-      for (size_t i = 0; i < model->parts.size(); ++i) {
-        ObjModelPart &part = model->parts[i];
+      for (auto &part : model->parts) {
         if (!part.material) part.material = CreateDefaultMaterial();
         part.material->SetShader(pbr);
         for (const auto &v : part.mesh->GetVertices()) {
           bmin = glm::min(bmin, v.position);
           bmax = glm::max(bmax, v.position);
         }
-        const std::string part_name = part.name.empty() ? (stem + " part") : part.name;
-        Entity            child     = CreateEntityWithUniqueName(part_name);
-        child.AddComponent<Transform>();
-        child.AddComponent<MeshComponent>(part.mesh, part.material);
-        active_scene_->SetParent(child.GetHandle(), root.GetHandle());
       }
+      root.AddComponent<ModelComponent>(model, path.string());
 
       // Auto-fit the whole model: scale so the longest axis is ~2 units and
       // rest the bottom of its bounds on the ground grid.
       const glm::vec3 extent     = bmax - bmin;
       const float     max_extent = std::max({extent.x, extent.y, extent.z});
       if (max_extent > 0.0001f) {
-        const float fit_scale     = 2.0f / max_extent;
-        rt.scale                  = glm::vec3(fit_scale);
-        rt.translation            = -glm::vec3((bmin + bmax) * 0.5f) * fit_scale;
-        rt.translation.y          = -bmin.y * fit_scale;  // sit on the grid
+        const float fit_scale = 2.0f / max_extent;
+        rt.scale              = glm::vec3(fit_scale);
+        rt.translation        = -glm::vec3((bmin + bmax) * 0.5f) * fit_scale;
+        rt.translation.y      = -bmin.y * fit_scale;  // sit on the grid
       }
 
       selected_entity_ = root;
@@ -3248,6 +3294,10 @@ Entity Editor::DuplicateEntitySubtree(Entity source, entt::entity parent_copy) {
   if (source.HasComponent<MeshComponent>()) {
     auto &mesh = source.GetComponent<MeshComponent>();
     duplicate.AddComponent<MeshComponent>(mesh.mesh, mesh.material);
+  }
+  if (source.HasComponent<ModelComponent>()) {
+    const auto &model = source.GetComponent<ModelComponent>();
+    duplicate.AddComponent<ModelComponent>(model.model, model.source);
   }
   if (source.HasComponent<CameraComponent>()) {
     duplicate.AddComponent<CameraComponent>(source.GetComponent<CameraComponent>());

@@ -11,19 +11,20 @@ class Material;
 class Mesh;
 class Texture;
 
-/// @brief One rendered part of a multi-material OBJ: a submesh plus the
-/// Material that should shade it. `name` is the OBJ `usemtl` / `.mtl`
-/// `newmtl` material name (empty when the OBJ had no material for the part).
-struct ObjModelPart {
+/// @brief One rendered part of a multi-material model: a submesh plus the
+/// Material that should shade it. `name` is the source material name (the OBJ
+/// `usemtl` / `.mtl` `newmtl` name; empty when the part had no material).
+struct ModelPart {
   Ref<Mesh>     mesh;
   Ref<Material> material;
   std::string   name;
 };
 
-/// @brief A multi-material OBJ model: geometry split per `usemtl` group, each
-/// part with its own submesh + material (the .mtl `newmtl` block of that name).
-struct ObjModel {
-  std::vector<ObjModelPart> parts;
+/// @brief A multi-material 3D model (single entity): geometry split per
+/// material group, each part with its own submesh + material. Rendered by a
+/// ModelComponent - every part shares the owning entity's transform.
+struct Model {
+  std::vector<ModelPart> parts;
 };
 
 /**
@@ -52,12 +53,14 @@ class ModelLoader {
   /// returns the FIRST material block.
   static Ref<Material> LoadObjMaterial(const std::string &obj_path);
 
-  /// @brief Loads a multi-material OBJ into an ObjModel: geometry is split per
+  /// @brief Loads a multi-material OBJ into a Model: geometry is split per
   /// `usemtl` group and each part gets its own submesh + Material (from the
   /// `.mtl` `newmtl` block with that name, or a default white material when the
   /// name is unknown). Shaders are NOT assigned; callers set them per part.
-  /// Returns nullptr on failure / when no faces were found.
-  static Ref<ObjModel> LoadObjModel(const std::string &path);
+  /// Identical part meshes (same file + material group) are shared through a
+  /// MeshLibrary, so several entities of one model reuse the same GPU mesh and
+  /// batch into instanced draws. Returns nullptr on failure / no faces.
+  static Ref<Model> LoadObjModel(const std::string &path);
 
   /// @brief Loads a glTF 2.0 file (`.gltf` or `.glb`) into a single Mesh.
   ///

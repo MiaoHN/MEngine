@@ -461,9 +461,14 @@ Ref<Mesh> BuildObjPartMesh(const std::vector<glm::vec3> &positions, const std::v
   return Mesh::Create(vertices, indices);
 }
 
+/// @brief Shared cache of multi-material model part meshes (keyed
+/// "<path>|<material group>"), so re-loading the same model file reuses one
+/// GPU mesh per part instead of re-uploading per import / per entity.
+static MeshLibrary g_model_part_meshes;
+
 }  // namespace
 
-Ref<ObjModel> ModelLoader::LoadObjModel(const std::string &path) {
+Ref<Model> ModelLoader::LoadObjModel(const std::string &path) {
   const std::filesystem::path obj_dir = std::filesystem::path(path).parent_path();
   const std::string           mtl_rel = ResolveObjMtl(path, obj_dir);
   const std::vector<ObjMtlDef> defs =
@@ -530,11 +535,19 @@ Ref<ObjModel> ModelLoader::LoadObjModel(const std::string &path) {
     return nullptr;
   }
 
-  Ref<ObjModel> model = CreateRef<ObjModel>();
+  Ref<Model> model = CreateRef<Model>();
   for (size_t p = 0; p < part_tris.size(); ++p) {
     if (part_tris[p].empty()) continue;
-    ObjModelPart part;
-    part.mesh = BuildObjPartMesh(positions, texcoords, normals, part_tris[p]);
+    ModelPart part;
+    // Share identical part meshes (source file + material group): one GPU mesh
+    // per part, reused by every entity that imports the same model.
+    const std::string key = path + "|" + mat_names[p];
+    if (!g_model_part_meshes.Exists(key)) {
+      Ref<Mesh> fresh = BuildObjPartMesh(positions, texcoords, normals, part_tris[p]);
+      fresh->SetSource(key);
+      g_model_part_meshes.Add(key, fresh);
+    }
+    part.mesh = g_model_part_meshes.Get(key);
     const auto def_it = def_by_name.find(mat_names[p]);
     part.material = def_it != def_by_name.end() ? MaterializeObjMtl(defs[def_it->second], obj_dir)
                                                 : MaterializeObjMtl(ObjMtlDef{}, obj_dir);

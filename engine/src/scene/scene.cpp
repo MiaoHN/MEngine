@@ -19,12 +19,19 @@ namespace MEngine {
 namespace {
 
 /// @brief True when the entity should take part in lighting/shadow passes: it
-/// has a valid mesh and is not an editor-only helper (e.g. the grid).
+/// has a valid mesh / model and is not an editor-only helper (e.g. the grid).
 bool IsRenderable(Entity &entity) {
   if (entity.HasComponent<Tag>() && entity.GetComponent<Tag>().editor_only) {
     return false;
   }
-  return entity.HasComponent<MeshComponent>() && entity.GetComponent<MeshComponent>().mesh != nullptr;
+  if (entity.HasComponent<MeshComponent>()) {
+    return entity.GetComponent<MeshComponent>().mesh != nullptr;
+  }
+  if (entity.HasComponent<ModelComponent>()) {
+    const auto &model = entity.GetComponent<ModelComponent>();
+    return model.model != nullptr && !model.model->parts.empty();
+  }
+  return false;
 }
 
 /// @brief One mesh draw candidate with everything needed by every pass.
@@ -1008,27 +1015,49 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   items.reserve(16);
   glm::vec3 scene_min(std::numeric_limits<float>::max());
   glm::vec3 scene_max(std::numeric_limits<float>::lowest());
-  for (auto &entity : GetAllEntitiesWith<MeshComponent>()) {
-    if (!IsRenderable(entity)) {
-      continue;
-    }
-    auto &component = entity.GetComponent<MeshComponent>();
+  const auto push_item = [&](entt::entity handle, const Ref<Mesh> &mesh, const Ref<Material> &material,
+                              const glm::mat4 &model) {
+    if (!mesh) return;
     RenderItem item;
-    item.handle   = entity.GetHandle();
-    item.mesh     = component.mesh;
-    item.material = component.material;
-    // Compose through the parent chain so children follow their ancestors.
-    item.model = entity.HasComponent<Transform>() ? GetWorldTransform(entity.GetHandle())
-                                                  : glm::mat4(1.0f);
+    item.handle   = handle;
+    item.mesh     = mesh;
+    item.material = material;
+    item.model    = model;
     glm::vec3 local_min;
     glm::vec3 local_max;
-    if (component.mesh && component.mesh->GetLocalBounds(local_min, local_max)) {
-      TransformAABB(item.model, local_min, local_max, item.world_min, item.world_max);
+    if (mesh->GetLocalBounds(local_min, local_max)) {
+      TransformAABB(model, local_min, local_max, item.world_min, item.world_max);
       item.has_bounds = true;
       scene_min       = glm::min(scene_min, item.world_min);
       scene_max       = glm::max(scene_max, item.world_max);
     }
     items.push_back(std::move(item));
+  };
+  for (auto &entity : GetAllEntitiesWith<MeshComponent>()) {
+    if (!IsRenderable(entity)) {
+      continue;
+    }
+    const auto &component = entity.GetComponent<MeshComponent>();
+    // Compose through the parent chain so children follow their ancestors.
+    const glm::mat4 model = entity.HasComponent<Transform>() ? GetWorldTransform(entity.GetHandle())
+                                                             : glm::mat4(1.0f);
+    push_item(entity.GetHandle(), component.mesh, component.material, model);
+  }
+
+  // Multi-material ModelComponent entities: one RenderItem per part, all under
+  // the SAME entity transform (the model's parts share one object space). Each
+  // part keeps its own mesh+material, so batching / culling / shadows work
+  // exactly like MeshComponent entities.
+  for (auto &entity : GetAllEntitiesWith<ModelComponent>()) {
+    if (!IsRenderable(entity)) {
+      continue;
+    }
+    const auto &component = entity.GetComponent<ModelComponent>();
+    const glm::mat4 model = entity.HasComponent<Transform>() ? GetWorldTransform(entity.GetHandle())
+                                                             : glm::mat4(1.0f);
+    for (const auto &part : component.model->parts) {
+      push_item(entity.GetHandle(), part.mesh, part.material, model);
+    }
   }
 
   if (items.empty()) {

@@ -11,6 +11,7 @@
 
 #include "scene/scene.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -155,6 +156,39 @@ Ref<Material> MaterialFromJson(const json &j) {
   material->SetMetallicRoughnessMap(load_texture("metallic_roughness"));
   material->SetAOMap(load_texture("ao"));
   return material;
+}
+
+/// @brief Overlays persisted PBR fields onto an EXISTING material.
+///
+/// Used for model parts whose material was freshly rebuilt by the .mtl loader:
+/// we only overwrite the serialized channels (factors + the four PBR maps) so
+/// un-serialized ones (spec/reflection maps, shininess, albedo sRGB flag, ...)
+/// are preserved across a save/load round-trip.
+void ApplyMaterialJson(const Ref<Material> &material, const json &j) {
+  if (!material) return;
+
+  const auto set_map = [&](const char *key, void (Material::*setter)(Ref<Texture>)) {
+    if (!j.contains(key)) return;
+    const auto &v = j[key];
+    if (v.is_string() && !v.get<std::string>().empty()) {
+      (material.get()->*setter)(Texture::Create(ResolveAsset(v.get<std::string>())));
+    } else {
+      (material.get()->*setter)(nullptr);
+    }
+  };
+
+  if (j.contains("base_color")) material->SetBaseColorFactor(Vec4FromJson(j["base_color"], glm::vec4(1.0f)));
+  if (j.contains("metallic")) material->SetMetallicFactor(j["metallic"].get<float>());
+  if (j.contains("roughness")) material->SetRoughnessFactor(j["roughness"].get<float>());
+  if (j.contains("specular")) material->SetSpecularFactor(j["specular"].get<float>());
+  if (j.contains("cull")) {
+    const std::string cull = j["cull"].get<std::string>();
+    material->SetCullMode(cull == "back" ? CullMode::Back : cull == "front" ? CullMode::Front : CullMode::None);
+  }
+  set_map("albedo", &Material::SetAlbedoMap);
+  set_map("normal", &Material::SetNormalMap);
+  set_map("metallic_roughness", &Material::SetMetallicRoughnessMap);
+  set_map("ao", &Material::SetAOMap);
 }
 
 // --- camera ----------------------------------------------------------------
@@ -320,6 +354,23 @@ json EntityToJson(Entity &entity, int parent_index = -1) {
     e["mesh"]     = j;
   }
 
+  if (entity.HasComponent<ModelComponent>()) {
+    const auto &comp = entity.GetComponent<ModelComponent>();
+    json        j;
+    j["source"] = comp.source;
+    json parts   = json::array();
+    if (comp.model) {
+      for (const auto &part : comp.model->parts) {
+        json p;
+        p["name"]     = part.name;
+        p["material"] = MaterialToJson(part.material);
+        parts.push_back(std::move(p));
+      }
+    }
+    j["parts"] = std::move(parts);
+    e["model"] = std::move(j);
+  }
+
   if (entity.HasComponent<CameraComponent>()) {
     const auto &component = entity.GetComponent<CameraComponent>();
     json        j         = CameraToJson(component.camera);
@@ -462,6 +513,39 @@ Entity LoadEntityFromJson(Scene &scene, const json &e) {
     Ref<Mesh>   mesh = MeshFromSource(j.value("source", ""));
     if (mesh) {
       entity.AddComponent<MeshComponent>(mesh, MaterialFromJson(j.value("material", json())));
+    }
+  }
+
+  if (e.contains("model")) {
+    const auto &j        = e["model"];
+    const std::string source = j.value("source", "");
+    if (!source.empty()) {
+      if (Ref<Model> model = ModelLoader::LoadObjModel(source)) {
+        const auto &parts = j.value("parts", json::array());
+        const size_t count = std::min(model->parts.size(), parts.is_array() ? parts.size() : 0u);
+        for (size_t i = 0; i < count; ++i) {
+          const auto &pp = parts[i];
+          Ref<Material> material = model->parts[i].material;
+          if (!material) {
+            material = model->parts[i].material = CreateRef<Material>();
+          }
+          material->SetShader(AssetManager::Instance().GetShader("pbr"));
+          if (pp.contains("name") && pp["name"].is_string()) {
+            model->parts[i].name = pp["name"].get<std::string>();
+          }
+          if (pp.contains("material") && pp["material"].is_object()) {
+            ApplyMaterialJson(material, pp["material"]);
+          }
+        }
+        // Parts not present in the file (the .obj grew): still render them.
+        for (size_t i = count; i < model->parts.size(); ++i) {
+          if (!model->parts[i].material) {
+            model->parts[i].material = CreateRef<Material>();
+          }
+          model->parts[i].material->SetShader(AssetManager::Instance().GetShader("pbr"));
+        }
+        entity.AddComponent<ModelComponent>(model, source);
+      }
     }
   }
 
