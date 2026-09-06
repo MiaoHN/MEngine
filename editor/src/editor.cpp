@@ -410,16 +410,25 @@ void Editor::Initialize() {
 
 active_scene_ = std::make_shared<Scene>();
 
-  // Default editor lighting: an IBL ambient that is kept fairly dim so the
-  // HDR-emissive lamp cubes below clearly bloom (Renderer's default IBL is 1.0;
-  // the per-scene "Rendering -> IBL Intensity" overrides this saved value).
-  active_scene_->SetIblIntensity(0.35f);
-  active_scene_->SetExposure(1.1f);
+  // Default editor lighting: a dim environment + soft sun so the HDR-emissive
+  // lamp cubes below are the bright spots and clearly bloom. The per-scene
+  // "Rendering -> IBL Intensity" overrides the saved value.
+  active_scene_->SetIblIntensity(0.12f);
+  active_scene_->SetExposure(1.0f);
   active_scene_->SetBloomEnabled(true);
   active_scene_->SetBloomThreshold(1.0f);
   active_scene_->SetBloomStrength(0.015f);
   active_scene_->SetShadowPcfRadius(4.0f);
   active_scene_->SetGodRaysStrength(0.06f);
+
+  // Soft, cool sun: keep the scene readable without washing out the lamps.
+  {
+    auto &sun = active_scene_->GetLight();
+    sun.color    = glm::vec3(1.2f);
+    sun.ambient  = glm::vec3(0.02f);
+    sun.diffuse  = glm::vec3(1.0f);
+    sun.specular = glm::vec3(1.0f);
+  }
 
   // ImGUI setup
   IMGUI_CHECKVERSION();
