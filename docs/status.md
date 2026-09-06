@@ -294,11 +294,52 @@
 - god rays 在太阳位于屏幕外时从中心假采样导致棱角条纹（太阳不可见时关闭 god rays）。
 - `sample` 为 GLSL 保留字导致的 god_rays 着色器编译失败。
 
+### M6 — LearnOpenGL 移植期（渲染/后期扩展 + examples 复刻）✅
+
+**日期**：2026-09-06
+
+**背景**：把 LearnOpenGL `src/` 的示例逐个用 MEngine 公共 API 复刻成独立可执行
+（`examples/`，见 `examples/PORTING.md`），1:1 对齐 LO 场景/参数以便并排比对。复刻过程
+倒逼引擎补了一批渲染/后期/材质能力。
+
+**引擎新增能力：**
+- **三套材质/光照管线**（`assets/shaders`，AssetManager manifest）：
+  1. `pbr`——引擎 PBR（GGX Cook-Torrance，默认）；
+  2. `blinn`——经典 Blinn-Phong（`shininess`/`specular`/`SetSpecularMap`）；
+  3. `blinn_lo`——**LO-exact**：逐灯 ambient/diffuse/specular 三分量、Phong(reflect)/Blinn 高光、
+     逐像素 specular 贴图、LO c/l/q 衰减（`PointLight.lo_attenuation`）、点光上限 32。
+- **后期 tone 模式**（`composite_frag.glsl`，`PostProcessing`/`Scene` 开关）：
+  `SetLinearOutput`（raw clamp）、`SetLoHdrTone`（`1-exp(-x)`+gamma，LO 6/7）、
+  `SetReinhardTone`（`color/(color+1)`+gamma，LO PBR）；默认 ACES+gamma。
+- **LO-exact 光照开关**：`SetLoLighting`/`SetLoBlinnSpec`/`SetLoDirShadow`；无太阳场景 `NoSun`。
+- **材质扩展**（`Material`）：`SetAlbedoSRGB`（shader 内 `pow 2.2` 解码 albedo 贴图）、
+  `SetSpecularColor`、合并 **MR 贴图**约定（R=1/G=roughness/B=metallic，`pbr_frag` 逐像素）；
+  `tools/make_pbr_mr.ps1` 由 LO 两张灰度图生成 `mr.png`。
+- **split-sum BRDF LUT**：`Skybox::GenerateBRDF`（RG16F 512）+ `BindBRDF`（单元 13），
+  `pbr_frag` 镜面 IBL 改 LO split-sum 形式 `prefiltered*(F*brdf.x+brdf.y)`（取代旧简化项）。
+- **镜面 IBL 开关**：`Scene::SetIblSpecular(bool)`（`pbr_frag` `u_ibl_specular`），可只保留漫反射
+  IBL（复刻 LO 6.pbr/2.1.2）。
+- **环境 HDR 逐应用覆盖**：`Application::SetEnvironmentHdrPath/GetEnvironmentHdrPath` 与
+  `SetEnvironmentHdrFlip`（默认 kloppenheim；6.2.x 用 newport_loft，glTF 导出 HDR 需翻转）。
+- **应用宿主工具**：窗口标题实时 FPS、无头/定时抓帧（`SetMaxFrames`/`SetCaptureFrame`/`SetWindowHidden`）；
+  examples 共享宿主加**滚轮 FOV 缩放**与 **WASD/Space/Ctrl 飞行相机**。
+
+**示例覆盖（`examples/`，每示例独立 exe + 自带 assets 副本）**：
+- 2.lighting：`ex_2_1_colors`、`ex_2_2_basic_lighting`(PBR)、`ex_2_2_blinn_lighting`(LO 1:1)、
+  `ex_2_3_materials`、`ex_2_4_lighting_maps`、`ex_2_5_light_casters`、`ex_2_6_multiple_lights`
+- 3.model_loading：`ex_3_1_model_loading`
+- 5.advanced_lighting：`ex_5_3_shadow_mapping`、`ex_5_4_normal_mapping`、`ex_5_6_hdr_bloom`、
+  `ex_5_8_deferred_shading`(前向等效 32 灯)、`ex_5_9_ssao`
+- 6.pbr：`ex_6_1_1_pbr_lighting`、`ex_6_1_2_pbr_lighting_textured`、`ex_6_2_1_ibl_irradiance`、
+  `ex_6_2_2_ibl_specular`、`ex_6_2_2_ibl_specular_textured`
+- 用户资产：`ex_6_2_cerberus`、`ex_model_viewer`（含 `PbrSidecarTextured`：GLB 只嵌 albedo 时从
+  A/M/R/N/AO sidecar 文件组装完整 PBR 材质）。
+
 ## 待办（后续里程碑）
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
 - [x] M2b：glTF 2.0 导入（tinygltf）
-- [ ] M2c：多网格/多材质 `Model`、MeshLibrary 接入资产系统
+- [ ] M2c：多网格/多材质 `Model`、MeshLibrary 接入资产系统、OBJ `.mtl` 解析（贴图不再靠文件名约定）
 - [x] M3a：PBR 材质（metallic-roughness）+ 法线贴图
 - [x] M3b：方向光阴影映射
 - [x] M3c：多光源（点光源）
@@ -310,14 +351,19 @@
 - [x] M4e：体积光（God Rays）
 - [x] M4f：TAA（时间抗锯齿）
 - [x] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
+- [x] M6：LO 移植期（三管线/后期 tone 模式/BRDF LUT/镜面 IBL 开关/环境覆盖/examples）
 - [ ] 场景序列化（`LoadScene/SaveScene`）
 - [ ] 补全 Vulkan 资源后端
+- [ ] 深度整理：文档同步、重复抽象清理、Light 组件化、Renderer uniform 批量/去重
 
 ## 已知问题 / 技术债
 
-- 当前无背面剔除（`glEnable(GL_CULL_FACE)` 未开启），立方体所有面都绘制；后续开启时需确认面绕序。
+- 背面剔除已按材质启用（renderer 每 draw 设 `rhi->SetCullMode(material->GetCullMode())`，默认 Back；2D/UI 前恢复 None）——旧的"全局无剔除"已解决；后续仅需确认新网格绕序符合。
 - 光照参数（方向光方向/颜色）未抽象为完整 Light 体系（点光/聚光为场景级列表，非 ECS 组件）。
 - `Renderer::DrawMesh` 每帧重复设置全部 uniform，后续可引入 material/UBO 批量上传。
 - `RenderContext` 与 `RenderPass` 重复抽象仍未清理。
 - OBJ 的 `.mtl` 未解析，贴图靠文件名约定自动套用。
 - 点光阴影逐面全量重绘、无 PCF，后续可做分层渲染/软阴影优化。
+- 环境 HDR 路径/翻转是 `Application` 全局静态，非 per-scene（编辑器多场景/运行时切换不灵活）。
+- `pbr`/`blinn`/`blinn_lo` 三套 fragment shader 各自实现，BRDF/阴影/IBL/点光循环公共部分重复较多，
+  可收敛为共享 GLSL 头。

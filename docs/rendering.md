@@ -7,6 +7,21 @@
 > （由 `AssetManager` + `manifest.json` 管理）；下文部分历史小节中出现的 `res/shaders` 等路径
 > 是重构前的旧布局，仅作历史记录。
 
+## ⚠️ 最新（M6 / LearnOpenGL 移植期）
+
+下文 M1–M4 是**演进史**，部分“已知限制”已被 M6 解决。当前渲染层的最新能力请以
+`docs/status.md` 的 **M6** 小节为准，示例层面的 1:1 复刻清单见 `examples/PORTING.md`。M6 期间新增：
+
+- **三套 fragment 管线**：`pbr`（引擎 PBR GGX，默认）、`blinn`（经典 Blinn-Phong）、
+  `blinn_lo`（LO-exact：逐灯 ambient/diffuse/specular + Phong/Blinn 高光 + specular 贴图）。
+- **后期 tone 模式**：默认 ACES+gamma；`SetLinearOutput`（raw clamp）、`SetLoHdrTone`
+  （`1-exp(-x)`+gamma）、`SetReinhardTone`（`color/(color+1)`+gamma）。
+- **split-sum BRDF LUT**（`Skybox::GenerateBRDF`/`BindBRDF`，单元 13）替代旧简化镜面 IBL；
+  `Scene::SetIblSpecular(bool)` 提供“仅漫反射 IBL”模式（LO 6.pbr/2.1.2）。
+- **环境 HDR 逐应用覆盖 + 翻转**（`Application::SetEnvironmentHdrPath/Flip`）。
+- 材质 `SetAlbedoSRGB` / `SetSpecularMap` / `SetSpecularColor` / 合并 MR 贴图等。
+- **背面剔除已按材质启用**（`rhi->SetCullMode(material->GetCullMode())`，默认 Back）。
+
 ## 层次划分
 
 ```mermaid
@@ -185,7 +200,7 @@ std::unique_ptr<IVertexArrayBackend> CreateVertexArrayBackend();
 - `Renderer::DrawMesh` 绑定 `irradiance_map`（slot 5）+ `prefiltered_map`（slot 6）。
 - 新增 shader：`equirect_to_cube_frag.glsl`、`prefilter_frag.glsl`。
 - 资源：`res/textures/hdr/kloppenheim_06_puresky_1k.hdr`（Poly Haven CC0）。
-- 已知限制：无预积分 BRDF LUT（镜面能量略偏）；`Skybox` 为 OpenGL 专属。
+- 已知限制：`Skybox` 为 OpenGL 专属（镜面 BRDF LUT 已在 M6 补齐，见顶部“最新”）。
 
 ## SSAO（M4d 新增）
 
@@ -256,9 +271,13 @@ class IRHI {
 
 ## 当前渲染局限
 
-1. **无背面剔除**：`GL_CULL_FACE` 未开启，所有面都绘制。
-2. **Vulkan 未完成**：后端空壳，无真实 GPU 资源（网格复用 `IVertexArrayBackend`，接口已就位）。
-3. **光照未抽象**：方向光参数写死在 shader 默认值，尚无引擎级 Light/Material。
-4. **RenderContext 重复**：与 RenderPass 冗余。
-5. **资源加载路径写死**：默认 shader 路径硬编码在 Renderer 构造中。
-6. **无渲染图（Render Graph）/ 无自动资源生命周期管理**。
+> M6 已解决项：背面剔除现按材质启用（`CullMode`，默认 Back）；镜面 IBL 已用 split-sum BRDF LUT；
+> 光照/材质已引擎化（`Material` + 场景灯列表 + 三套 shader）。
+
+1. **Vulkan 未完成**：后端空壳，无真实 GPU 资源（网格复用 `IVertexArrayBackend`，接口已就位）。
+2. **光照未组件化**：方向光为引擎字段、点光/聚光为场景级列表，尚未抽象为 ECS Light 组件。
+3. **RenderContext 重复**：与 RenderPass 冗余（未被使用，可合并/删除）。
+4. **DrawMesh 逐帧重复 uniform**：后续可引入 material/UBO 批量上传。
+5. **环境 HDR 是 Application 全局静态**：非 per-scene（编辑器运行时切换不灵活）。
+6. **三套 fragment shader 公共部分重复**：BRDF/阴影/IBL/点光循环可收敛为共享 GLSL 头。
+7. **点光阴影无 PCF**：逐面全量重绘，可分层渲染/软阴影优化。
