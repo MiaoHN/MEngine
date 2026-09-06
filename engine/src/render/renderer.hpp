@@ -102,6 +102,12 @@ class Renderer {
   DirectionalLight &GetLight() { return light_; }
   void SetLight(const DirectionalLight &light) { light_ = light; }
 
+  /// @brief Extra (unshadowed) directional lights shown on top of the primary
+  /// shadow-casting sun. Multi-directional path used by pbr/blinn shaders.
+  void SetDirectionalExtras(const std::vector<DirectionalLight> &extras) { directional_extras_ = extras; }
+  void ClearDirectionalExtras() { directional_extras_.clear(); }
+  [[nodiscard]] const std::vector<DirectionalLight> &GetDirectionalExtras() const { return directional_extras_; }
+
   void AddPointLight(const PointLight &light) { point_lights_.push_back(light); }
   void ClearPointLights() { point_lights_.clear(); }
   [[nodiscard]] const std::vector<PointLight> &GetPointLights() const { return point_lights_; }
@@ -116,6 +122,9 @@ class Renderer {
 
   /// @brief Maximum number of point lights that can cast cube shadows.
   static constexpr int kMaxPointShadows = 4;
+  /// @brief Maximum number of ADDITIONAL (unshadowed) directional lights the
+  /// engine path can show besides the shadow-casting primary sun.
+  static constexpr int kMaxDirectionalExtras = 4;
 
   /// @brief Binds the HDR scene framebuffer for the main pass.
   void BeginScene() const;
@@ -231,6 +240,7 @@ class Renderer {
   Ref<Skybox>         skybox_;
   Ref<SSAO>           ssao_;
   DirectionalLight    light_;
+  std::vector<DirectionalLight> directional_extras_;
   std::vector<PointLight> point_lights_;
   std::vector<SpotLight>  spot_lights_;
   float shadow_pcf_radius_ = 2.0f;

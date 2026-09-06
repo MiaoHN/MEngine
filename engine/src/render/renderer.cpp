@@ -405,6 +405,20 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   shader->SetUniform("light_ambient", light_.ambient);
   shader->SetUniform("light_diffuse", light_.diffuse);
   shader->SetUniform("light_specular", light_.specular);
+
+  // Additional (unshadowed) directional lights - the engine multi-directional
+  // path. Capped to the shader's MAX_DIR_EXTRA.
+  constexpr int kMaxDirExtra = 4;
+  const int     dir_extra_count =
+      static_cast<int>(directional_extras_.size()) < kMaxDirExtra ? static_cast<int>(directional_extras_.size())
+                                                                  : kMaxDirExtra;
+  shader->SetUniform("dir_extra_count", dir_extra_count);
+  for (int i = 0; i < dir_extra_count; ++i) {
+    const DirectionalLight &light = directional_extras_[static_cast<size_t>(i)];
+    const std::string       index = std::to_string(i);
+    shader->SetUniform("dir_extra_dir[" + index + "]", light.direction);
+    shader->SetUniform("dir_extra_color[" + index + "]", light.color);
+  }
   shadow_map_->BindTexture(4);
   shader->SetUniform("shadow_map", 4);
   shader->SetUniform("light_view_proj", light_view_proj);

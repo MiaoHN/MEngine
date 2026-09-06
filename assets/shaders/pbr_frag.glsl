@@ -32,6 +32,13 @@ uniform vec3 view_pos;
 uniform vec3 light_dir   = normalize(vec3(-0.3, -1.0, -0.4));
 uniform vec3 light_color = vec3(2.5);
 
+// Additional (unshadowed) directional lights - the engine's multi-directional
+// path. The first/primary directional light is the one that casts shadows.
+#define MAX_DIR_EXTRA 4
+uniform int   dir_extra_count = 0;
+uniform vec3  dir_extra_dir[MAX_DIR_EXTRA];
+uniform vec3  dir_extra_color[MAX_DIR_EXTRA];
+
 uniform sampler2D shadow_map;
 uniform mat4      light_view_proj;
 uniform float     shadow_map_size = 2048.0;
@@ -302,6 +309,16 @@ void main() {
   float NdotL  = max(dot(N, L), 0.0);
   vec3  direct = (kD * albedo / PI + specular * specular_intensity) * light_color * NdotL;
   direct *= ShadowCalculation(FragPos, N, L);
+
+  // Additional (unshadowed) directional lights accumulate on top of the
+  // shadowed primary.
+  for (int i = 0; i < dir_extra_count && i < MAX_DIR_EXTRA; ++i) {
+    vec3  Le   = normalize(-dir_extra_dir[i]);
+    float NdLe = max(dot(N, Le), 0.0);
+    if (NdLe > 0.0) {
+      direct += (kD * albedo / PI + specular * specular_intensity) * dir_extra_color[i] * NdLe;
+    }
+  }
 
   // Image-based lighting: diffuse from the irradiance map, specular from the
   // prefiltered environment cubemap. Specular IBL uses the split-sum BRDF LUT

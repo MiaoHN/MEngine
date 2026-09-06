@@ -1677,33 +1677,37 @@ void Editor::ShowImGuiLighting() {
   ImGui::TextDisabled("Lights are scene entities - move / aim them with the gizmos,");
   ImGui::TextDisabled("edit Color & intensity in Properties.");
 
-  // --- Directional: the entity (if any) overrides the scene sun -----------
+  // --- Directional lights (entities): first = shadowing sun, rest = fill ----
   ImGui::Separator();
-  ImGui::TextUnformatted("Directional Light");
-  Entity dir_entity;
-  for (auto &e : active_scene_->GetAllEntitiesWith<DirectionalLightComponent>()) {
-    dir_entity = e;
-    break;
+  ImGui::TextUnformatted("Directional Lights");
+  if (ImGui::Button("Add Directional Light")) {
+    CreateDirectionalLightEntity();
   }
-  if (dir_entity.GetHandle() != entt::null) {
-    const std::string &dir_name = dir_entity.GetComponent<Tag>().tag;
-    if (ImGui::Selectable(dir_name.c_str(), dir_entity == selected_entity_)) {
-      selected_entity_ = dir_entity;
+  {
+    auto dirs = active_scene_->GetAllEntitiesWith<DirectionalLightComponent>();
+    if (dirs.empty()) {
+      ImGui::TextDisabled("None yet (using the Scene Sun below).");
     }
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip("Sun entity - select it, rotate with the gizmo (E) to aim,\n"
-                        "edit Color in Properties.");
+    int index = 0;
+    for (auto &e : dirs) {
+      const std::string &name = e.GetComponent<Tag>().tag;
+      if (ImGui::Selectable(name.c_str(), e == selected_entity_)) {
+        selected_entity_ = e;
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(index == 0
+                              ? "Primary sun - casts shadows. Rotate with the gizmo (E) to aim."
+                              : "Additional (fill) directional light - no shadow.");
+      }
+      ++index;
     }
-    ImGui::TextDisabled("Overrides the scene sun below while present.");
-  } else {
-    ImGui::TextDisabled("No directional light entity yet.");
-    if (ImGui::Button("Add Directional Light")) {
-      CreateDirectionalLightEntity();
+    if (!dirs.empty()) {
+      ImGui::TextDisabled("First entity = primary (casts shadows); the rest are fill lights.");
     }
   }
 
-  // Scene sun (the fallback used while no directional entity is in the scene).
-  {
+  // Scene sun (used while no directional entity is in the scene).
+  if (active_scene_->GetAllEntitiesWith<DirectionalLightComponent>().empty()) {
     DirectionalLight &dir_light = active_scene_->GetLight();
     ImGui::TextUnformatted("Scene Sun");
     DrawVec3Control("Direction (travel)", dir_light.direction);

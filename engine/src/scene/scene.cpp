@@ -1293,26 +1293,35 @@ void Scene::SyncLightComponents() {
   // of truth. Entities without a Transform keep the raw component fields.
   constexpr glm::vec3 kLightForward(0.0f, 0.0f, -1.0f);
 
-  // A DirectionalLightComponent (single for now) overrides the renderer's
-  // directional light every frame. Multi-directional needs shader arrays.
+  // Directional lights: when directional entities exist, the FIRST one becomes
+  // the shadow-casting primary sun; any further ones become additional
+  // (unshadowed) engine directional lights (pbr/blinn shader arrays). With no
+  // directional entity the scene falls back to its authored sun.
   {
     const auto view = registry_.view<DirectionalLightComponent>();
-    if (!view.empty()) {
-      for (const auto e : view) {
-        auto            &comp = registry_.get<DirectionalLightComponent>(e);
-        DirectionalLight l    = comp.light;
-        if (registry_.all_of<Transform>(e)) {
-          l.direction       = glm::normalize(glm::mat3(GetWorldTransform(e)) * kLightForward);
-          comp.light.direction = l.direction;
-        }
-        renderer_->SetLight(l);
-        break;  // renderer supports one directional light
+    std::vector<DirectionalLight> dirs;
+    for (const auto e : view) {
+      auto            &comp = registry_.get<DirectionalLightComponent>(e);
+      DirectionalLight l    = comp.light;
+      if (registry_.all_of<Transform>(e)) {
+        l.direction         = glm::normalize(glm::mat3(GetWorldTransform(e)) * kLightForward);
+        comp.light.direction = l.direction;
       }
+      dirs.push_back(l);
+    }
+    if (!dirs.empty()) {
+      renderer_->SetLight(dirs.front());  // primary: the one that casts shadows
+      std::vector<DirectionalLight> extras;
+      for (size_t i = 1; i < dirs.size() && extras.size() < 4u; ++i) {
+        extras.push_back(dirs[i]);
+      }
+      renderer_->SetDirectionalExtras(extras);
     } else {
       // No directional-light entity this frame: fall back to the scene's own
       // authored sun. Without this, a directional light that was added and then
       // deleted would linger in the renderer (it was never cleared).
       renderer_->SetLight(authored_directional_light_);
+      renderer_->SetDirectionalExtras({});
     }
   }
 
