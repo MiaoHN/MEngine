@@ -46,9 +46,10 @@ void ExampleApp::OnUpdate(float dt) {
   const glm::mat4 proj = glm::perspective(glm::radians(setup_.fov), aspect, 0.05f, 400.0f);
 
   if (ready_) {
-    // Optional per-scene animation hook (move lights / objects before render).
+    // Optional per-scene animation hook (move lights / objects, anchor a
+    // flashlight to the camera) with this frame's camera pose.
     if (setup_.update) {
-      setup_.update(*scene_, dt);
+      setup_.update(*scene_, eye, glm::normalize(cam_target_ - eye), dt);
     }
     scene_->RenderMeshes(view, proj, eye);
   }

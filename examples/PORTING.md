@@ -20,8 +20,9 @@
 >   LO c/l/q 衰减（`PointLight/SpotLight` 加 `lo_attenuation`）、无阴影/无 IBL 环境光。
 >     - 端口统一走 `examples::LoScene(scene)`：`SetLoLighting(true)` + `SetLinearOutput(true)`
 >      （composite 原样 clamp，不做 ACES/gamma，和 LO 直写一致）+ 关 skybox/TAA/bloom/SSAO + 背景 0.1；
->    - 每灯在灯体上设 `ambient/diffuse/specular`（替代旧 color/intensity）；
->    - 材质无贴图时可 `SetSpecularColor(...)` 给出 LO 的 `material.specular` 颜色；
+>    - 每灯在灯体上设 `ambient/diffuse/specular`（替代旧 color/intensity）；    - **没有太阳的 LO 场景必须 `examples::NoSun(scene)`** 把方向灯的三分量清零——
+      否则引擎默认方向灯（ambient .05/diffuse 1/spec 1）会平白给物体加一层“太阳光”，
+      这正是 LO 4.2/3.1/2.2 曾比原版偏亮的主因；>    - 材质无贴图时可 `SetSpecularColor(...)` 给出 LO 的 `material.specular` 颜色；
 >    - **窗口固定 800×600**（LO 的原生尺寸/4:3）：每个 example 的 `CreateApplication` 先
 >      `Application::SetStartupWindowSize(800, 600)`；相机 `target(0,0,0), yaw0, pitch0, dist 3, fov45`
 >      即 LO 相机 (0,0,3) 看 -Z。
@@ -41,7 +42,7 @@
 | 2.2 basic_lighting_specular | Phong 漫反射+高光（单点光）| ✅ `ex_2_2_blinn_lighting`（blinn_lo，coral 立方+白灯 1.2,1,2）；◐ `ex_2_2_basic_lighting`（PBR 演示）|
 | 3.1 materials | 材质参数（Phong）| ✅ `ex_2_3_materials`（blinn_lo：coral 材质 + 灰 specular 0.5，光 0.1/0.5/1.0）|
 | 4.2 lighting_maps_specular | diffuse+specular 贴图 | ✅ `ex_2_4_lighting_maps`（blinn_lo：container2 + container2_specular，shininess 64，光 0.2/0.5/1.0）|
-| 5.x light_casters (dir/point/spot/soft) | 方向/点/聚光 | ◐ `ex_2_5_light_casters`（PBR 演示；LO 5.3 是“相机手电”聚光，需宿主把聚光跟随相机，待做）|
+| 5.x light_casters (dir/point/spot/soft) | 方向/点/聚光 | ✅ `ex_2_5_light_casters`（blinn_lo：10 木箱 + **相机手电**软聚光，LO 5.3/5.4：锥内 diffuse/spec 带衰减，锥外仅环境光 0.1；手电每帧跟随轨道相机）|
 | 6.multiple_lights | 多光源 | ✅ `ex_2_6_multiple_lights`（blinn_lo：10 木箱+spec map，dir 0.05/0.4/0.5，4×点光 0.05/0.8/1.0 + c/l/q；LO 相机手电省略）|
 | exercises | 练习 | ◐ 概念已含在上面对应成品中 |
 
@@ -99,7 +100,7 @@ ex_2_2_basic_lighting      -> 2.lighting/2.2.basic_lighting_specular (PBR 演示
 ex_2_2_blinn_lighting      -> 2.lighting/2.2.basic_lighting_specular (✅ blinn_lo 1:1)
 ex_2_3_materials           -> 2.lighting/3.1.materials (✅ blinn_lo 1:1)
 ex_2_4_lighting_maps       -> 2.lighting/4.2.lighting_maps_specular_map (✅ blinn_lo 1:1)
-ex_2_5_light_casters       -> 2.lighting/5.3.light_casters_spot (PBR 演示；手电需宿主支持 ⬜)
+ex_2_5_light_casters       -> 2.lighting/5.3.light_casters_spot / 5.4 soft (✅ blinn_lo 1:1，相机手电)
 ex_2_6_multiple_lights     -> 2.lighting/6.multiple_lights (✅ blinn_lo 1:1)
 ex_5_3_shadow_mapping      -> 5.advanced_lighting/3.1.x shadow_mapping + 3.2 point_shadows (PBR 演示)
 ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom (PBR 演示)

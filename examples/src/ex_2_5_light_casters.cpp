@@ -1,57 +1,87 @@
-// LearnOpenGL "Light Casters" - directional + two spot lights + a fill point
-// light over a centre piece.
-#include <cmath>
+// = LearnOpenGL 2.lighting/5.3.light_casters_spot (soft edges, LO 5.4)
+//   source: LearnOpenGL/src/2.lighting/5.3.light_casters_spot/light_casters_spot.cpp
+//
+// Flashlight spot-light port on the LO-exact "blinn_lo" path: 10 wooden
+// crates (container2 diffuse + container2_specular) at LO positions/rotations,
+// lit ONLY by a spotlight anchored to the camera (the "flashlight"). Soft cone
+// (cutOff 12.5 / outerCutOff 17.5, like LO 5.4) so the light circle falls off
+// smoothly; the spot's ambient (0.1 * diffuse map) dimly lights everything
+// outside the cone (LO's else branch), while diffuse/specular inside the cone
+// get LO constant/linear/quadratic attenuation.
+//   - LO camera at (0,0,3) looking -Z, FOV 45, 4:3 window
+//   - right-drag orbits: the flashlight follows the camera eye/front each frame
+#include <memory>
 
 #include "example_app.hpp"
 #include "example_helpers.hpp"
 
 using namespace MEngine;
-using MEngine::examples::Put;
+using MEngine::examples::PutAxis;
 
 namespace {
+
+/// @brief Replaces the scene's spot lights with one "flashlight" at `pos`
+/// shining along `front` (LO 5.3's light = camera.Position / camera.Front).
+void AddFlashlight(Scene &scene, const glm::vec3 &pos, const glm::vec3 &front) {
+  scene.ClearSpotLights();
+  SpotLight f;
+  f.position     = pos;
+  f.direction    = glm::normalize(front);
+  f.ambient      = glm::vec3(0.1f);
+  f.diffuse      = glm::vec3(0.8f);
+  f.specular     = glm::vec3(1.0f);
+  f.lo_attenuation = true;
+  f.constant     = 1.0f;
+  f.linear       = 0.09f;
+  f.quadratic    = 0.032f;
+  f.lo_flashlight = true;  // ambient everywhere, diffuse/spec inside the cone
+  f.cutoff       = glm::cos(glm::radians(12.5f));
+  f.outer_cutoff = glm::cos(glm::radians(17.5f));
+  scene.AddSpotLight(f);
+}
+
 std::shared_ptr<Scene> BuildCasters() {
   auto s = std::make_shared<Scene>();
-  Put(*s, Mesh::CreatePlane(18.0f), examples::Pbr(glm::vec3(0.35f, 0.33f, 0.3f), 0.0f, 0.85f), {0, 0, 0});
-  Put(*s, Mesh::CreateCube(), examples::Pbr(glm::vec3(0.85f, 0.3f, 0.3f), 0.0f, 0.5f), {0.0f, 0.6f, 0.0f}, 1.1f);
-  Put(*s, Mesh::CreateSphere(0.5f, 24), examples::Pbr(glm::vec3(0.35f, 0.75f, 0.4f), 0.2f, 0.3f), {0.0f, 2.2f, 0.0f});
 
-  examples::Sun(*s, {-0.4f, -1.0f, -0.3f}, glm::vec3(0.55f, 0.55f, 0.6f));
-  examples::SolidBackground(*s, glm::vec3(0.10f, 0.10f, 0.12f), 0.10f);
-  s->SetExposure(1.0f);
-  s->SetTAAEnabled(true);
+  // 10 containers exactly like LO (rotation axis (1,0.3,0.5), angle 20*i).
+  const glm::vec3 cube_pos[10] = {
+      {0.0f, 0.0f, 0.0f},     {2.0f, 5.0f, -15.0f},   {-1.5f, -2.2f, -2.5f}, {-3.8f, -2.0f, -12.3f},
+      {2.4f, -0.4f, -3.5f},   {-1.7f, 3.0f, -7.5f},   {1.3f, -2.0f, -2.5f},  {1.5f, 2.0f, -2.5f},
+      {1.5f, 0.2f, -1.5f},    {-1.3f, 1.0f, -1.5f},
+  };
+  const glm::vec3 axis = glm::vec3(1.0f, 0.3f, 0.5f);
+  const auto crate = []() {
+    return examples::BlinnLoTextured("textures/container2.png", "textures/container2_specular.png", 32.0f);
+  };
+  for (int i = 0; i < 10; ++i) {
+    PutAxis(*s, Mesh::CreateCube(), crate(), cube_pos[i], axis, 20.0f * static_cast<float>(i));
+  }
 
-  SpotLight warm;
-  warm.position     = {3.4f, 6.5f, -3.4f};
-  warm.direction    = glm::normalize(glm::vec3(-3.4f, -6.5f, 3.4f));
-  warm.color        = glm::vec3(1.0f, 0.95f, 0.85f);
-  warm.intensity    = 55.0f;
-  warm.range        = 20.0f;
-  warm.cutoff       = std::cos(glm::radians(12.0f));
-  warm.outer_cutoff = std::cos(glm::radians(19.0f));
-  s->AddSpotLight(warm);
+  // LO 5.3 lights the scene with the flashlight only (no sun).
+  examples::NoSun(*s);
+  examples::LoScene(*s, glm::vec3(0.1f, 0.1f, 0.1f));
 
-  SpotLight cool;
-  cool.position     = {-3.4f, 5.5f, 2.5f};
-  cool.direction    = glm::normalize(glm::vec3(3.4f, -5.5f, -2.5f));
-  cool.color        = glm::vec3(0.45f, 0.6f, 1.0f);
-  cool.intensity    = 40.0f;
-  cool.range        = 18.0f;
-  cool.cutoff       = std::cos(glm::radians(15.0f));
-  cool.outer_cutoff = std::cos(glm::radians(22.0f));
-  s->AddSpotLight(cool);
-
-  PointLight fill;
-  fill.position  = {0.0f, 0.8f, -5.0f};
-  fill.color     = glm::vec3(0.3f, 0.3f, 0.35f);
-  fill.intensity = 6.0f;
-  fill.radius    = 10.0f;
-  s->AddPointLight(fill);
+  // Initial flashlight at LO's camera (0,0,3) shining down -Z at the crates.
+  AddFlashlight(*s, glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, -1.0f));
   return s;
 }
+
 }  // namespace
 
 ::MEngine::Application *CreateApplication() {
   MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
-  return new MEngine::examples::ExampleApp(
-      MEngine::examples::ExampleApp::Setup{BuildCasters, "Light Casters", {0, 1.5f, 0}, -45.0f, 16.0f, 11.0f});
+
+  MEngine::examples::ExampleApp::Setup setup;
+  setup.build  = []() { return BuildCasters(); };
+  setup.name   = "LO 2.5 light_casters (flashlight spot)";
+  setup.target = {0, 0, 0};
+  setup.yaw    = 0.0f;
+  setup.pitch  = 0.0f;
+  setup.dist   = 3.0f;
+  setup.fov    = 45.0f;
+  // Anchor the flashlight to the (orbit) camera every frame.
+  setup.update = [](MEngine::Scene &scene, const glm::vec3 &eye, const glm::vec3 &front, float) {
+    AddFlashlight(scene, eye, front);
+  };
+  return new MEngine::examples::ExampleApp(std::move(setup));
 }

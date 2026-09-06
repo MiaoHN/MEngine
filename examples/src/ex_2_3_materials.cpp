@@ -37,6 +37,8 @@ std::shared_ptr<Scene> BuildMaterials() {
   l.specular = glm::vec3(1.0f);
   s->AddPointLight(l);
 
+  // LO 3.1 has only this point light (no sun).
+  examples::NoSun(*s);
   examples::LoScene(*s, glm::vec3(0.1f, 0.1f, 0.1f));
   return s;
 }

@@ -34,11 +34,11 @@ class ExampleApp : public MEngine::Application {
     float pitch = 18.0f;
     float dist  = 10.0f;
     float fov   = 55.0f;  // vertical FOV in degrees (LearnOpenGL demos use 45)
-    /// @brief Optional per-frame hook (called each frame before rendering),
-    /// e.g. to animate a light or move an object in a demo scene. Kept last so
-    /// the existing positional `Setup{ build, name, ... }` initializers still
-    /// line up.
-    std::function<void(MEngine::Scene &, float dt)> update;
+    /// @brief Optional per-frame hook (called each frame right before render
+    /// with the camera `eye`/`front` of that frame), e.g. to animate a light
+    /// or attach a flashlight to the camera. Kept last so the existing
+    /// positional `Setup{ build, name, ... }` initializers still line up.
+    std::function<void(MEngine::Scene &, const glm::vec3 &eye, const glm::vec3 &front, float dt)> update;
   };
 
   explicit ExampleApp(Setup setup);

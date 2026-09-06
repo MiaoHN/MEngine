@@ -445,6 +445,7 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
     shader->SetUniform("spot_light_ambients[" + index + "]", light.ambient);
     shader->SetUniform("spot_light_diffuses[" + index + "]", light.diffuse);
     shader->SetUniform("spot_light_speculars[" + index + "]", light.specular);
+    shader->SetUniform("spot_light_lo_flashlight[" + index + "]", light.lo_flashlight ? 1 : 0);
     shader->SetUniform("spot_light_ranges[" + index + "]", light.range);
     shader->SetUniform("spot_light_cutoffs[" + index + "]", light.cutoff);
     shader->SetUniform("spot_light_outer_cutoffs[" + index + "]", light.outer_cutoff);

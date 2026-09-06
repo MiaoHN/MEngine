@@ -191,6 +191,16 @@ inline void Sun(Scene &scene, const glm::vec3 &travel_dir, const glm::vec3 &colo
   scene.GetLight().color     = color;
 }
 
+/// @brief Turns the scene's default directional light OFF (LO-exact scenes
+/// that have no sun - 2.2/3.1/4.2/5.3 - must call this, otherwise the engine's
+/// default directional ambient/diffuse/specular would add a spurious sun).
+inline void NoSun(Scene &scene) {
+  auto &l = scene.GetLight();
+  l.ambient  = glm::vec3(0.0f);
+  l.diffuse  = glm::vec3(0.0f);
+  l.specular = glm::vec3(0.0f);
+}
+
 /// @brief Matches the LearnOpenGL look: no skybox, a plain (usually dark)
 /// solid background. The IBL environment still lights geometry - lower
 /// `ibl` to keep the ambient small like the original tutorials.

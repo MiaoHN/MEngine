@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-06 — ex_2_5 手电聚光（LO 5.3/5.4）+ 修复无太阳 LO 场景的默认方向光污染
+
+- **用户需求**：做手电聚光（LO 5.3 light_casters spot）。
+- **引擎**：
+  - `SpotLight::lo_flashlight`（bool）：LO 5.3/5.4 手电语义 —— ambient **全局有效（锥外也有，且不衰减**，= LO else 分支），diffuse/spec 仅在锥内按 intensity*衰减；关时维持 LO 6 的 CalcSpotLight（全部锥化+衰减）。Renderer 上传 `spot_light_lo_flashlight[i]`；`blinn_lo_frag` 的 spot 循环按该开关分支。
+  - **默认方向光污染（真因）**：Scene 恒有一个默认 `DirectionalLight`（ambient .05/diffuse 1/spec 1），`blinn_lo` 的 `LoDirLight` 总会加它 → 之前 ex_2_2/2.3/2.4（LO 里只有一盏点光、没有太阳）等于被偷偷多打了一层“太阳”，比 LO 原版亮。这就是用户感觉“2.2 bling 偏亮”的根因。→ 新增 `examples::NoSun(scene)`（清零方向灯三分量），ex_2_2/2.3/2.4/2.5 全部调用；ex_2_2 恢复 LO 精确值（ambient .1/diffuse 1/spec .5，撤掉上一轮 0.08/0.9/0.4 的临时压暗）。
+- **宿主（example_app）**：`Setup::update` 钩子签名改为 `(Scene&, eye, front, dt)` —— 每帧渲染前把当帧相机眼点/朝向传给场景，供“手电跟随相机”使用。
+- **ex_2_5_light_casters** ← LO 5.3/5.4：10 木箱（container2 + spec 贴图，LO 位姿/旋转轴），**只有一盏相机手电**（每帧 ClearSpotLights+AddSpotLight，position=eye、direction=front、cutOff 12.5/outer 17.5 软边、ambient .1/diffuse .8/spec 1、c/l/q 1/0.09/0.032），LoScene 0.1、NoSun、相机 (0,0,3) FOV45 4:3。
+- **验证**：debug 构建通过；smoke 通过；capture 800×600：中央木箱被手电照亮、四周木箱只剩 0.1×container 的暗环境（与 LO 一致）；ex_2_2/2.3/2.4 NoSun 后重拍：crate 恢复木色不再过曝、coral 立方恢复 LO 明暗。
+- **下一步**：5.advanced_lighting（shadow/normal/hdr）与 3.model_loading 逐场景 LO-exact 化（PBR 演示版仍保留）。
+
+---
+
 ## 2026-09-06 — ex_2_2（LO 2.2）高光微调 + 投光物绕立方旋转
 
 - **用户反馈**：2.2 blinn 版高光“bling”还是稍微亮一点；希望投光物能围绕正方体旋转。

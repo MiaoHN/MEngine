@@ -69,6 +69,7 @@ uniform float spot_light_constants[MAX_SPOT_LIGHTS];
 uniform float spot_light_linears[MAX_SPOT_LIGHTS];
 uniform float spot_light_quadratics[MAX_SPOT_LIGHTS];
 uniform int   spot_light_lo_attenuation[MAX_SPOT_LIGHTS];
+uniform int   spot_light_lo_flashlight[MAX_SPOT_LIGHTS];
 
 /// @brief Material specular sample: specular map texel when present, else the
 /// explicit specular color, else the scalar specular intensity as grey.
@@ -133,7 +134,13 @@ void main() {
     FragColor += vec4((ambient + diffuse + specular) * att, 0.0);
   }
 
-  // --- spot lights (LO CalcSpotLight) ---
+  // --- spot lights ---
+  // Two LO spot flavours:
+  //  * lo_flashlight (5.3/5.4.light_casters): ambient lights EVERYTHING
+  //    (unattenuated, outside the cone too = LO's else branch); diffuse +
+  //    specular get cone-intensity * attenuation.
+  //  * else (6.multiple_lights CalcSpotLight): ambient + diffuse + specular all
+  //    coned and attenuated.
   for (int i = 0; i < spot_light_count && i < MAX_SPOT_LIGHTS; ++i) {
     vec3  L    = spot_light_positions[i] - FragPos;
     float dist = length(L);
@@ -153,6 +160,11 @@ void main() {
     vec3 ambient  = spot_light_ambients[i] * albedo;
     vec3 diffuse  = spot_light_diffuses[i] * diff * albedo;
     vec3 specular = spot_light_speculars[i] * PhongSpec(N, L, V) * spec_sample;
-    FragColor += vec4((ambient + diffuse + specular) * att * cone, 0.0);
+
+    if (spot_light_lo_flashlight[i] == 1) {
+      FragColor += vec4(ambient + (diffuse + specular) * cone * att, 0.0);
+    } else {
+      FragColor += vec4((ambient + diffuse + specular) * att * cone, 0.0);
+    }
   }
 }

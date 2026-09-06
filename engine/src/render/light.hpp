@@ -116,6 +116,13 @@ struct SpotLight {
   glm::vec3 diffuse  = glm::vec3(1.0f);
   glm::vec3 specular = glm::vec3(1.0f);
 
+  /// @brief LO "flashlight" spot (5.3/5.4.light_casters): the spot's ambient
+  /// lights EVERYTHING (unattenuated, outside the cone too - LO's else
+  /// branch), while diffuse/specular are cone-intensity * attenuation gated.
+  /// When false the spot follows LO 6's CalcSpotLight (ambient also coned +
+  /// attenuated). Only meaningful in LO-exact lighting mode.
+  bool lo_flashlight = false;
+
   // LearnOpenGL-style attenuation (1 / (constant + linear*d + quadratic*d^2)).
   // Used only when lo_attenuation is true (range-based falloff otherwise).
   bool  lo_attenuation = false;

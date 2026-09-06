@@ -8,8 +8,7 @@
 //   - one cube at the origin, object color (1,0.5,0.31)
 //   - the light-source cube ORBITS the cube (like LO's later demos) so you can
 //     watch the specular highlight sweep across the surface
-//   - light ambient 0.08 / diffuse 0.9 / specular 0.4 (slightly dimmed from
-//     LO's 0.1/1.0/0.5 so the highlight reads a touch softer)
+//   - light ambient 0.1 / diffuse 1.0 / specular 0.5 (LO-exact; no sun here)
 //   - LO clear 0.1, raw linear output, camera (0,0,3) FOV 45, 4:3 window
 #include <cmath>
 #include <memory>
@@ -57,11 +56,14 @@ std::shared_ptr<Scene> BuildBlinnLighting(const std::shared_ptr<OrbitState> &sta
 
   PointLight l;
   l.position = light_pos;
-  l.ambient  = glm::vec3(0.08f);
-  l.diffuse  = glm::vec3(0.9f);
-  l.specular = glm::vec3(0.4f);
+  l.ambient  = glm::vec3(0.1f);
+  l.diffuse  = glm::vec3(1.0f);
+  l.specular = glm::vec3(0.5f);
   s->AddPointLight(l);
 
+  // LO 2.2 has only this one point light (no sun): the engine's default
+  // directional would otherwise add an unwanted extra light + ambient.
+  examples::NoSun(*s);
   examples::LoScene(*s, glm::vec3(0.1f, 0.1f, 0.1f));
   return s;
 }
@@ -76,9 +78,9 @@ void OrbitLight(Scene &scene, const std::shared_ptr<OrbitState> &state, float dt
   scene.ClearPointLights();
   PointLight l;
   l.position = pos;
-  l.ambient  = glm::vec3(0.08f);
-  l.diffuse  = glm::vec3(0.9f);
-  l.specular = glm::vec3(0.4f);
+  l.ambient  = glm::vec3(0.1f);
+  l.diffuse  = glm::vec3(1.0f);
+  l.specular = glm::vec3(0.5f);
   scene.AddPointLight(l);
 
   // Drag the emissive lamp cube along.
@@ -101,6 +103,8 @@ void OrbitLight(Scene &scene, const std::shared_ptr<OrbitState> &state, float dt
   setup.pitch  = 0.0f;
   setup.dist   = 3.0f;
   setup.fov    = 45.0f;
-  setup.update = [state](MEngine::Scene &scene, float dt) { OrbitLight(scene, state, dt); };
+  setup.update = [state](MEngine::Scene &scene, const glm::vec3 &, const glm::vec3 &, float dt) {
+    OrbitLight(scene, state, dt);
+  };
   return new MEngine::examples::ExampleApp(std::move(setup));
 }
