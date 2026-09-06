@@ -39,7 +39,6 @@ class VoxelApp : public MEngine::Application {
   Atlas                           atlas_;
 
   MEngine::Ref<MEngine::Material> chunk_material_;
-  MEngine::Ref<MEngine::Material> ghost_material_;
 
   // Streaming: chunks around the player, each a Scene entity.
   static constexpr int kRadius = 5;  // visible chunk radius
@@ -50,9 +49,6 @@ class VoxelApp : public MEngine::Application {
   std::vector<ChunkTile> tiles_;
   int active_cx_ = 0x7fffffff;
   int active_cz_ = 0x7fffffff;
-
-  MEngine::Entity ghost_entity_;
-  bool            ghost_ready_ = false;
 
   void RebuildChunksAround(int center_cx, int center_cz);
   void RemeshChunk(int cx, int cz);  // no-op when not loaded
@@ -65,6 +61,7 @@ class VoxelApp : public MEngine::Application {
   bool      flying_ = false;
   bool      captured_ = true;
   float     last_space_ = -10.0f;
+  int       spawn_x_ = 0, spawn_z_ = 0;  // dry-land spawn point (found at start)
 
   static constexpr float kHalfWidth = 0.30f;
   static constexpr float kHeight    = 1.80f;

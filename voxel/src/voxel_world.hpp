@@ -23,8 +23,9 @@ namespace vox {
 /// @brief Lazily-generated, endless voxel world (horizontal XZ plane).
 class World {
  public:
-  static constexpr int kChunk = 16;
+  static constexpr int kChunk  = 16;
   static constexpr int kHeight = 40;
+  static constexpr int kSeaLevel = 16;  // water surface occupies y = kSeaLevel-1
 
   explicit World(unsigned int seed = 1337u);
   ~World() = default;
@@ -48,10 +49,14 @@ class World {
   void Set(int x, int y, int z, Block block);
 
   /// @brief Highest solid y in column (x, z); -1 for an empty column. The
-  /// owning chunk is generated on demand.
+  /// owning chunk is generated on demand. Ignores water / leaves / wood so it
+  /// returns actual terrain for spawning.
   int SurfaceY(int x, int z);
 
-  [[nodiscard]] bool IsSolidCell(int x, int y, int z) const { return IsSolid(Get(x, y, z)); }
+  /// @brief Opaque-block test (water & leaves included) used by the mesher.
+  [[nodiscard]] bool IsSolidCell(int x, int y, int z) const { return IsOpaque(Get(x, y, z)); }
+  /// @brief Collidable-block test (water is passable) used by the player.
+  [[nodiscard]] bool IsSolidCollision(int x, int y, int z) const { return IsCollidable(Get(x, y, z)); }
 
  private:
   using ChunkKey = int64_t;

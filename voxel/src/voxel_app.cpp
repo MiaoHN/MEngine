@@ -1,6 +1,7 @@
 #include "voxel_app.hpp"
 
 #include <GLFW/glfw3.h>
+#include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
@@ -83,18 +84,6 @@ void VoxelApp::Initialize() {
   chunk_material_->SetMetallicFactor(0.0f);
   chunk_material_->SetRoughnessFactor(0.9f);
 
-  ghost_material_ = MEngine::CreateRef<MEngine::Material>();
-  ghost_material_->SetShader(shader);
-  ghost_material_->SetBaseColorFactor(glm::vec4(0.95f, 0.92f, 0.35f, 1.0f));
-  ghost_material_->SetMetallicFactor(0.0f);
-  ghost_material_->SetRoughnessFactor(0.35f);
-
-  // Ghost cube (placement preview); parked far below until needed.
-  ghost_entity_ = scene_->CreateEntity("Ghost");
-  ghost_entity_.AddComponent<Transform>(glm::vec3(0.0f, -100.0f, 0.0f));
-  ghost_entity_.AddComponent<MeshComponent>(Mesh::CreateCube(1.0f), ghost_material_);
-  ghost_ready_ = true;
-
   // --- scene lighting / post ------------------------------------------------
   scene_->GetLight().direction = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.3f));
   scene_->GetLight().color     = glm::vec3(1.35f);
@@ -109,14 +98,15 @@ void VoxelApp::Initialize() {
   // --- spawn on the surface near the origin ---------------------------------
   Respawn();
 
-  // Carve a clear spawn meadow (no trees / trunks sticking up within radius).
-  constexpr int kClear = 15;
+  // Clear trees near spawn (only Wood/Leaves — never carve water or terrain).
+  constexpr int kClear = 14;
   for (int dx = -kClear; dx <= kClear; ++dx) {
     for (int dz = -kClear; dz <= kClear; ++dz) {
-      const int top = world_.SurfaceY(dx, dz);
-      if (top >= 1) {
-        for (int y = top + 1; y < World::kHeight; ++y) {
-          world_.Set(dx, y, dz, Block::Air);
+      const int top = world_.SurfaceY(spawn_x_ + dx, spawn_z_ + dz);
+      for (int y = top + 1; y < World::kHeight; ++y) {
+        const Block b = world_.Get(spawn_x_ + dx, y, spawn_z_ + dz);
+        if (b == Block::Wood || b == Block::Leaves) {
+          world_.Set(spawn_x_ + dx, y, spawn_z_ + dz, Block::Air);
         }
       }
     }
@@ -131,11 +121,62 @@ void VoxelApp::Initialize() {
 }
 
 void VoxelApp::Respawn() {
-  const int surf = world_.SurfaceY(0, 0);
-  position_      = glm::vec3(0.5f, static_cast<float>(std::max(surf, 0) + 1), 0.5f);
+  // Find the nearest ocean cell: scan outward chunk-by-chunk (only the chunks
+  // we actually generate get built, and we stop at the first sea chunk).
+  int wx = 0, wz = 0;
+  bool has_sea = false;
+  constexpr int kMaxRing = 10;
+  for (int r = 0; r <= kMaxRing && !has_sea; ++r) {
+    for (int cdx = -r; cdx <= r && !has_sea; ++cdx) {
+      for (int cdz = -r; cdz <= r && !has_sea; ++cdz) {
+        if (std::max(std::abs(cdx), std::abs(cdz)) != r) {
+          continue;
+        }
+        world_.EnsureChunk(cdx, cdz);
+        const int x0 = cdx * World::kChunk;
+        const int z0 = cdz * World::kChunk;
+        for (int lx = 0; lx < World::kChunk && !has_sea; lx += 4) {
+          for (int lz = 0; lz < World::kChunk && !has_sea; lz += 4) {
+            if (world_.Get(x0 + lx, World::kSeaLevel - 1, z0 + lz) == Block::Water) {
+              wx      = x0 + lx;
+              wz      = z0 + lz;
+              has_sea = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Spawn on dry land right next to that water.
+  int sx = 0, sz = 0, sd = 1 << 30;
+  const int kDryRange = has_sea ? 16 : 0;
+  for (int dx = -kDryRange; dx <= kDryRange; ++dx) {
+    for (int dz = -kDryRange; dz <= kDryRange; ++dz) {
+      const int gx = wx + dx;
+      const int gz = wz + dz;
+      const int d  = dx * dx + dz * dz;
+      if (d >= sd) {
+        continue;
+      }
+      if (world_.SurfaceY(gx, gz) >= World::kSeaLevel - 1) {
+        sd = d;
+        sx = gx;
+        sz = gz;
+      }
+    }
+  }
+  spawn_x_ = sx;
+  spawn_z_ = sz;
+  const int surf = world_.SurfaceY(spawn_x_, spawn_z_);
+  position_      = glm::vec3(static_cast<float>(spawn_x_) + 0.5f, static_cast<float>(std::max(surf, 0) + 1),
+                             static_cast<float>(spawn_z_) + 0.5f);
   velocity_      = glm::vec3(0.0f);
-  yaw_           = 135.0f;
-  pitch_         = -6.0f;
+  // Look toward the ocean (defaults to +X/-Z if no sea was found nearby).
+  yaw_ = has_sea ? glm::degrees(std::atan2(static_cast<float>(wx - spawn_x_), -static_cast<float>(wz - spawn_z_))) : 135.0f;
+  pitch_ = -4.0f;
+  LOG_INFO("Voxel") << "Respawn has_sea=" << has_sea << " water=(" << wx << "," << wz << ") spawn=(" << spawn_x_
+                    << "," << spawn_z_ << ") surf=" << surf;
 }
 
 void VoxelApp::RebuildChunksAround(int center_cx, int center_cz) {
@@ -205,7 +246,7 @@ bool VoxelApp::BoxHitsSolid(const glm::vec3 &pos) const {
   for (int x = x0; x <= x1; ++x) {
     for (int y = y0; y <= y1; ++y) {
       for (int z = z0; z <= z1; ++z) {
-        if (world_.IsSolidCell(x, y, z)) {
+        if (world_.IsSolidCollision(x, y, z)) {
           return true;
         }
       }
@@ -215,9 +256,9 @@ bool VoxelApp::BoxHitsSolid(const glm::vec3 &pos) const {
 }
 
 bool VoxelApp::IsGrounded() const {
-  return world_.IsSolidCell(static_cast<int>(std::floor(position_.x)),
-                            static_cast<int>(std::floor(position_.y - 0.02f)),
-                            static_cast<int>(std::floor(position_.z)));
+  return world_.IsSolidCollision(static_cast<int>(std::floor(position_.x)),
+                                 static_cast<int>(std::floor(position_.y - 0.02f)),
+                                 static_cast<int>(std::floor(position_.z)));
 }
 
 VoxelApp::Pick VoxelApp::PickBlock() const {
@@ -384,17 +425,6 @@ void VoxelApp::OnUpdate(float dt) {
         }
       }
     }
-
-    // Ghost preview = the placement cell (hidden when no valid neighbour).
-    if (ghost_ready_) {
-      glm::vec3 ghost_pos(0.0f, -100.0f, 0.0f);
-      if (pick.hit && world_.Get(pick.place.x, pick.place.y, pick.place.z) == Block::Air) {
-        ghost_pos = glm::vec3(pick.place.x + 0.5f, pick.place.y + 0.5f, pick.place.z + 0.5f);
-      }
-      if (ghost_entity_.HasComponent<Transform>()) {
-        ghost_entity_.GetComponent<Transform>().translation = ghost_pos;
-      }
-    }
   }
   prev_lmb_ = lmb;
   prev_rmb_ = rmb;
@@ -410,6 +440,21 @@ void VoxelApp::OnUpdate(float dt) {
   const glm::mat4 proj = glm::perspective(glm::radians(78.0f), aspect, 0.05f, 600.0f);
 
   scene_->RenderMeshes(view, proj, eye);
+
+  // --- crosshair (centre-screen), no ghost preview --------------------------
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, fb_w, fb_h);
+  glEnable(GL_SCISSOR_TEST);
+  const auto bar = [](int x, int y, int w, int h, float r, float g, float b) {
+    glScissor(x, y, w, h);
+    glClearColor(r, g, b, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+  };
+  const int cx = fb_w / 2;
+  const int cy = fb_h / 2;
+  bar(cx - 1, cy - 7, 2, 14, 0.05f, 0.05f, 0.05f);
+  bar(cx - 7, cy - 1, 14, 2, 0.05f, 0.05f, 0.05f);
+  glDisable(GL_SCISSOR_TEST);
 }
 
 }  // namespace vox

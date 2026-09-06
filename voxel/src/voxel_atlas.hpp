@@ -28,10 +28,18 @@ enum class Block : uint8_t {
   Sand,
   Wood,
   Leaves,
+  Water,
+  CoalOre,
+  Gravel,
   Count,
 };
 
-inline bool IsSolid(Block b) { return b != Block::Air; }
+/// @brief True when a block occludes its neighbours (used for face culling and
+/// opaque rendering; includes water and leaves).
+inline bool IsOpaque(Block b) { return b != Block::Air; }
+/// @brief True when the player's collider should collide with the block
+/// (water is passable).
+inline bool IsCollidable(Block b) { return b != Block::Air && b != Block::Water; }
 
 // --- Tile atlas -------------------------------------------------------------
 
@@ -44,6 +52,9 @@ enum TileId : uint8_t {
   TileWoodSide,
   TileWoodTop,
   TileLeaves,
+  TileWaterTop,
+  TileCoal,
+  TileGravel,
   TileCount,
 };
 

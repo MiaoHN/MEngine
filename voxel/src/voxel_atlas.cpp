@@ -85,6 +85,25 @@ void Sample(TileId tile, int px, int py /*0=bottom*/, float &r, float &g, float 
       g = shade(0.52f, 0.25f);
       b = shade(0.18f, 0.25f);
       break;
+    case TileWaterTop: {  // calm, slightly wavy water surface
+      const float wave = 0.94f + 0.06f * std::sin(static_cast<float>(px) * 0.9f + static_cast<float>(py) * 1.3f);
+      r = shade(0.24f * wave, 0.2f);
+      g = shade(0.58f * wave, 0.2f);
+      b = shade(0.86f * wave, 0.2f);
+      break;
+    }
+    case TileCoal: {  // stone with black coal blotches
+      const float coal = HashNoise(px * 3, py * 3) > 0.72f ? 0.12f : 1.0f;
+      r = shade(0.5f * coal);
+      g = shade(0.5f * coal);
+      b = shade(0.53f * coal);
+      break;
+    }
+    case TileGravel:
+      r = shade(0.42f, 0.3f);
+      g = shade(0.42f, 0.3f);
+      b = shade(0.44f, 0.3f);
+      break;
     default:
       r = 1.0f;
       g = 0.0f;
@@ -135,6 +154,9 @@ TileId Atlas::TileFor(Block block, bool top, bool bottom) const {
     case Block::Sand: return TileSand;
     case Block::Wood: return (top || bottom) ? TileWoodTop : TileWoodSide;
     case Block::Leaves: return TileLeaves;
+    case Block::Water: return TileWaterTop;
+    case Block::CoalOre: return TileCoal;
+    case Block::Gravel: return TileGravel;
     default: return TileStone;
   }
 }
