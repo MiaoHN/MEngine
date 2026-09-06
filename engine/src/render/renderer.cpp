@@ -316,6 +316,7 @@ bool Renderer::IsLinearOutput() const { return post_processing_->IsLinearOutput(
 void Renderer::SetLoHdrTone(bool enabled) { post_processing_->SetLoHdrTone(enabled); }
 void Renderer::SetReinhardTone(bool enabled) { post_processing_->SetReinhardTone(enabled); }
 bool Renderer::IsLoHdrTone() const { return post_processing_->IsLoHdrTone(); }
+bool Renderer::IsReinhardTone() const { return post_processing_->IsReinhardTone(); }
 
 void Renderer::SetGodRaysStrength(float strength) { post_processing_->SetGodRaysStrength(strength); }
 

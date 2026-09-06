@@ -1589,6 +1589,21 @@ void Editor::ShowImGuiRendering() {
 
   ImGui::Checkbox("Show Colliders", &show_colliders_);
 
+  const char *tone_items[] = {"ACES + Gamma", "Linear (raw)", "LO HDR (1-exp)", "Reinhard + Gamma"};
+  int         tone         = 0;
+  if (active_scene_->IsLinearOutput()) {
+    tone = 1;
+  } else if (active_scene_->IsLoHdrTone()) {
+    tone = 2;
+  } else if (active_scene_->IsReinhardTone()) {
+    tone = 3;
+  }
+  if (ImGui::Combo("Tone Mapping", &tone, tone_items, 4)) {
+    active_scene_->SetLinearOutput(tone == 1);
+    active_scene_->SetLoHdrTone(tone == 2);
+    active_scene_->SetReinhardTone(tone == 3);
+  }
+
   bool bloom = active_scene_->IsBloomEnabled();
   if (ImGui::Checkbox("HDR (Bloom)", &bloom)) {
     active_scene_->SetBloomEnabled(bloom);
@@ -1627,6 +1642,22 @@ void Editor::ShowImGuiRendering() {
   }
 
   ImGui::Separator();
+
+  bool skybox = active_scene_->IsSkyboxEnabled();
+  if (ImGui::Checkbox("Skybox", &skybox)) {
+    active_scene_->SetSkyboxEnabled(skybox);
+  }
+  if (!skybox) {
+    glm::vec3 bg = active_scene_->GetBackgroundColor();
+    if (ImGui::ColorEdit3("Background", glm::value_ptr(bg))) {
+      active_scene_->SetBackgroundColor(bg);
+    }
+  }
+
+  bool ibl_spec = active_scene_->IsIblSpecular();
+  if (ImGui::Checkbox("IBL Specular", &ibl_spec)) {
+    active_scene_->SetIblSpecular(ibl_spec);
+  }
 
   float ibl = active_scene_->GetIblIntensity();
   if (ImGui::SliderFloat("IBL Intensity", &ibl, 0.0f, 2.0f)) {

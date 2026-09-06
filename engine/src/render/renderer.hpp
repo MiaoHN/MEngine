@@ -167,6 +167,7 @@ class Renderer {
   void SetLoHdrTone(bool enabled);
   void SetReinhardTone(bool enabled);
   [[nodiscard]] bool IsLoHdrTone() const;
+  [[nodiscard]] bool IsReinhardTone() const;
 
   /// @brief LearnOpenGL-exact lighting mode (for the "blinn" shader): each light
   /// contributes a separate ambient/diffuse/specular term like LO's shaders

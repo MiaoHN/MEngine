@@ -1301,6 +1301,7 @@ void Scene::SetShadowPcfRadius(float radius) { renderer_->SetShadowPcfRadius(rad
 
 void Scene::SetIblIntensity(float intensity) { renderer_->SetIblIntensity(intensity); }
 void Scene::SetIblSpecular(bool enabled) { renderer_->SetIblSpecular(enabled); }
+bool Scene::IsIblSpecular() const { return renderer_->GetIblSpecular(); }
 
 void Scene::SetGodRaysStrength(float strength) { renderer_->SetGodRaysStrength(strength); }
 
@@ -1320,6 +1321,7 @@ bool Scene::IsLinearOutput() const { return renderer_->IsLinearOutput(); }
 void Scene::SetLoHdrTone(bool enabled) { renderer_->SetLoHdrTone(enabled); }
 void Scene::SetReinhardTone(bool enabled) { renderer_->SetReinhardTone(enabled); }
 bool Scene::IsLoHdrTone() const { return renderer_->IsLoHdrTone(); }
+bool Scene::IsReinhardTone() const { return renderer_->IsReinhardTone(); }
 
 void Scene::SetLoLighting(bool enabled) { renderer_->SetLoLighting(enabled); }
 bool Scene::IsLoLighting() const { return renderer_->IsLoLighting(); }

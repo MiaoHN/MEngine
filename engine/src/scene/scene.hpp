@@ -223,6 +223,8 @@ class Scene {
   [[nodiscard]] bool       IsSSAOEnabled() const;
   [[nodiscard]] bool       IsTAAEnabled() const;
   [[nodiscard]] bool       IsBloomEnabled() const;
+  [[nodiscard]] bool       IsReinhardTone() const;
+  [[nodiscard]] bool       IsIblSpecular() const;
   [[nodiscard]] float      GetExposure() const;
   [[nodiscard]] float      GetBloomStrength() const;
   [[nodiscard]] float      GetBloomThreshold() const;
