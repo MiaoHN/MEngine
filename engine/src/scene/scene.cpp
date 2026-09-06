@@ -127,6 +127,9 @@ bool MaterialLessForBatching(const Ref<Material> &a, const Ref<Material> &b) {
     return tex_cmp(a->GetMetallicRoughnessMap(), b->GetMetallicRoughnessMap());
   }
   if (a->GetAOMap() != b->GetAOMap()) return tex_cmp(a->GetAOMap(), b->GetAOMap());
+  if (a->GetSpecularMap() != b->GetSpecularMap()) {
+    return tex_cmp(a->GetSpecularMap(), b->GetSpecularMap());
+  }
   const glm::vec4 ca = a->GetBaseColorFactor();
   const glm::vec4 cb = b->GetBaseColorFactor();
   if (std::memcmp(&ca, &cb, sizeof(ca)) != 0) {
@@ -1311,6 +1314,9 @@ void Scene::SetTAAEnabled(bool enabled) { renderer_->SetTAAEnabled(enabled); }
 void Scene::SetBloomEnabled(bool enabled) { renderer_->SetBloomEnabled(enabled); }
 void Scene::SetLinearOutput(bool enabled) { renderer_->SetLinearOutput(enabled); }
 bool Scene::IsLinearOutput() const { return renderer_->IsLinearOutput(); }
+
+void Scene::SetLoLighting(bool enabled) { renderer_->SetLoLighting(enabled); }
+bool Scene::IsLoLighting() const { return renderer_->IsLoLighting(); }
 
 bool Scene::IsSSAOEnabled() const { return renderer_->IsSSAOEnabled(); }
 

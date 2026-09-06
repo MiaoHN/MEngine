@@ -49,6 +49,7 @@ std::shared_ptr<Scene> BuildShadowMapping() {
 }  // namespace
 
 ::MEngine::Application *CreateApplication() {
+  MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
       MEngine::examples::ExampleApp::Setup{BuildShadowMapping, "Shadow Mapping", {0, 1.5f, 0}, 35.0f, 24.0f, 16.0f});
 }

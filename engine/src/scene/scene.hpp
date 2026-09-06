@@ -203,6 +203,9 @@ class Scene {
   /// @brief Raw/linear composite (no ACES/gamma) for LearnOpenGL-style scenes.
   void SetLinearOutput(bool enabled);
   [[nodiscard]] bool IsLinearOutput() const;
+  /// @brief LearnOpenGL-exact per-light ambient/diffuse/specular lighting.
+  void SetLoLighting(bool enabled);
+  [[nodiscard]] bool IsLoLighting() const;
 
   [[nodiscard]] bool       IsSSAOEnabled() const;
   [[nodiscard]] bool       IsTAAEnabled() const;

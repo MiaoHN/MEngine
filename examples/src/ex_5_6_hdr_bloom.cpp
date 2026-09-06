@@ -36,6 +36,7 @@ std::shared_ptr<Scene> BuildHdrBloom() {
 }  // namespace
 
 ::MEngine::Application *CreateApplication() {
+  MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
       MEngine::examples::ExampleApp::Setup{BuildHdrBloom, "HDR + Bloom", {0, 1.6f, 0}, 0.0f, 13.0f, 9.5f});
 }

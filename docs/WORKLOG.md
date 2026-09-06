@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-09-06 — 引擎 LO-exact 光照（blinn_lo）+ 固定 800×600 + 2.x 光照章节 1:1 复刻
+
+- **用户选择 A**：把复刻路径做成 LO-exact；固定 800:600；批量对齐其它场景参数。
+- **引擎（本次 dev 提交）**：
+  - `light.hpp`：`DirectionalLight/PointLight/SpotLight` 各加 `ambient/diffuse/specular`（vec3，LO 的每灯三分量；旧 color/intensity 路径不变）。
+  - `material.hpp`：加 **specular map** 槽（`SetSpecularMap`，对应 LO `material.specular` 贴图）+ 可选 **specular color**（`SetSpecularColor`，LO 无贴图材质的 `material.specular` 颜色）。
+  - `renderer.cpp/.hpp` + `scene`：specular_map 绑到 12 号单元并上传 `specular_map/has_specular_map`、`u_material_specular_color(+has)`；每灯上传 amb/diff/spec 数组；`Renderer/Scene::SetLoLighting`（LO 模式开关）。
+  - `application`：`SetStartupWindowSize(800,600)` 静态启动尺寸（默认仍 1600×900）；每个 LO example 的 `CreateApplication` 先设 800×600 → PostProcessing 自动按 800×600 建内部缓冲。
+  - 新着色器 **`assets/shaders/blinn_lo_frag.glsl`**（复用 `blinn_vert`）：逐项复刻 LO .fs —— 每灯 ambient/diffuse/specular、Phong(reflect) 高光**不乘 NdotL**、specular 贴图采样、LO c/l/q 衰减仅在 `lo_attenuation` 时启用（2.2/3.1/4.2 无衰减）、无阴影/无 IBL 环境光。`manifest.json` 注册 `blinn_lo`。
+- **示例（2.lighting 章节 1:1 LO-exact 复刻，800×600，`LoScene()` 模板）**：
+  - `ex_2_2_blinn_lighting` ← LO 2.2.basic_lighting_specular（coral 立方 + 白灯 1.2,1,2；ambient 0.1/diffuse 1/spec 0.5）
+  - `ex_2_3_materials` ← LO 3.1.materials（coral 材质 + specular(0.5 灰)，光 0.1/0.5/1.0）
+  - `ex_2_4_lighting_maps` ← LO 4.2（container2 + container2_specular，shininess 64，光 0.2/0.5/1.0）
+  - `ex_2_6_multiple_lights` ← LO 6（10 木箱 spec map 旋转 + dir 0.05/0.4/0.5 + 4×点光 0.05/0.8/1.0 + c/l/q；Lamp 白灯）
+  - `example_helpers.hpp`：`BlinnLo/BlinnLoTextured/LoScene/Lamp`；`examples::LoScene` = LO 模式 + 线性直出 + 关 TAA/bloom/SSAO/skybox + 背景 0.1。
+- **验证**：debug 全量构建通过；10 个 example 逐一 `--frames` smoke 全过（exit 0，800×600 帧缓冲）。4 个 LO-exact 场景各自 `--capture-frame` 出 800×600 PPM→PNG：木箱高光/材质渐变/灯位与 LO 版式一致（PBR 引擎演示场景保留原样，仅加 800×600）。
+- **问题与解决**：把 LO 数学塞进大而全的 `blinn_frag.glsl` 后，Intel UHD 驱动在 glCompileShader 阶段**段错误**（0xC0000005，无声崩溃）。逐项二分：只加 uniform 声明不崩、加上 LO 函数体就崩 → 拆出**独立小型 `blinn_lo_frag.glsl`**（只含 LO 路径）即正常。`blinn_frag.glsl` 恢复为 HEAD 原样（经典 Blinn 路径保留）。
+- **下一步**：LO 5.3（相机手电聚光，需宿主支持相机跟随 SpotLight + “锥外仅环境光”语义）；5.x advanced / 3.model_loading 逐一 LO-exact 复刻。
+
+---
+
 ## 2026-09-06 — 后处理“线性直出” + LO 数值审计（修复 MEngine 方块整体偏亮）
 
 - **用户反馈**：整体亮度仍偏高；要求逐项比对渲染参数是否与 LO 对齐。

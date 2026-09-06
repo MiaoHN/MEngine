@@ -352,14 +352,20 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   bind_texture(material->GetNormalMap(), 1, "normal_map", "has_normal_map");
   bind_texture(material->GetMetallicRoughnessMap(), 2, "metallic_roughness_map", "has_metallic_roughness_map");
   bind_texture(material->GetAOMap(), 3, "ao_map", "has_ao_map");
+  // LearnOpenGL specular map (slot 12 keeps clear of the point-light shadow
+  // cube maps on 8..11). Only the "blinn" shader's LO-exact path samples it.
+  bind_texture(material->GetSpecularMap(), 12, "specular_map", "has_specular_map");
 
   shader->SetUniform("base_color_factor", material->GetBaseColorFactor());
   shader->SetUniform("metallic_factor", material->GetMetallicFactor());
   shader->SetUniform("roughness_factor", material->GetRoughnessFactor());
   shader->SetUniform("specular_intensity", material->GetSpecularFactor());
+  shader->SetUniform("u_material_specular_color", material->GetSpecularColor());
+  shader->SetUniform("u_material_has_specular_color", material->HasSpecularColor() ? 1 : 0);
   shader->SetUniform("material_shininess", material->GetShininess());
   shader->SetUniform("u_material_unlit", material->IsUnlit() ? 1 : 0);
   shader->SetUniform("u_render_mode", render_mode_ == RenderMode::Unlit ? 1 : 0);
+  shader->SetUniform("u_lo_exact", lo_lighting_ ? 1 : 0);
 
   shader->SetUniform("proj_view", proj_view);
   shader->SetUniform("view_pos", view_pos);
@@ -367,6 +373,9 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   // Directional light + shadow map.
   shader->SetUniform("light_dir", light_.direction);
   shader->SetUniform("light_color", light_.color);
+  shader->SetUniform("light_ambient", light_.ambient);
+  shader->SetUniform("light_diffuse", light_.diffuse);
+  shader->SetUniform("light_specular", light_.specular);
   shadow_map_->BindTexture(4);
   shader->SetUniform("shadow_map", 4);
   shader->SetUniform("light_view_proj", light_view_proj);
@@ -400,6 +409,9 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
     shader->SetUniform("point_light_positions[" + index + "]", light.position);
     shader->SetUniform("point_light_colors[" + index + "]", light.color);
     shader->SetUniform("point_light_intensities[" + index + "]", light.intensity);
+    shader->SetUniform("point_light_ambients[" + index + "]", light.ambient);
+    shader->SetUniform("point_light_diffuses[" + index + "]", light.diffuse);
+    shader->SetUniform("point_light_speculars[" + index + "]", light.specular);
     shader->SetUniform("point_light_radii[" + index + "]", light.radius);
     shader->SetUniform("point_light_constants[" + index + "]", light.constant);
     shader->SetUniform("point_light_linears[" + index + "]", light.linear);
@@ -430,6 +442,9 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
     shader->SetUniform("spot_light_directions[" + index + "]", light.direction);
     shader->SetUniform("spot_light_colors[" + index + "]", light.color);
     shader->SetUniform("spot_light_intensities[" + index + "]", light.intensity);
+    shader->SetUniform("spot_light_ambients[" + index + "]", light.ambient);
+    shader->SetUniform("spot_light_diffuses[" + index + "]", light.diffuse);
+    shader->SetUniform("spot_light_speculars[" + index + "]", light.specular);
     shader->SetUniform("spot_light_ranges[" + index + "]", light.range);
     shader->SetUniform("spot_light_cutoffs[" + index + "]", light.cutoff);
     shader->SetUniform("spot_light_outer_cutoffs[" + index + "]", light.outer_cutoff);

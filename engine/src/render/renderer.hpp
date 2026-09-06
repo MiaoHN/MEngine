@@ -158,6 +158,13 @@ class Renderer {
   void SetLinearOutput(bool enabled);
   [[nodiscard]] bool IsLinearOutput() const;
 
+  /// @brief LearnOpenGL-exact lighting mode (for the "blinn" shader): each light
+  /// contributes a separate ambient/diffuse/specular term like LO's shaders
+  /// (Phong reflect specular without NdotL, no shadow/AO, specular map read
+  /// from the material). Non-LO scenes keep their current look.
+  void SetLoLighting(bool enabled) { lo_lighting_ = enabled; }
+  [[nodiscard]] bool IsLoLighting() const { return lo_lighting_; }
+
   void SetRenderMode(RenderMode mode) { render_mode_ = mode; }
   [[nodiscard]] RenderMode GetRenderMode() const { return render_mode_; }
 
@@ -195,6 +202,7 @@ class Renderer {
   float ibl_intensity_     = 1.0f;
   bool  ssao_enabled_      = false;
   bool  skybox_enabled_    = true;
+  bool  lo_lighting_       = false;
   glm::vec3 background_color_{0.0f};
   RenderMode render_mode_  = RenderMode::Lit;
 

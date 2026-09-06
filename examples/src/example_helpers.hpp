@@ -60,6 +60,47 @@ inline Ref<Material> BlinnTextured(const std::string &albedo_path, float shinine
   return m;
 }
 
+/// @brief LearnOpenGL-exact Blinn material for an untextured object: albedo =
+/// `color`, optional explicit specular color (LO's material.specular vec3).
+/// Uses the dedicated "blinn_lo" shader (LO's exact per-light math).
+inline Ref<Material> BlinnLo(const glm::vec3 &color, const glm::vec3 &specular_color = glm::vec3(1.0f),
+                             float shininess = 32.0f) {
+  Ref<Material> m = CreateRef<Material>();
+  m->SetShader(AssetManager::Instance().GetShader("blinn_lo"));
+  m->SetBaseColorFactor(glm::vec4(color, 1.0f));
+  m->SetSpecularColor(specular_color);
+  m->SetShininess(shininess);
+  return m;
+}
+
+/// @brief LearnOpenGL-exact textured Blinn material: container2-style diffuse
+/// map + a per-pixel specular map (LO's material.specular sampler).
+inline Ref<Material> BlinnLoTextured(const std::string &albedo_path, const std::string &specular_path,
+                                     float shininess = 32.0f) {
+  Ref<Material> m = CreateRef<Material>();
+  m->SetShader(AssetManager::Instance().GetShader("blinn_lo"));
+  m->SetAlbedoMap(AssetManager::Instance().GetTexture(albedo_path));
+  m->SetSpecularMap(AssetManager::Instance().GetTexture(specular_path));
+  m->SetShininess(shininess);
+  return m;
+}
+
+/// @brief Switches a scene to LearnOpenGL-exact parity: per-light
+/// ambient/diffuse/specular lighting, raw linear composite output, no
+/// skybox/IBL/tone/gamma, plain dark background (LO clears to 0.1), no TAA /
+/// bloom / SSAO. `background` mirrors LO's glClearColor.
+inline void LoScene(Scene &scene, const glm::vec3 &background = glm::vec3(0.1f, 0.1f, 0.1f)) {
+  scene.SetLoLighting(true);
+  scene.SetLinearOutput(true);
+  scene.SetSkyboxEnabled(false);
+  scene.SetBackgroundColor(background);
+  scene.SetIblIntensity(0.0f);
+  scene.SetExposure(1.0f);
+  scene.SetTAAEnabled(false);
+  scene.SetBloomEnabled(false);
+  scene.SetSSAOEnabled(false);
+}
+
 /// @brief Unlit / emissive material (outputs `color` directly, no lighting) -
 /// used for LearnOpenGL's small light-source cubes.
 inline Ref<Material> Unlit(const glm::vec3 &color) {
@@ -68,6 +109,17 @@ inline Ref<Material> Unlit(const glm::vec3 &color) {
   m->SetBaseColorFactor(glm::vec4(color, 1.0f));
   m->SetUnlit(true);
   return m;
+}
+
+/// @brief A small emissive "lamp" cube at `pos` (LO's light_cube) - pure
+/// `color`, unaffected by lighting.
+inline void Lamp(Scene &scene, const glm::vec3 &pos, const glm::vec3 &color = glm::vec3(1.0f),
+                 float scale = 0.2f) {
+  Entity e = scene.CreateEntity("lamp");
+  auto &t  = e.AddComponent<Transform>();
+  t.translation = pos;
+  t.scale       = glm::vec3(scale);
+  e.AddComponent<MeshComponent>(Mesh::CreateCube(), Unlit(color));
 }
 
 /// @brief A PBR material with an albedo texture (asset-relative path) and

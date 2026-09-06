@@ -44,6 +44,7 @@ std::shared_ptr<Scene> BuildNormalMapping() {
 }  // namespace
 
 ::MEngine::Application *CreateApplication() {
+  MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
       MEngine::examples::ExampleApp::Setup{BuildNormalMapping, "Normal Mapping", {0, 2.5f, 0.0f}, 0.0f, 4.0f, 9.0f});
 }

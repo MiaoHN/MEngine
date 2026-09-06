@@ -1,6 +1,14 @@
-// LearnOpenGL "Lighting Maps" (diffuse) - container2 albedo texture on cubes,
-// lit by a sun + a close white point light so the polished surface shows a
-// bright specular highlight (PBR: low roughness ~ specular map).
+// = LearnOpenGL 2.lighting/4.2.lighting_maps_specular_map
+//   source: LearnOpenGL/src/2.lighting/4.2.lighting_maps_specular_map/lighting_maps_specular.cpp
+//
+// 1:1 port on the MEngine Blinn pipeline's LearnOpenGL-exact lighting mode:
+// a single container2 crate whose *specular* comes from container2_specular
+// (per-pixel metal edges), lit by one white point light. Matches
+// 4.2.lighting_maps.fs exactly (Phong reflect, no attenuation in this demo).
+//   - one cube at the origin (container2 diffuse + specular map, shininess 64)
+//   - white lamp cube at LO lightPos (1.2, 1.0, 2.0)
+//   - point light ambient 0.2 / diffuse 0.5 / specular 1.0
+//   - LO clear 0.1, raw linear output, camera (0,0,3) FOV 45, 4:3 window
 #include "example_app.hpp"
 #include "example_helpers.hpp"
 
@@ -11,37 +19,30 @@ namespace {
 std::shared_ptr<Scene> BuildLightingMaps() {
   auto s = std::make_shared<Scene>();
 
-  Put(*s, Mesh::CreatePlane(12.0f), examples::Pbr(glm::vec3(0.16f, 0.16f, 0.19f), 0.0f, 0.9f), {0, 0, 0});
+  // One crate at the origin, diffuse + specular maps, LO shininess 64.
+  Put(*s, Mesh::CreateCube(),
+      examples::BlinnLoTextured("textures/container2.png", "textures/container2_specular.png", 64.0f),
+      {0.0f, 0.0f, 0.0f});
 
-  // Wooden-crate material: container2 albedo, fairly smooth so we see the
-  // texture's own highlights under the point light.
-  const auto crate = [&]() { return examples::PbrTextured("textures/container2.png", "", 0.32f, 0.0f); };
-  Put(*s, Mesh::CreateCube(), crate(), {0.0f, 1.05f, 0.0f}, 2.0f);
-  Put(*s, Mesh::CreateCube(), crate(), {3.0f, 0.55f, -1.2f}, 1.0f);
-  Put(*s, Mesh::CreateCube(), crate(), {-2.8f, 0.45f, 0.9f}, 0.8f);
-
-  examples::Sun(*s, {-0.4f, -1.0f, -0.25f}, glm::vec3(1.1f, 1.0f, 0.9f));
-  examples::SolidBackground(*s, glm::vec3(0.10f, 0.10f, 0.12f), 0.10f);
-  s->SetTAAEnabled(true);
+  // The white lamp cube (LO light_cube) at the light position.
+  const glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
+  examples::Lamp(*s, light_pos, glm::vec3(1.0f), 0.2f);
 
   PointLight l;
-  l.position  = {2.2f, 3.0f, 2.4f};
-  l.color     = glm::vec3(1.0f, 0.98f, 0.92f);
-  l.intensity = 34.0f;
-  l.radius    = 14.0f;
+  l.position = light_pos;
+  l.ambient  = glm::vec3(0.2f);
+  l.diffuse  = glm::vec3(0.5f);
+  l.specular = glm::vec3(1.0f);
   s->AddPointLight(l);
 
-  PointLight l2;
-  l2.position  = {-2.4f, 1.4f, -2.0f};
-  l2.color     = glm::vec3(0.5f, 0.6f, 1.0f);
-  l2.intensity = 12.0f;
-  l2.radius    = 10.0f;
-  s->AddPointLight(l2);
+  examples::LoScene(*s, glm::vec3(0.1f, 0.1f, 0.1f));
   return s;
 }
 }  // namespace
 
 ::MEngine::Application *CreateApplication() {
+  MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
-      MEngine::examples::ExampleApp::Setup{BuildLightingMaps, "Lighting Maps (textures)", {0, 1.0f, 0}, 24.0f, 16.0f, 9.5f});
+      MEngine::examples::ExampleApp::Setup{BuildLightingMaps, "LO 2.4 lighting_maps", {0, 0, 0}, 0.0f, 0.0f,
+                                           3.0f, 45.0f});
 }

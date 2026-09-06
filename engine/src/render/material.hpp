@@ -32,11 +32,16 @@ class Material {
   void SetNormalMap(Ref<Texture> texture) { normal_map_ = std::move(texture); }
   void SetMetallicRoughnessMap(Ref<Texture> texture) { metallic_roughness_map_ = std::move(texture); }
   void SetAOMap(Ref<Texture> texture) { ao_map_ = std::move(texture); }
+  /// @brief Per-pixel specular strength map (LearnOpenGL's `material.specular`
+  /// texture, e.g. container2_specular.png). Only sampled by the "blinn" shader
+  /// in LO-exact lighting mode; the pbr shader ignores it.
+  void SetSpecularMap(Ref<Texture> texture) { specular_map_ = std::move(texture); }
 
   [[nodiscard]] Ref<Texture> GetAlbedoMap() const { return albedo_map_; }
   [[nodiscard]] Ref<Texture> GetNormalMap() const { return normal_map_; }
   [[nodiscard]] Ref<Texture> GetMetallicRoughnessMap() const { return metallic_roughness_map_; }
   [[nodiscard]] Ref<Texture> GetAOMap() const { return ao_map_; }
+  [[nodiscard]] Ref<Texture> GetSpecularMap() const { return specular_map_; }
 
   void SetBaseColorFactor(const glm::vec4 &factor) { base_color_factor_ = factor; }
   void SetMetallicFactor(float factor) { metallic_factor_ = factor; }
@@ -52,6 +57,16 @@ class Material {
   /// the pbr shader ignores it).
   void SetShininess(float shininess) { shininess_ = shininess; }
   [[nodiscard]] float GetShininess() const { return shininess_; }
+
+  /// @brief Explicit specular color (LearnOpenGL's `material.specular` vec3 for
+  /// untextured materials, e.g. the grey (0.5,0.5,0.5) of 3.1.materials). When
+  /// set it overrides the scalar `specular_factor` in LO-exact mode.
+  void SetSpecularColor(const glm::vec3 &color) {
+    specular_color_ = color;
+    has_specular_color_ = true;
+  }
+  [[nodiscard]] const glm::vec3 &GetSpecularColor() const { return specular_color_; }
+  [[nodiscard]] bool HasSpecularColor() const { return has_specular_color_; }
 
   /// @brief Emissive / unlit: the surface outputs its albedo directly (no
   /// lighting), like LearnOpenGL's small light-source cubes.
@@ -69,12 +84,15 @@ class Material {
   Ref<Texture> normal_map_;
   Ref<Texture> metallic_roughness_map_;
   Ref<Texture> ao_map_;
+  Ref<Texture> specular_map_;
 
   glm::vec4 base_color_factor_{1.0f};
   float     metallic_factor_  = 1.0f;
   float     roughness_factor_ = 1.0f;
   float     specular_factor_  = 1.0f;
   float     shininess_        = 32.0f;
+  glm::vec3 specular_color_{1.0f};
+  bool      has_specular_color_ = false;
   bool      translucent_      = false;
   bool      unlit_            = false;
   // Closed, opaque meshes are the norm (primitives, models, stress grids), so

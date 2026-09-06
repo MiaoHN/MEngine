@@ -1,6 +1,13 @@
-// LearnOpenGL "Basic Lighting (Blinn-Phong pipeline)" - the same composition
-// as example_basic_lighting but rendered with the classic Blinn-Phong material
-// (shader "blinn") so the specular highlight is a hard Blinn lobe like LO.
+// = LearnOpenGL 2.lighting/2.2.basic_lighting_specular
+//   source: LearnOpenGL/src/2.lighting/2.2.basic_lighting_specular/basic_lighting_specular.cpp
+//
+// 1:1 port of LO's classic Phong specular demo on the MEngine Blinn pipeline's
+// LearnOpenGL-exact lighting mode: one coral cube, ambient 0.1, diffuse full,
+// specular 0.5 (Phong reflect, no NdotL), shininess 32, one white point light.
+//   - one cube at the origin, object color (1,0.5,0.31)
+//   - white lamp cube at LO lightPos (1.2, 1.0, 2.0)
+//   - light ambient 0.1 / diffuse 1.0 / specular 0.5 (no attenuation here)
+//   - LO clear 0.1, raw linear output, camera (0,0,3) FOV 45, 4:3 window
 #include "example_app.hpp"
 #include "example_helpers.hpp"
 
@@ -11,28 +18,30 @@ namespace {
 std::shared_ptr<Scene> BuildBlinnLighting() {
   auto s = std::make_shared<Scene>();
 
-  Put(*s, Mesh::CreatePlane(10.0f), examples::Blinn(glm::vec3(0.16f, 0.16f, 0.2f), 8.0f, 0.2f), {0, 0, 0});
-  // Smooth white-grey cube: strong Blinn highlight off the close point light.
-  Put(*s, Mesh::CreateCube(), examples::Blinn(glm::vec3(0.8f, 0.8f, 0.85f), 96.0f, 0.7f), {0, 0.8f, 0}, 1.3f);
-  Put(*s, Mesh::CreateCube(), examples::Blinn(glm::vec3(0.6f, 0.4f, 0.3f), 24.0f, 0.4f), {2.4f, 0.5f, -1.0f});
+  // Coral cube at the origin. LO multiplies the whole result by objectColor,
+  // so the specular sample is the object color too (tinted highlight).
+  Put(*s, Mesh::CreateCube(),
+      examples::BlinnLo(glm::vec3(1.0f, 0.5f, 0.31f), glm::vec3(1.0f, 0.5f, 0.31f), 32.0f),
+      {0.0f, 0.0f, 0.0f});
 
-  examples::Sun(*s, {-0.4f, -1.0f, -0.3f}, glm::vec3(1.1f, 1.05f, 1.0f));
-  // ibl_intensity doubles as the small Blinn ambient term.
-  examples::SolidBackground(*s, glm::vec3(0.10f, 0.10f, 0.12f), 0.18f);
-  s->SetTAAEnabled(true);
+  const glm::vec3 light_pos(1.2f, 1.0f, 2.0f);
+  examples::Lamp(*s, light_pos, glm::vec3(1.0f), 0.2f);
 
   PointLight l;
-  l.position  = {2.2f, 2.8f, 2.2f};
-  l.color     = glm::vec3(1.0f);
-  l.intensity = 22.0f;
-  l.radius    = 12.0f;
+  l.position = light_pos;
+  l.ambient  = glm::vec3(0.1f);
+  l.diffuse  = glm::vec3(1.0f);
+  l.specular = glm::vec3(0.5f);
   s->AddPointLight(l);
+
+  examples::LoScene(*s, glm::vec3(0.1f, 0.1f, 0.1f));
   return s;
 }
 }  // namespace
 
 ::MEngine::Application *CreateApplication() {
+  MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
-      MEngine::examples::ExampleApp::Setup{BuildBlinnLighting, "Blinn-Phong (LO basic lighting)", {0, 0.9f, 0},
-                                           -25.0f, 16.0f, 8.0f});
+      MEngine::examples::ExampleApp::Setup{BuildBlinnLighting, "LO 2.2 basic_lighting (Blinn)", {0, 0, 0}, 0.0f,
+                                           0.0f, 3.0f, 45.0f});
 }

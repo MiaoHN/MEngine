@@ -20,6 +20,7 @@ std::shared_ptr<Scene> BuildColors() {
 }  // namespace
 
 ::MEngine::Application *CreateApplication() {
+  MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
       MEngine::examples::ExampleApp::Setup{BuildColors, "Colors", {0, 0.8f, 0}, 0.0f, 12.0f, 6.5f});
 }

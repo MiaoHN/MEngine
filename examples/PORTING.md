@@ -10,26 +10,39 @@
 > 状态：✅ = 已复刻可运行；◐ = 部分/可等价（引擎能力演示）; ⛔ = 底层裸 GL 特性，
 > 公共 API 无法直译（或在 MEngine 内部已实现，非示例层）；⬜ = 待做。
 
-> **两套光照管线可选**：MEngine 现在同时提供 **PBR(GGX，默认)** 和 **Blinn-Phong**
-> （`assets/shaders/blinn_*`，LO 同款光照模型）。材质里 `SetShader(GetShader("pbr"))`
-> 或 `("blinn")` 即选管线；`example_helpers.hpp` 的 `Pbr(...)` / `Blinn(...)` 分别造
-> 两类材质。Blinn 材质的 `shininess`=高光指数、`specular`=高光强度、环境光由 `ibl_intensity`
-> 控制——这样 1:1 复刻 LO 场景时可用 Blinn 把高光做得和原文几乎一致。
+> **三套材质/光照可用**：MEngine 现在提供
+> 1. **PBR(GGX，默认)** —— `shader "pbr"`，`example_helpers.hpp` 的 `Pbr(...)` / `PbrTextured(...)`；
+> 2. **经典 Blinn-Phong** —— `shader "blinn"`（`assets/shaders/blinn_*`），`Blinn(...)` / `BlinnTextured(...)`，
+>    高光指数 `shininess`、强度 `specular`，环境光由 `ibl_intensity` 控制；
+> 3. **LO-exact（复刻用）** —— `shader "blinn_lo"`（`assets/shaders/blinn_lo_frag.glsl`），`BlinnLo(...)` /
+>    `BlinnLoTextured(...)`。它**逐项复刻 LO 的 .fs**：每灯 ambient/diffuse/specular 三分量、
+>   Phong(reflect) 高光且**不乘 NdotL**、`container2_specular` 逐像素高光贴图（Material `SetSpecularMap`）、
+>   LO c/l/q 衰减（`PointLight/SpotLight` 加 `lo_attenuation`）、无阴影/无 IBL 环境光。
+>     - 端口统一走 `examples::LoScene(scene)`：`SetLoLighting(true)` + `SetLinearOutput(true)`
+>      （composite 原样 clamp，不做 ACES/gamma，和 LO 直写一致）+ 关 skybox/TAA/bloom/SSAO + 背景 0.1；
+>    - 每灯在灯体上设 `ambient/diffuse/specular`（替代旧 color/intensity）；
+>    - 材质无贴图时可 `SetSpecularColor(...)` 给出 LO 的 `material.specular` 颜色；
+>    - **窗口固定 800×600**（LO 的原生尺寸/4:3）：每个 example 的 `CreateApplication` 先
+>      `Application::SetStartupWindowSize(800, 600)`；相机 `target(0,0,0), yaw0, pitch0, dist 3, fov45`
+>      即 LO 相机 (0,0,3) 看 -Z。
 
 ## 1. getting_started（入门：都是裸管线/窗口/VBO/着色器底层）
 | 目录 | 内容 | 状态 |
 |---|---|---|
 | 1.1 hello_window … 2.x hello_triangle / shaders / 4.x textures / 5.x transformations / 6.x coordinate_systems / 7.x camera | 窗口、三角形、uniform、UV/纹理、变换、坐标系、相机 | ⛔ 这些是“从零搭 OpenGL 管线”的底层教学，MEngine 已封装（窗口/相机/变换/纹理/管线都是引擎内部），无对应“用户层场景”。概念等价可看现有任一 example（orbit 相机 + 变换 + 纹理）。 |
 
-## 2. lighting（光照）—— 引擎为 PBR，逐场景等价重建
+## 2. lighting（光照）—— LO-exact 逐项复刻（blinn_lo）
+> 状态说明：✅ **1:1 LO-exact 复刻**（LO 相机/数值/贴图/输出，可并排比对）；◐ PBR 引擎能力演示
+> （不等同 LO 单场景截图）。
+
 | 目录 | 内容 | MEngine 成品 |
 |---|---|---|
-| 1.colors | 颜色相乘 | ✅ `ex_2_1_colors` |
-| 2.x basic_lighting (+specular/exercise) | 漫反射+高光 | ✅ `ex_2_2_basic_lighting`（PBR）/ `ex_2_2_blinn_lighting`（Blinn）|
-| 3.x materials | 材质参数 | ✅ `ex_2_3_materials`（metallic/roughness 扫描）|
-| 4.x lighting_maps (diffuse/specular) | 贴图（diffuse/specular map）| ✅ `ex_2_4_lighting_maps`（container2 贴图 + 低粗糙度高光）|
-| 5.x light_casters (dir/point/spot/soft) | 方向/点/聚光 | ✅ `ex_2_5_light_casters`（方向+两聚光+点光；软边 via outer_cutoff）|
-| 6.multiple_lights | 多光源 | ✅ `ex_2_6_multiple_lights` |
+| 1.colors | 颜色相乘 | ◐ `ex_2_1_colors`（PBR 引擎演示）|
+| 2.2 basic_lighting_specular | Phong 漫反射+高光（单点光）| ✅ `ex_2_2_blinn_lighting`（blinn_lo，coral 立方+白灯 1.2,1,2）；◐ `ex_2_2_basic_lighting`（PBR 演示）|
+| 3.1 materials | 材质参数（Phong）| ✅ `ex_2_3_materials`（blinn_lo：coral 材质 + 灰 specular 0.5，光 0.1/0.5/1.0）|
+| 4.2 lighting_maps_specular | diffuse+specular 贴图 | ✅ `ex_2_4_lighting_maps`（blinn_lo：container2 + container2_specular，shininess 64，光 0.2/0.5/1.0）|
+| 5.x light_casters (dir/point/spot/soft) | 方向/点/聚光 | ◐ `ex_2_5_light_casters`（PBR 演示；LO 5.3 是“相机手电”聚光，需宿主把聚光跟随相机，待做）|
+| 6.multiple_lights | 多光源 | ✅ `ex_2_6_multiple_lights`（blinn_lo：10 木箱+spec map，dir 0.05/0.4/0.5，4×点光 0.05/0.8/1.0 + c/l/q；LO 相机手电省略）|
 | exercises | 练习 | ◐ 概念已含在上面对应成品中 |
 
 ## 3. model_loading
@@ -54,7 +67,7 @@
 ## 5. advanced_lighting
 | 目录 | 内容 | MEngine 成品 |
 |---|---|---|
-| 1.advanced_lighting | Blinn-Phong | ✅ 引擎现提供 **Blinn-Phong 管线**（shader "blinn"）；`ex_2_2_blinn_lighting` 演示同款高光 |
+| 1.advanced_lighting | Blinn-Phong | ✅ LO 2.2 高光即 **Phong/Blinn**；`ex_2_2_blinn_lighting` 是 LO-exact 端口（blinn_lo）|
 | 2.gamma_correction | Gamma | ◐ 引擎输出已含 gamma（post）；无单独场景 |
 | 3.x shadow_mapping (+point/soft/csm) | 阴影映射/点阴影 | ✅ `ex_5_3_shadow_mapping`（方向光+立方体点光阴影）；CSM ⬜（引擎单级）|
 | 4.normal_mapping | 法线贴图 | ✅ `ex_5_4_normal_mapping`（砖墙 albedo+normal，引擎 pbr 法线槽）|
@@ -67,7 +80,7 @@
 ## 6. pbr
 | 目录 | 内容 | 状态 |
 |---|---|---|
-| 1.x lighting / textured | PBR 直射 | ✅ 引擎即 PBR；`ex_2_3_materials` 覆盖（加贴图见 lighting_maps/normal）|
+| 1.x lighting / textured | PBR 直射 | ✅ 引擎即 PBR（GGX）；PBR 扫参/纹理演示见 `ex_2_3_materials` 之前的 PBR 版 / `ex_2_4` / normal_mapping |
 | 2.x ibl (irradiance/specular conversion) | IBL 预计算 | ⛔ 引擎 skybox 在内部已完成 IBL（prefilter/irradiance）；非用户层 |
 | PBR 资源 (rusted_iron/gold 等) | — | 可下载到 `assets/textures/pbr/` 后做 PBR 贴图材质场景 ⬜ |
 
@@ -81,16 +94,16 @@
 
 ## 现有例子命名对照（target / 源文件 = ex_<LO章>_<LO小节>_<名>）
 ```
-ex_2_1_colors              -> 2.lighting/1.colors
-ex_2_2_basic_lighting      -> 2.lighting/2.2.basic_lighting_specular (PBR)
-ex_2_2_blinn_lighting      -> 2.lighting/2.2 ... (Blinn-Phong 管线)
-ex_2_3_materials           -> 2.lighting/3.1.materials
-ex_2_4_lighting_maps       -> 2.lighting/4.1.lighting_maps_diffuse_map
-ex_2_5_light_casters       -> 2.lighting/5.3.light_casters_spot
-ex_2_6_multiple_lights     -> 2.lighting/6.multiple_lights
-ex_5_3_shadow_mapping      -> 5.advanced_lighting/3.1.x shadow_mapping + 3.2 point_shadows
-ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom
-ex_5_4_normal_mapping      -> 5.advanced_lighting/4.normal_mapping
+ex_2_1_colors              -> 2.lighting/1.colors (PBR 演示)
+ex_2_2_basic_lighting      -> 2.lighting/2.2.basic_lighting_specular (PBR 演示)
+ex_2_2_blinn_lighting      -> 2.lighting/2.2.basic_lighting_specular (✅ blinn_lo 1:1)
+ex_2_3_materials           -> 2.lighting/3.1.materials (✅ blinn_lo 1:1)
+ex_2_4_lighting_maps       -> 2.lighting/4.2.lighting_maps_specular_map (✅ blinn_lo 1:1)
+ex_2_5_light_casters       -> 2.lighting/5.3.light_casters_spot (PBR 演示；手电需宿主支持 ⬜)
+ex_2_6_multiple_lights     -> 2.lighting/6.multiple_lights (✅ blinn_lo 1:1)
+ex_5_3_shadow_mapping      -> 5.advanced_lighting/3.1.x shadow_mapping + 3.2 point_shadows (PBR 演示)
+ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom (PBR 演示)
+ex_5_4_normal_mapping      -> 5.advanced_lighting/4.normal_mapping (PBR 演示)
 ```
 > 每个 target 对应 LO 源码：`LearnOpenGL/src/<章>/<小节>/<源码名>.cpp`（CMake 注释里已写死）。
 > 新建端口一律沿用该命名，如 `ex_3_1_model_loading`、`ex_6_1_1_pbr_lighting` 等。

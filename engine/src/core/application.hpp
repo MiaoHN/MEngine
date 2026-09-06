@@ -93,6 +93,16 @@ class Application {
   static void SetWindowHidden(bool hidden) { window_hidden_ = hidden; }
   [[nodiscard]] static bool IsWindowHidden() { return window_hidden_; }
 
+  /// @brief Startup window size. Defaults to 1600x900; LearnOpenGL-comparison
+  /// examples set it to 800x600 (LO's exact window / 4:3 aspect) before their
+  /// Application is constructed.
+  static void SetStartupWindowSize(int width, int height) {
+    startup_window_width_  = width;
+    startup_window_height_ = height;
+  }
+  [[nodiscard]] static int GetStartupWindowWidth() { return startup_window_width_; }
+  [[nodiscard]] static int GetStartupWindowHeight() { return startup_window_height_; }
+
   /// @brief Captures the backbuffer as PPM after frame `frame` (`--capture-frame
   /// <n>`), writing to `out_path` (default "capture.ppm"). 0 disables capture.
   static void SetCaptureFrame(int frame, const std::string &out_path) {
@@ -139,6 +149,8 @@ class Application {
   static bool            window_hidden_;
   static int             capture_frame_;
   static std::string     capture_out_path_;
+  static int             startup_window_width_;
+  static int             startup_window_height_;
 };
 
 }  // namespace MEngine

@@ -51,6 +51,7 @@ std::shared_ptr<Scene> BuildCasters() {
 }  // namespace
 
 ::MEngine::Application *CreateApplication() {
+  MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
       MEngine::examples::ExampleApp::Setup{BuildCasters, "Light Casters", {0, 1.5f, 0}, -45.0f, 16.0f, 11.0f});
 }

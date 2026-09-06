@@ -17,6 +17,8 @@ int         Application::max_frames_  = 0;  // 0 = run until the window closes
 bool        Application::window_hidden_ = false;
 int         Application::capture_frame_  = 0;  // 0 = disabled
 std::string Application::capture_out_path_ = "capture.ppm";
+int         Application::startup_window_width_  = 1600;
+int         Application::startup_window_height_ = 900;
 
 Application *Application::GetInstance() { return s_app; }
 
@@ -62,7 +64,7 @@ Application::Application(GraphicsAPI api) : graphics_api_(api) {
     glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
   }
 
-  window_ = glfwCreateWindow(1600, 900, "MEngine", nullptr, nullptr);
+  window_ = glfwCreateWindow(startup_window_width_, startup_window_height_, "MEngine", nullptr, nullptr);
 
   if (!window_) {
     LOG_ERROR("Application") << "Failed to create GLFW window";

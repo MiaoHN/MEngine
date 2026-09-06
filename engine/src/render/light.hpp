@@ -16,6 +16,14 @@ struct DirectionalLight {
   glm::vec3 direction = glm::normalize(glm::vec3(-0.3f, -1.0f, -0.4f));
   glm::vec3 color     = glm::vec3(2.5f);
 
+  // LearnOpenGL-exact per-channel strengths. Used only when the renderer's
+  // "LO lighting" mode is enabled (then `color` is ignored): ambient / diffuse
+  // / specular multiply the material's diffuse / specular samples separately,
+  // exactly like LearnOpenGL's DirLight struct.
+  glm::vec3 ambient  = glm::vec3(0.05f);
+  glm::vec3 diffuse  = glm::vec3(1.0f);
+  glm::vec3 specular = glm::vec3(1.0f);
+
   /// @brief Orthographic light-space matrix covering a sphere of `radius`
   /// around `scene_center`, used to render and sample the shadow map.
   [[nodiscard]] glm::mat4 GetLightSpaceMatrix(const glm::vec3 &scene_center, float radius) const {
@@ -40,6 +48,14 @@ struct PointLight {
   float     intensity = 1.0f;
   float     radius    = 4.0f;
   bool      casts_shadow = false;
+
+  // LearnOpenGL-exact per-channel strengths. Used only when the renderer's
+  // "LO lighting" mode is enabled (then `color`/`intensity` are ignored):
+  // ambient/diffuse/specular multiply the material samples separately, exactly
+  // like LearnOpenGL's PointLight struct.
+  glm::vec3 ambient  = glm::vec3(0.05f);
+  glm::vec3 diffuse  = glm::vec3(1.0f);
+  glm::vec3 specular = glm::vec3(1.0f);
 
   // LearnOpenGL-style attenuation (1 / (constant + linear*d + quadratic*d^2)).
   // Used only when lo_attenuation is true (radius-based falloff otherwise).
@@ -93,6 +109,12 @@ struct SpotLight {
   float     range        = 8.0f;
   float     cutoff       = glm::cos(glm::radians(12.5f));
   float     outer_cutoff = glm::cos(glm::radians(17.5f));
+
+  // LearnOpenGL-exact per-channel strengths. Used only when the renderer's
+  // "LO lighting" mode is enabled (then `color`/`intensity` are ignored).
+  glm::vec3 ambient  = glm::vec3(0.05f);
+  glm::vec3 diffuse  = glm::vec3(1.0f);
+  glm::vec3 specular = glm::vec3(1.0f);
 
   // LearnOpenGL-style attenuation (1 / (constant + linear*d + quadratic*d^2)).
   // Used only when lo_attenuation is true (range-based falloff otherwise).
