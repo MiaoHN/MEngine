@@ -97,6 +97,10 @@ void OpenGLRHI::SetWireframe(bool wireframe) const {
   glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
 }
 
+void OpenGLRHI::SetDepthWrite(bool enabled) const {
+  glDepthMask(enabled ? GL_TRUE : GL_FALSE);
+}
+
 bool OpenGLRHI::ReadBackBuffer(int width, int height, std::vector<unsigned char> &out_rgb) const {
   out_rgb.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 3);
   glPixelStorei(GL_PACK_ALIGNMENT, 1);

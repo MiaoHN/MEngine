@@ -337,9 +337,30 @@ glm::vec2 UprightUV(const glm::vec3 &local, const glm::vec3 &normal) {
 }  // namespace
 
 void BuildChunkMesh(const World &world, const Atlas &atlas, int chunk_x, int chunk_z,
-                    std::vector<Vertex> &out_vertices, std::vector<uint32_t> &out_indices) {
+                    std::vector<Vertex> &out_vertices, std::vector<uint32_t> &out_indices,
+                    std::vector<Vertex> &water_vertices, std::vector<uint32_t> &water_indices) {
   const int wx0 = chunk_x * World::kChunk;
   const int wz0 = chunk_z * World::kChunk;
+
+  // Emits one face into the chosen vertex/index list.
+  const auto emit = [&](std::vector<Vertex> &verts, std::vector<uint32_t> &idx, const FaceDef &fd,
+                        const glm::vec3 &o, Block block) {
+    const glm::vec3 corners[4] = {o + fd.a, o + fd.b, o + fd.c, o + fd.d};
+    const glm::vec3 local[4]   = {fd.a, fd.b, fd.c, fd.d};
+    const TileId    tile       = atlas.TileFor(block, fd.top, fd.bottom);
+    const uint32_t  base       = static_cast<uint32_t>(verts.size());
+    for (int i = 0; i < 4; ++i) {
+      const glm::vec2 uv = atlas.TileUV(tile, UprightUV(local[i], fd.normal).x,
+                                        UprightUV(local[i], fd.normal).y);
+      verts.push_back({corners[i], fd.normal, uv});
+    }
+    idx.push_back(base + 0);
+    idx.push_back(base + 1);
+    idx.push_back(base + 2);
+    idx.push_back(base + 2);
+    idx.push_back(base + 3);
+    idx.push_back(base + 0);
+  };
 
   for (int lx = 0; lx < World::kChunk; ++lx) {
     for (int lz = 0; lz < World::kChunk; ++lz) {
@@ -347,35 +368,28 @@ void BuildChunkMesh(const World &world, const Atlas &atlas, int chunk_x, int chu
       const int wz = wz0 + lz;
       for (int y = 0; y < World::kHeight; ++y) {
         const Block block = world.Get(wx, y, wz);
-        if (!IsOpaque(block)) {
+        if (block == Block::Air) {
           continue;
         }
+        const glm::vec3 o(static_cast<float>(wx), static_cast<float>(y), static_cast<float>(wz));
         for (int f = 0; f < 6; ++f) {
-          // Water is drawn as a flat top surface only (no translucent walls).
-          if (block == Block::Water && kFaces[f].normal.y < 0.5f) {
+          const int nx = wx + kStep[f][0];
+          const int ny = y + kStep[f][1];
+          const int nz = wz + kStep[f][2];
+          const Block neighbor = world.Get(nx, ny, nz);
+          // Cull a face when the neighbour is the same block (water-water,
+          // stone-stone, ...) or an opaque occluder. Water itself never
+          // occludes: a terrain face bordering water must render so the
+          // coastline/underwater floor is visible through the translucent
+          // water (no more hollow "clipping" holes).
+          if (neighbor == block || world.IsOccluding(nx, ny, nz)) {
             continue;
           }
-          if (world.IsSolidCell(wx + kStep[f][0], y + kStep[f][1], wz + kStep[f][2])) {
-            continue;  // hidden face
+          if (block == Block::Water) {
+            emit(water_vertices, water_indices, kFaces[f], o, block);
+          } else {
+            emit(out_vertices, out_indices, kFaces[f], o, block);
           }
-          const FaceDef &fd    = kFaces[f];
-          const glm::vec3 o(static_cast<float>(wx), static_cast<float>(y), static_cast<float>(wz));
-          const glm::vec3 corners[4] = {o + fd.a, o + fd.b, o + fd.c, o + fd.d};
-          const glm::vec3 local[4]   = {fd.a, fd.b, fd.c, fd.d};
-
-          const TileId tile = atlas.TileFor(block, fd.top, fd.bottom);
-          const uint32_t base = static_cast<uint32_t>(out_vertices.size());
-          for (int i = 0; i < 4; ++i) {
-            const glm::vec2 uv = atlas.TileUV(tile, UprightUV(local[i], fd.normal).x,
-                                              UprightUV(local[i], fd.normal).y);
-            out_vertices.push_back({corners[i], fd.normal, uv});
-          }
-          out_indices.push_back(base + 0);
-          out_indices.push_back(base + 1);
-          out_indices.push_back(base + 2);
-          out_indices.push_back(base + 2);
-          out_indices.push_back(base + 3);
-          out_indices.push_back(base + 0);
         }
       }
     }

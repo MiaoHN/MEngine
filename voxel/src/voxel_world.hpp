@@ -57,6 +57,9 @@ class World {
   [[nodiscard]] bool IsSolidCell(int x, int y, int z) const { return IsOpaque(Get(x, y, z)); }
   /// @brief Collidable-block test (water is passable) used by the player.
   [[nodiscard]] bool IsSolidCollision(int x, int y, int z) const { return IsCollidable(Get(x, y, z)); }
+  /// @brief Meshing occlusion test: opaque solids only, water is translucent
+  /// and never hides a neighbour's face (coastline terrain stays visible).
+  [[nodiscard]] bool IsOccluding(int x, int y, int z) const { return IsOccluder(Get(x, y, z)); }
 
  private:
   using ChunkKey = int64_t;
@@ -84,7 +87,12 @@ void PrepareChunk(World &world, int cx, int cz);
 /// @brief Builds the visible mesh for the chunk at (chunk_x, chunk_z) into
 /// world-space vertices. `world` chunks for this column + neighbours must be
 /// generated first (see PrepareChunk).
+///
+/// Opaque blocks land in `out_vertices`/`out_indices`; translucent water
+/// surfaces land in `water_vertices`/`water_indices` so the caller can give
+/// them a separate alpha-blended material.
 void BuildChunkMesh(const World &world, const Atlas &atlas, int chunk_x, int chunk_z,
-                    std::vector<MEngine::Vertex> &out_vertices, std::vector<uint32_t> &out_indices);
+                    std::vector<MEngine::Vertex> &out_vertices, std::vector<uint32_t> &out_indices,
+                    std::vector<MEngine::Vertex> &water_vertices, std::vector<uint32_t> &water_indices);
 
 }  // namespace vox

@@ -50,6 +50,11 @@ class IRHI {
   /// @brief Sets the face-culling state for subsequent draw calls.
   virtual void SetCullMode(CullMode mode) const = 0;
 
+  /// @brief Enables/disables depth-buffer writes for subsequent draw calls
+  /// (translucent surfaces read depth but never write it, so they don't
+  /// occlude each other or later opaque geometry).
+  virtual void SetDepthWrite(bool enabled) const = 0;
+
   /// @brief Reads the currently bound (default) framebuffer back to CPU as RGB.
   /// Returns false when the backend cannot read pixels (e.g. the Vulkan stub).
   virtual bool ReadBackBuffer(int width, int height, std::vector<unsigned char> &out_rgb) const = 0;

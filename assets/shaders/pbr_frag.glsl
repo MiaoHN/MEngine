@@ -192,7 +192,7 @@ void main() {
   albedo *= base_color_factor.rgb;
 
   if (u_render_mode == 1) {  // Unlit: flat albedo (debug view).
-    FragColor = vec4(albedo, 1.0);
+    FragColor = vec4(albedo, base_color_factor.a);
     return;
   }
 
@@ -269,5 +269,7 @@ void main() {
                                    specular_intensity, F0);
   }
   // HDR linear output; tone mapping + gamma happen in the post-process pass.
-  FragColor = vec4(color, 1.0);
+  // Alpha is the material opacity so translucent surfaces (alpha blending on,
+  // depth write off) composite over the opaque scene.
+  FragColor = vec4(color, base_color_factor.a);
 }

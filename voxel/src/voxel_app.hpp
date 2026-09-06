@@ -39,12 +39,16 @@ class VoxelApp : public MEngine::Application {
   Atlas                           atlas_;
 
   MEngine::Ref<MEngine::Material> chunk_material_;
+  MEngine::Ref<MEngine::Material> water_material_;  // translucent, double-sided
 
-  // Streaming: chunks around the player, each a Scene entity.
+  // Streaming: chunks around the player, each a Scene entity. A chunk with
+  // water gets a second translucent entity (entity.water) that is drawn
+  // blended over the opaque terrain.
   static constexpr int kRadius = 5;  // visible chunk radius
   struct ChunkTile {
     int             cx = 0, cz = 0;
-    MEngine::Entity entity;
+    MEngine::Entity entity;  // opaque terrain mesh
+    MEngine::Entity water;   // translucent water surface (may be null)
   };
   std::vector<ChunkTile> tiles_;
   int active_cx_ = 0x7fffffff;

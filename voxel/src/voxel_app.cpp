@@ -63,6 +63,77 @@ glm::vec3 RightFrom(float yaw_deg) {
 
 int FloorDiv(int a, int b) { return (a >= 0) ? a / b : -((-a + b - 1) / b); }
 
+/// @brief Both meshes produced for one chunk: opaque terrain + translucent
+/// water (either may be null when the chunk has no such geometry).
+struct BuiltChunkMeshes {
+  Ref<Mesh> land;   // opaque terrain mesh
+  Ref<Mesh> water;  // translucent water surface mesh
+};
+
+BuiltChunkMeshes BuildChunkMeshes(World &world, const Atlas &atlas, int cx, int cz) {
+  PrepareChunk(world, cx, cz);
+  std::vector<MEngine::Vertex> verts, wverts;
+  std::vector<uint32_t>        idx, widx;
+  BuildChunkMesh(world, atlas, cx, cz, verts, idx, wverts, widx);
+  BuiltChunkMeshes out;
+  out.land  = idx.empty() ? nullptr : Mesh::Create(verts, idx);
+  out.water = widx.empty() ? nullptr : Mesh::Create(wverts, widx);
+  return out;
+}
+
+/// @brief Draws a full-screen translucent tint. Used for the underwater view
+/// so, when the camera is inside a water cell, the whole screen gets a blue
+/// "water column" tint (and looking up at the surface isn't just clear sky).
+void DrawFullscreenTint(float r, float g, float b, float a) {
+  static GLuint program = 0;
+  static GLuint vao     = 0;
+  if (program == 0) {
+    const char *vs = "#version 460 core\n"
+                     "void main() {\n"
+                     "  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+                     "  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+                     "}\n";
+    const char *fs = "#version 460 core\n"
+                     "uniform vec4 u_color;\n"
+                     "out vec4 FragColor;\n"
+                     "void main() { FragColor = u_color; }\n";
+    const auto compile = [](GLenum type, const char *src) {
+      GLuint s = glCreateShader(type);
+      glShaderSource(s, 1, &src, nullptr);
+      glCompileShader(s);
+      GLint ok = GL_FALSE;
+      glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+      if (!ok) {
+        char log[1024] = {0};
+        glGetShaderInfoLog(s, sizeof(log), nullptr, log);
+        LOG_ERROR("Voxel") << "Underwater overlay shader failed: " << log;
+      }
+      return s;
+    };
+    const GLuint vs_id = compile(GL_VERTEX_SHADER, vs);
+    const GLuint fs_id = compile(GL_FRAGMENT_SHADER, fs);
+    program = glCreateProgram();
+    glAttachShader(program, vs_id);
+    glAttachShader(program, fs_id);
+    glLinkProgram(program);
+    glDeleteShader(vs_id);
+    glDeleteShader(fs_id);
+    glGenVertexArrays(1, &vao);
+  }
+  glUseProgram(program);
+  glUniform4f(glGetUniformLocation(program, "u_color"), r, g, b, a);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDisable(GL_DEPTH_TEST);
+  glDepthMask(GL_FALSE);
+  glBindVertexArray(vao);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+  glBindVertexArray(0);
+  glEnable(GL_DEPTH_TEST);
+  glDepthMask(GL_TRUE);
+  glUseProgram(0);
+}
+
 }  // namespace
 
 VoxelApp::VoxelApp(MEngine::GraphicsAPI api) : MEngine::Application(api), world_(StartupSeed()) {}
@@ -83,6 +154,18 @@ void VoxelApp::Initialize() {
   chunk_material_->SetBaseColorFactor(glm::vec4(1.0f));
   chunk_material_->SetMetallicFactor(0.0f);
   chunk_material_->SetRoughnessFactor(0.9f);
+
+  // --- shared translucent water material ------------------------------------
+  // Same albedo atlas (water tile), drawn with alpha blending after the opaque
+  // pass, double-sided so the surface is visible from above AND below water.
+  water_material_ = MEngine::CreateRef<MEngine::Material>();
+  water_material_->SetShader(shader);
+  water_material_->SetAlbedoMap(atlas_texture);
+  water_material_->SetBaseColorFactor(glm::vec4(1.0f, 1.0f, 1.0f, 0.72f));  // opacity
+  water_material_->SetMetallicFactor(0.0f);
+  water_material_->SetRoughnessFactor(0.1f);
+  water_material_->SetTranslucent(true);
+  water_material_->SetCullMode(MEngine::CullMode::None);
 
   // --- scene lighting / post ------------------------------------------------
   scene_->GetLight().direction = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.3f));
@@ -111,6 +194,52 @@ void VoxelApp::Initialize() {
       }
     }
   }
+
+  // Optional debug camera override (unattended captures / verification):
+  // MENGINE_VOXEL_DEBUG_CAM="x,y,z,yaw,pitch" teleports the eye after spawn.
+  const char *debug_cam = nullptr;
+#if defined(_WIN32)
+  {
+    char *buf = nullptr;
+    size_t len = 0;
+    if (_dupenv_s(&buf, &len, "MENGINE_VOXEL_DEBUG_CAM") == 0) {
+      debug_cam = buf;  // freed below after parsing
+    }
+#else
+  debug_cam = std::getenv("MENGINE_VOXEL_DEBUG_CAM");
+#endif
+  if (debug_cam != nullptr && debug_cam[0] != '\0') {
+    float v[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    int   n    = 0;
+    const char *p = debug_cam;
+    while (n < 5 && *p != '\0') {
+      char *end = nullptr;
+      v[n]      = std::strtof(p, &end);
+      if (end == p) {
+        break;  // not a number
+      }
+      ++n;
+      p = end;
+      if (*p == ',') {
+        ++p;
+      }
+    }
+    if (n == 5) {
+      position_ = glm::vec3(v[0], v[1], v[2]);
+      yaw_      = v[3];
+      pitch_    = v[4];
+      const int sx = static_cast<int>(std::floor(v[0]));
+      const int sy = static_cast<int>(std::floor(v[1]));
+      const int sz = static_cast<int>(std::floor(v[2]));
+      LOG_INFO("Voxel") << "Debug camera -> " << v[0] << "," << v[1] << "," << v[2] << " yaw " << v[3]
+                        << " pitch " << v[4] << " surf=" << world_.SurfaceY(sx, sz)
+                        << " eyeCell=" << static_cast<int>(world_.Get(sx, sy, sz));
+    }
+  }
+#if defined(_WIN32)
+  free(const_cast<char *>(debug_cam));
+  }
+#endif
 
   glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
@@ -180,8 +309,11 @@ void VoxelApp::Respawn() {
 }
 
 void VoxelApp::RebuildChunksAround(int center_cx, int center_cz) {
-  // Drop the old tiles.
+  // Drop the old tiles (opaque + water entities).
   for (auto &tile : tiles_) {
+    if (tile.water.GetHandle() != entt::null && scene_->GetRegistry().valid(tile.water.GetHandle())) {
+      scene_->DestroyEntity(tile.water);
+    }
     if (tile.entity.GetHandle() != entt::null && scene_->GetRegistry().valid(tile.entity.GetHandle())) {
       scene_->DestroyEntity(tile.entity);
     }
@@ -195,16 +327,17 @@ void VoxelApp::RebuildChunksAround(int center_cx, int center_cz) {
     for (int dx = -kRadius; dx <= kRadius; ++dx) {
       const int cx = center_cx + dx;
       const int cz = center_cz + dz;
-      PrepareChunk(world_, cx, cz);  // + neighbours so face culling is exact
-
-      std::vector<MEngine::Vertex> verts;
-      std::vector<uint32_t>        idx;
-      BuildChunkMesh(world_, atlas_, cx, cz, verts, idx);
-      Ref<Mesh> mesh = idx.empty() ? nullptr : Mesh::Create(verts, idx);
+      const BuiltChunkMeshes meshes = BuildChunkMeshes(world_, atlas_, cx, cz);
 
       Entity entity = scene_->CreateEntity("Chunk");
-      entity.AddComponent<MeshComponent>(mesh, chunk_material_);
-      tiles_.push_back({cx, cz, entity});
+      entity.AddComponent<MeshComponent>(meshes.land, chunk_material_);
+
+      Entity water;
+      if (meshes.water) {
+        water = scene_->CreateEntity("ChunkWater");
+        water.AddComponent<MeshComponent>(meshes.water, water_material_);
+      }
+      tiles_.push_back({cx, cz, entity, water});
     }
   }
   LOG_DEBUG("Voxel") << "Streaming chunks around (" << center_cx << "," << center_cz << ") -> " << tiles_.size()
@@ -216,13 +349,23 @@ void VoxelApp::RemeshChunk(int cx, int cz) {
     if (tile.cx != cx || tile.cz != cz) {
       continue;
     }
-    PrepareChunk(world_, cx, cz);
-    std::vector<MEngine::Vertex> verts;
-    std::vector<uint32_t>        idx;
-    BuildChunkMesh(world_, atlas_, cx, cz, verts, idx);
-    Ref<Mesh> mesh = idx.empty() ? nullptr : Mesh::Create(verts, idx);
+    const BuiltChunkMeshes meshes = BuildChunkMeshes(world_, atlas_, cx, cz);
     if (tile.entity.HasComponent<MeshComponent>()) {
-      tile.entity.GetComponent<MeshComponent>().mesh = mesh;
+      tile.entity.GetComponent<MeshComponent>().mesh = meshes.land;
+    }
+    // Keep the translucent water entity in sync: create it when the chunk now
+    // has water, destroy it when the water is gone, otherwise swap its mesh.
+    const bool needs_water = meshes.water != nullptr;
+    const bool has_water   = tile.water.GetHandle() != entt::null &&
+                             scene_->GetRegistry().valid(tile.water.GetHandle());
+    if (needs_water && !has_water) {
+      tile.water = scene_->CreateEntity("ChunkWater");
+      tile.water.AddComponent<MeshComponent>(meshes.water, water_material_);
+    } else if (!needs_water && has_water) {
+      scene_->DestroyEntity(tile.water);
+      tile.water = Entity{};
+    } else if (needs_water && has_water && tile.water.HasComponent<MeshComponent>()) {
+      tile.water.GetComponent<MeshComponent>().mesh = meshes.water;
     }
     return;
   }
@@ -441,9 +584,22 @@ void VoxelApp::OnUpdate(float dt) {
 
   scene_->RenderMeshes(view, proj, eye);
 
-  // --- crosshair (centre-screen), no ghost preview --------------------------
+  // --- underwater tint + crosshair (composited onto the default FB) ---------
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glViewport(0, 0, fb_w, fb_h);
+
+  // When the eye is inside a water cell, wash the whole screen in blue so the
+  // view reads as "underwater" (looking up at the surface is no longer bare
+  // sky, and distant terrain gets a depth-blue haze). Strength grows with how
+  // far below the surface the camera sits.
+  const glm::ivec3 eye_cell{static_cast<int>(std::floor(eye.x)), static_cast<int>(std::floor(eye.y)),
+                            static_cast<int>(std::floor(eye.z))};
+  if (world_.Get(eye_cell.x, eye_cell.y, eye_cell.z) == Block::Water) {
+    const float depth = std::max(0.0f, static_cast<float>(World::kSeaLevel) - eye.y);
+    DrawFullscreenTint(0.02f, 0.32f, 0.58f, std::min(0.62f, 0.32f + depth * 0.06f));
+  }
+
+  // --- crosshair (centre-screen), no ghost preview --------------------------
   glEnable(GL_SCISSOR_TEST);
   const auto bar = [](int x, int y, int w, int h, float r, float g, float b) {
     glScissor(x, y, w, h);

@@ -43,6 +43,11 @@ class Material {
   void SetRoughnessFactor(float factor) { roughness_factor_ = factor; }
   void SetSpecularFactor(float factor) { specular_factor_ = factor; }
 
+  /// @brief Marks the material translucent: it is drawn after the opaque scene
+  /// with alpha blending (no depth write). base_color_factor.a is the opacity.
+  void SetTranslucent(bool translucent) { translucent_ = translucent; }
+  [[nodiscard]] bool IsTranslucent() const { return translucent_; }
+
   [[nodiscard]] const glm::vec4 &GetBaseColorFactor() const { return base_color_factor_; }
   [[nodiscard]] float GetMetallicFactor() const { return metallic_factor_; }
   [[nodiscard]] float GetRoughnessFactor() const { return roughness_factor_; }
@@ -59,6 +64,7 @@ class Material {
   float     metallic_factor_ = 1.0f;
   float     roughness_factor_ = 1.0f;
   float     specular_factor_ = 1.0f;
+  bool      translucent_ = false;
   // Closed, opaque meshes are the norm (primitives, models, stress grids), so
   // back-face culling is on by default: interior/back faces of tightly packed
   // geometry (e.g. adjacent cubes) are not rasterised, which removes the

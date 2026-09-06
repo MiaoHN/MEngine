@@ -429,14 +429,23 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   // Per-instance model matrices (locations 3..6, divisor 1) + instanced draw.
   mesh->SetInstanceData(models, count);
   if (const auto *rhi = GetActiveRHI(); rhi) {
+    const bool translucent = material->IsTranslucent();
     stats_.draw_calls += 1;
     stats_.instanced_draws += 1;
     stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
+    if (translucent) {
+      // Translucent surfaces read depth but never write it, so later opaque /
+      // translucent geometry is never hidden behind a transparent layer.
+      rhi->SetDepthWrite(false);
+    }
     rhi->SetCullMode(material->GetCullMode());
     rhi->SetWireframe(render_mode_ == RenderMode::Wireframe);
     rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
     rhi->SetWireframe(false);
     rhi->SetCullMode(CullMode::None);  // restore so UI/2D draws are unaffected
+    if (translucent) {
+      rhi->SetDepthWrite(true);
+    }
   }
 
   shader->Unbind();

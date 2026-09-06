@@ -40,6 +40,10 @@ inline bool IsOpaque(Block b) { return b != Block::Air; }
 /// @brief True when the player's collider should collide with the block
 /// (water is passable).
 inline bool IsCollidable(Block b) { return b != Block::Air && b != Block::Water; }
+/// @brief True when a block hides its neighbours' faces during MESHING
+/// (opaque solids only - water is translucent and must never hide a terrain
+/// face, otherwise underwater coastlines render as hollow "clipping" holes).
+inline bool IsOccluder(Block b) { return b != Block::Air && b != Block::Water; }
 
 // --- Tile atlas -------------------------------------------------------------
 

@@ -30,6 +30,7 @@ class OpenGLRHI final : public IRHI {
 
   void SetWireframe(bool wireframe) const override;
   void SetCullMode(CullMode mode) const override;
+  void SetDepthWrite(bool enabled) const override;
 
   unsigned int CreateFramebuffer() const override;
 

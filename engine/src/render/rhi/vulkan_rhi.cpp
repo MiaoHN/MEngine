@@ -350,6 +350,10 @@ void VulkanRHI::SetWireframe(bool wireframe) const {
   (void)wireframe;  // Wireframe rasterization is not implemented for the Vulkan path yet.
 }
 
+void VulkanRHI::SetDepthWrite(bool enabled) const {
+  (void)enabled;  // Not implemented for the CPU-side Vulkan placeholder path.
+}
+
 void VulkanRHI::DrawIndexedInstanced(int index_count, int instance_count) const {
   // CPU placeholder backend: instancing arrives with the real Vulkan draw path.
   (void)index_count;

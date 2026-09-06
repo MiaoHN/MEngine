@@ -1049,13 +1049,17 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   }
 
   // Directional shadow pass: all renderable meshes, batched per mesh so
-  // identical meshes go out as one instanced draw.
+  // identical meshes go out as one instanced draw. Translucent materials are
+  // skipped - transparent surfaces don't cast solid shadows.
   renderer_->BeginShadowPass(light_view_proj);
   {
     const auto t_start = clock::now();
     std::vector<const RenderItem *> ordered;
     ordered.reserve(items.size());
     for (const auto &item : items) {
+      if (item.material && item.material->IsTranslucent()) {
+        continue;
+      }
       ordered.push_back(&item);
     }
     std::stable_sort(ordered.begin(), ordered.end(),
@@ -1094,6 +1098,9 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
       std::vector<const RenderItem *> ordered;
       ordered.reserve(items.size());
       for (const auto &item : items) {
+        if (item.material && item.material->IsTranslucent()) {
+          continue;  // transparent surfaces don't cast solid shadows
+        }
         ordered.push_back(&item);
       }
       std::stable_sort(ordered.begin(), ordered.end(),
@@ -1129,6 +1136,9 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     std::vector<const RenderItem *> visible;
     visible.reserve(items.size());
     for (const auto &item : items) {
+      if (item.material && item.material->IsTranslucent()) {
+        continue;  // SSAO is for opaque surfaces
+      }
       if (item.has_bounds && !AABBInsideFrustum(frustum, item.world_min, item.world_max)) {
         continue;
       }
@@ -1156,14 +1166,18 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   pass_times_ms_[2] = time_ms(t_ssao_start);
 
   // Main pass into the HDR scene framebuffer: camera-frustum culling plus the
-  // mesh+material requirement.
+  // mesh+material requirement. Opaque geometry is batched and written to the
+  // depth buffer first; translucent materials (glass, water, ...) are drawn in
+  // a second pass, sorted far-to-near, blended over the opaque scene without
+  // writing depth so surfaces behind them stay visible.
   uint64_t visible_main = 0;
   uint64_t culled_main  = 0;
   {
     renderer_->BeginScene();
     const auto t_start = clock::now();
-    std::vector<const RenderItem *> visible;
-    visible.reserve(items.size());
+    std::vector<const RenderItem *> opaque;
+    std::vector<const RenderItem *> translucent;
+    opaque.reserve(items.size());
     for (const auto &item : items) {
       if (!item.material || !item.material->GetShader()) {
         ++culled_main;  // counted as not drawn by the main pass
@@ -1174,12 +1188,12 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
         continue;
       }
       ++visible_main;
-      visible.push_back(&item);
+      (item.material->IsTranslucent() ? translucent : opaque).push_back(&item);
     }
     // Batch by (mesh, material content): same mesh + interchangeable material
     // drawn as one instanced draw; material uniforms are uploaded once per
     // batch. Pointer sorting keeps equal-content materials adjacent.
-    std::stable_sort(visible.begin(), visible.end(), [](const RenderItem *a, const RenderItem *b) {
+    std::stable_sort(opaque.begin(), opaque.end(), [](const RenderItem *a, const RenderItem *b) {
       if (a->mesh.get() != b->mesh.get()) {
         return a->mesh.get() < b->mesh.get();
       }
@@ -1187,20 +1201,34 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     });
     std::vector<glm::mat4> batch;
     const bool no_batch = BatchDisabledByEnv();
-    for (size_t k = 0; k < visible.size();) {
+    for (size_t k = 0; k < opaque.size();) {
       size_t j = k + 1;
-      while (!no_batch && j < visible.size() && visible[j]->mesh == visible[k]->mesh &&
-             SameMaterialForBatching(visible[j]->material, visible[k]->material)) {
+      while (!no_batch && j < opaque.size() && opaque[j]->mesh == opaque[k]->mesh &&
+             SameMaterialForBatching(opaque[j]->material, opaque[k]->material)) {
         ++j;
       }
       batch.clear();
       batch.reserve(j - k);
       for (size_t m = k; m < j; ++m) {
-        batch.push_back(visible[m]->model);
+        batch.push_back(opaque[m]->model);
       }
-      renderer_->DrawMeshInstanced(visible[k]->mesh, visible[k]->material, batch.data(),
+      renderer_->DrawMeshInstanced(opaque[k]->mesh, opaque[k]->material, batch.data(),
                                    static_cast<int>(batch.size()), proj_view, camera_pos, light_view_proj);
       k = j;
+    }
+    // Translucent pass: draw each surface back-to-front. Per-draw depth write
+    // is disabled inside DrawMeshInstanced for translucent materials.
+    if (!translucent.empty()) {
+      std::stable_sort(translucent.begin(), translucent.end(), [&camera_pos](const RenderItem *a,
+                                                                             const RenderItem *b) {
+        const glm::vec3 ac = (a->world_min + a->world_max) * 0.5f;
+        const glm::vec3 bc = (b->world_min + b->world_max) * 0.5f;
+        return glm::length2(ac - camera_pos) > glm::length2(bc - camera_pos);
+      });
+      for (const RenderItem *item : translucent) {
+        renderer_->DrawMeshInstanced(item->mesh, item->material, &item->model, 1, proj_view, camera_pos,
+                                     light_view_proj);
+      }
     }
     pass_times_ms_[3] = time_ms(t_start);
   }
