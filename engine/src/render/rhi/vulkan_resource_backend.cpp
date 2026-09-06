@@ -17,7 +17,8 @@ VulkanVertexArrayBackend *GetBoundVulkanVertexArrayBackend() { return g_bound_ve
 
 VulkanTextureBackend::VulkanTextureBackend() : id_(g_next_id++) {}
 
-void VulkanTextureBackend::SetData(unsigned char *data, int width, int height, int channels) {
+void VulkanTextureBackend::SetData(unsigned char *data, int width, int height, int channels, bool srgb) {
+  (void)srgb;
   width_    = width;
   height_   = height;
   channels_ = channels;

@@ -12,7 +12,7 @@ class OpenGLTextureBackend final : public ITextureBackend {
   OpenGLTextureBackend();
   ~OpenGLTextureBackend() override;
 
-  void SetData(unsigned char *data, int width, int height, int channels) override;
+  void SetData(unsigned char *data, int width, int height, int channels, bool srgb = false) override;
   void Bind(unsigned int slot) const override;
   void Unbind() const override;
   void SetSubTexture(int frame, int h_frames, int v_frames, int width, int height) override;

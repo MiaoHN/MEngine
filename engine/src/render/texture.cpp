@@ -9,14 +9,16 @@
 
 namespace MEngine {
 
-Texture::Texture(const std::string &path) : path_(path) {
+Texture::Texture(const std::string &path) : Texture(path, false) {}
+
+Texture::Texture(const std::string &path, bool srgb) : path_(path), srgb_(srgb) {
   backend_ = CreateTextureBackend();
 
   stbi_set_flip_vertically_on_load(true);
 
   unsigned char *loaded_data = stbi_load(path.c_str(), &width_, &height_, &channels_, 0);
   if (loaded_data) {
-    backend_->SetData(loaded_data, width_, height_, channels_);
+    backend_->SetData(loaded_data, width_, height_, channels_, srgb_);
   } else {
     LOG_WARN("Texture") << "Failed to load texture: " << path << ", using fallback checkerboard.";
     static unsigned char fallback_data[] = {
@@ -26,7 +28,7 @@ Texture::Texture(const std::string &path) : path_(path) {
     width_    = 2;
     height_   = 2;
     channels_ = 4;
-    backend_->SetData(fallback_data, width_, height_, channels_);
+    backend_->SetData(fallback_data, width_, height_, channels_, false);
   }
 
   stbi_image_free(loaded_data);
@@ -36,7 +38,10 @@ Texture::Texture(const std::string &path) : path_(path) {
   name_             = path.substr(last_slash + 1, last_dot - last_slash - 1);
 }
 
-Texture::Texture(const std::string &name, const std::string &path) : path_(path) {
+Texture::Texture(const std::string &name, const std::string &path) : Texture(name, path, false) {}
+
+Texture::Texture(const std::string &name, const std::string &path, bool srgb)
+    : path_(path), name_(name), srgb_(srgb) {
   backend_ = CreateTextureBackend();
 
   stbi_set_flip_vertically_on_load(true);
@@ -44,7 +49,7 @@ Texture::Texture(const std::string &name, const std::string &path) : path_(path)
   data_ = stbi_load(path.c_str(), &width_, &height_, &channels_, 0);
   if (data_) {
     owns_data_ = true;
-    backend_->SetData(data_, width_, height_, channels_);
+    backend_->SetData(data_, width_, height_, channels_, srgb_);
   } else {
     LOG_WARN("Texture") << "Failed to load texture: " << path << ", using fallback checkerboard.";
     static unsigned char fallback_data[] = {
@@ -54,10 +59,8 @@ Texture::Texture(const std::string &name, const std::string &path) : path_(path)
     width_    = 2;
     height_   = 2;
     channels_ = 4;
-    backend_->SetData(fallback_data, width_, height_, channels_);
+    backend_->SetData(fallback_data, width_, height_, channels_, false);
   }
-
-  name_ = name;
 }
 
 Texture::Texture() { backend_ = CreateTextureBackend(); }
@@ -79,7 +82,7 @@ void Texture::SetData(unsigned char *data, int width, int height) {
   height_   = height;
   channels_ = 4;
 
-  backend_->SetData(data_, width_, height_, channels_);
+  backend_->SetData(data_, width_, height_, channels_, srgb_);
 }
 
 void Texture::Bind(unsigned int slot) const { backend_->Bind(slot); }
@@ -91,6 +94,8 @@ void Texture::SetSubTexture(int frame) { backend_->SetSubTexture(frame, h_frames
 unsigned int Texture::GetID() const { return backend_ ? backend_->GetID() : 0; }
 
 Ref<Texture> Texture::Create(const std::string &path) { return CreateRef<Texture>(path); }
+
+Ref<Texture> Texture::Create(const std::string &path, bool srgb) { return CreateRef<Texture>(path, srgb); }
 
 TextureLibrary::TextureLibrary() {}
 
@@ -108,8 +113,8 @@ void TextureLibrary::Add(const Ref<Texture> &texture) {
   Add(name, texture);
 }
 
-Ref<Texture> TextureLibrary::Load(const std::string &name, const std::string &path) {
-  auto texture = CreateRef<Texture>(name, path);
+Ref<Texture> TextureLibrary::Load(const std::string &name, const std::string &path, bool srgb) {
+  auto texture = CreateRef<Texture>(name, path, srgb);
   Add(texture);
   LOG_DEBUG("TextureLibrary") << "Loaded texture '" << name << "'";
   return texture;

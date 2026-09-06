@@ -24,8 +24,10 @@ class ITextureBackend;
 class Texture {
  public:
   Texture(const std::string &path);
+  Texture(const std::string &path, bool srgb);
 
   Texture(const std::string &name, const std::string &path);
+  Texture(const std::string &name, const std::string &path, bool srgb);
 
   void SetData(unsigned char *data, int width, int height);
 
@@ -52,6 +54,7 @@ class Texture {
   unsigned int GetID() const;
 
   static Ref<Texture> Create(const std::string &path);
+  static Ref<Texture> Create(const std::string &path, bool srgb);
 
  private:
   std::unique_ptr<ITextureBackend> backend_;
@@ -69,6 +72,7 @@ class Texture {
   bool           owns_data_ = false;
 
   std::string name_;
+  bool        srgb_ = false;
 };
 
 class TextureLibrary {
@@ -80,7 +84,7 @@ class TextureLibrary {
 
   void Add(const Ref<Texture> &texture);
 
-  Ref<Texture> Load(const std::string &name, const std::string &path);
+  Ref<Texture> Load(const std::string &name, const std::string &path, bool srgb = false);
 
   Ref<Texture> Get(const std::string &name);
 

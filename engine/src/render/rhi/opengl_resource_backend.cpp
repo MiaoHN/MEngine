@@ -24,12 +24,14 @@ OpenGLTextureBackend::OpenGLTextureBackend() {
 
 OpenGLTextureBackend::~OpenGLTextureBackend() { glDeleteTextures(1, &id_); }
 
-void OpenGLTextureBackend::SetData(unsigned char *data, int width, int height, int channels) {
+void OpenGLTextureBackend::SetData(unsigned char *data, int width, int height, int channels, bool srgb) {
   GLenum format = GL_RGBA;
   if (channels == 1) {
     format = GL_RED;
   } else if (channels == 3) {
-    format = GL_RGB;
+    format = srgb ? GL_SRGB : GL_RGB;
+  } else if (channels == 4) {
+    format = srgb ? GL_SRGB_ALPHA : GL_RGBA;
   }
 
   glBindTexture(GL_TEXTURE_2D, id_);

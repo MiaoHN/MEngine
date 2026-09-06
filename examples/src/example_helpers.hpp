@@ -103,10 +103,13 @@ inline Ref<Material> BlinnLoNormalMapped(const std::string &albedo_path, const s
 
 /// @brief LearnOpenGL-exact textured Blinn material with just a diffuse map
 /// (wood floor etc.). LO 7.bloom's shader has no specular term, so no spec map.
-inline Ref<Material> BlinnLoDiffuse(const std::string &albedo_path, float shininess = 32.0f) {
+/// `srgb` mirrors LO's loadTexture(..., true): the map is decoded sRGB->linear
+/// on the GPU (LO 7.bloom loads its wood/container albedo maps this way).
+inline Ref<Material> BlinnLoDiffuse(const std::string &albedo_path, float shininess = 32.0f,
+                                    bool srgb = false) {
   Ref<Material> m = CreateRef<Material>();
   m->SetShader(AssetManager::Instance().GetShader("blinn_lo"));
-  m->SetAlbedoMap(AssetManager::Instance().GetTexture(albedo_path));
+  m->SetAlbedoMap(AssetManager::Instance().GetTexture(albedo_path, srgb));
   m->SetShininess(shininess);
   return m;
 }

@@ -92,9 +92,12 @@ Ref<Shader> AssetManager::GetShader(const std::string &name) {
   return shader_library_->Load(name, Resolve(vert_rel), Resolve(frag_rel));
 }
 
-Ref<Texture> AssetManager::GetTexture(const std::string &name_or_path) {
-  if (texture_library_->Exists(name_or_path)) {
-    return texture_library_->Get(name_or_path);
+Ref<Texture> AssetManager::GetTexture(const std::string &name_or_path, bool srgb) {
+  // Distinct cache entry for the sRGB variant so the same file can be used raw
+  // (LO lighting tutorials) and as sRGB (LO 6.hdr / 7.bloom) independently.
+  const std::string cache_key = name_or_path + (srgb ? "@srgb" : "");
+  if (texture_library_->Exists(cache_key)) {
+    return texture_library_->Get(cache_key);
   }
 
   std::string relative = name_or_path;
@@ -103,7 +106,7 @@ Ref<Texture> AssetManager::GetTexture(const std::string &name_or_path) {
     relative = it->second;
   }
 
-  return texture_library_->Load(name_or_path, Resolve(relative));
+  return texture_library_->Load(cache_key, Resolve(relative), srgb);
 }
 
 Ref<Shader> AssetManager::GetDefaultShader() {

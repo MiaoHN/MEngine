@@ -29,12 +29,14 @@ std::shared_ptr<Scene> BuildHdrBloom() {
     t.translation = {0.0f, -1.0f, 0.0f};
     t.scale       = glm::vec3(25.0f, 1.0f, 25.0f);
     floor.AddComponent<MeshComponent>(Mesh::CreateCube(),
-                                      examples::BlinnLoDiffuse("textures/wood.png"));
+                                      examples::BlinnLoDiffuse("textures/wood.png", 32.0f, /*srgb*/ true));
   }
 
   // --- scenery container2 cubes (LO positions/rotations; engine scale = 2x LO
   //     scale because our cube is unit-sized while LO's renderCube is ±1).
-  const auto crate = []() { return examples::BlinnLoDiffuse("textures/container2.png"); };
+  const auto crate = []() {
+    return examples::BlinnLoDiffuse("textures/container2.png", 32.0f, /*srgb*/ true);
+  };
   Put(*s, Mesh::CreateCube(), crate(), {0.0f, 1.5f, 0.0f}, 1.0f);      // LO scale .5
   Put(*s, Mesh::CreateCube(), crate(), {2.0f, 0.0f, 1.0f}, 1.0f);      // LO scale .5
   PutAxis(*s, Mesh::CreateCube(), crate(), {-1.0f, -1.0f, 2.0f}, glm::normalize(glm::vec3(1, 0, 1)), 60.0f, 2.0f);
@@ -69,12 +71,14 @@ std::shared_ptr<Scene> BuildHdrBloom() {
   s->SetSkyboxEnabled(false);
   s->SetBackgroundColor(glm::vec3(0.0f));
   s->SetIblIntensity(0.0f);
-  s->SetExposure(1.0f);
+  s->SetExposure(1.0f);  // LO default exposure; sRGB albedo maps keep brightness in check
   s->SetTAAEnabled(false);
   s->SetSSAOEnabled(false);
+  // LO adds the blurred bright buffer additively with NO extra god-rays veil.
+  s->SetGodRaysStrength(0.0f);
   s->SetBloomEnabled(true);
   s->SetBloomThreshold(1.0f);
-  s->SetBloomStrength(1.0f);  // LO adds the blurred bright buffer directly
+  s->SetBloomStrength(1.0f);  // LO: scene + bloomBlur additively
   return s;
 }
 }  // namespace

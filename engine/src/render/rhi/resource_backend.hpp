@@ -20,7 +20,7 @@ class ITextureBackend {
  public:
   virtual ~ITextureBackend() = default;
 
-  virtual void SetData(unsigned char *data, int width, int height, int channels) = 0;
+  virtual void SetData(unsigned char *data, int width, int height, int channels, bool srgb = false) = 0;
   virtual void Bind(unsigned int slot) const                                         = 0;
   virtual void Unbind() const                                                        = 0;
   virtual void SetSubTexture(int frame, int h_frames, int v_frames, int width, int height) = 0;

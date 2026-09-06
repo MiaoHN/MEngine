@@ -45,7 +45,12 @@ class AssetManager {
   Ref<Shader> GetShader(const std::string &name);
 
   /// @brief Loads (and caches) a texture by name or path relative to the root.
-  Ref<Texture> GetTexture(const std::string &name_or_path);
+  /// @brief Loads (and caches) a texture. When `srgb` is true the bytes are
+  /// uploaded as an sRGB texture so the GPU decodes sRGB->linear on sample
+  /// (LearnOpenGL loads its albedo maps this way for gamma-correct pipelines).
+  /// The cache key includes the srgb flag, so the same file can be used raw in
+  /// one scene and sRGB in another.
+  Ref<Texture> GetTexture(const std::string &name_or_path, bool srgb = false);
 
   /// @brief Returns a shared mesh for a serialized source string ("cube",
   /// "plane", "sphere" or a model file path relative to the asset root).

@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-06 — 引擎 sRGB 贴图支持：ex_5_6 泛光与 LO“处理一致”（修复偏亮/过渡）
+
+- **用户反馈**：泛光比 LO 示例亮、白色发光块下亮暗过渡不自然；要求整个渲染参数/处理与 LO 一致（不要靠压曝光硬凑）。
+- **根因**：LO 7.bloom 把 wood/container2 按 **sRGB 上传**（GPU 采样时解码 sRGB→linear，最后再 gamma），引擎却把所有贴图当线性（字节直读）→ 光照在线性域用了高一截的 albedo → 整体偏亮。先前压 exposure/bloom 是“假对齐”。
+- **引擎（真对齐）**：
+  - `ITextureBackend::SetData(..., bool srgb=false)`；OpenGL 在 srgb 时用 `GL_SRGB`/`GL_SRGB_ALPHA` 内格式（Vulkan 忽略）；`Texture` 支持 srgb 构造/`SetData`；`AssetManager::GetTexture(path, srgb=false)` 缓存键加 `@srgb` 后缀（同一文件可在不同场景分别按 raw 或 sRGB 加载，互不污染）。
+  - 新增 `examples::BlinnLoDiffuse(path, shininess, srgb)`（`GetTexture(path, srgb)`）。
+- **ex_5_6_hdr_bloom**：木地板与 container2 均按 **sRGB** 加载；曝光回 LO 默认 **1.0**；bloom 全量叠加 strength 1.0、阈值 1.0；god rays 关（LO 无）；LO `1-exp` tone + gamma 不变。默认正视画面=白色/绿色发光体+黑场（LO 官网图为斜视取景，可右键环绕观看光池/木箱）。
+- **验证**：debug（串行避免 clang OOM）全量编译零警告；capture 观感：发光体克制、过渡平顺。
+- **已知残留差异**：引擎 bloom 模糊在半分辨率做、LO 全分辨率 → 光晕略宽/柔和度不同；如白色块下过渡仍不自然，可给 PostProcessing 加“全分辨率 bloom”开关。
+
+---
+
 ## 2026-09-06 — ex_5_3 shadow_mapping（LO 5.advanced_lighting/3.1.3）LO-exact 化（5 章完成）
 
 - **引擎（blinn_lo）**：新增 **方向光阴影** 可选开关 `Scene/Renderer::SetLoDirShadow(bool)` → `u_lo_dir_shadow`：blinn_lo 声明引擎 shadow map（slot4/light_view_proj/PCF）并加 `DirShadowLit`（5×5 PCF 亮部比例，同 classic blinn），LO-exact 方向光的 diffuse+spec 乘该因子（=LO 的 (1-shadow)）。默认关，其它 LO 无阴影端口不变。
