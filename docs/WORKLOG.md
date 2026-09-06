@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-09-06 — editor 默认场景：发光小正方体 + 调暗环境光 + bloom
+
+- 默认编辑器场景（`CreatePhysicsDemo`）四角加入 4 个 **HDR 发光小正方体**（unlit PBR、base_color>1
+  直出 → bloom 提亮发光），每个实体同时挂 **`PointLightComponent`**（演示 Light 组件化：拖实体/用
+  Gizmo 移动，小方块与其点光一起动），颜色 暖/绿/蓝/白。
+- 初始化调暗：IBL 0.8 → **0.35**；显式 `SetBloomEnabled(true)` + `SetBloomThreshold(1.0f)`，
+  让发光源在较暗环境下清晰泛光（editor 打开即可看到 bloom 效果）。
+
+---
+
 ## 2026-09-06 — Light 组件化 v2：方向光实体 + 灯光组件实体级序列化
 
 - **方向光实体**：`DirectionalLightComponent`（ECS）。场景存在该组件时每帧把（首个）组件拷入

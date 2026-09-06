@@ -410,12 +410,13 @@ void Editor::Initialize() {
 
 active_scene_ = std::make_shared<Scene>();
 
-  // Default editor lighting: gentle bloom/shadow and an IBL ambient of 0.8
-  // (Renderer's own default is 1.0) so surfaces with a lot of non-sun-facing
-  // area - e.g. spheres - do not read as dark next to sun-lit cube tops.
-  // Per-scene "Rendering -> IBL Intensity" overrides this saved value.
-  active_scene_->SetIblIntensity(0.8f);
+  // Default editor lighting: an IBL ambient that is kept fairly dim so the
+  // HDR-emissive lamp cubes below clearly bloom (Renderer's default IBL is 1.0;
+  // the per-scene "Rendering -> IBL Intensity" overrides this saved value).
+  active_scene_->SetIblIntensity(0.35f);
   active_scene_->SetExposure(1.1f);
+  active_scene_->SetBloomEnabled(true);
+  active_scene_->SetBloomThreshold(1.0f);
   active_scene_->SetBloomStrength(0.015f);
   active_scene_->SetShadowPcfRadius(4.0f);
   active_scene_->SetGodRaysStrength(0.06f);
@@ -2747,7 +2748,42 @@ void Editor::CreatePhysicsDemo() {
   }
   bouncer.AddComponent<LuaScriptComponent>("scripts/bounce.lua");
 
-  LOG_INFO("Editor") << "Collision playground created (ground + targets + bouncer + camera)";
+  // ---- Emissive HDR "lamp" cubes + matching ECS point lights (bloom) -------
+  // Each small cube is an UNLIT HDR-emissive surface (outputs a colour > 1, so
+  // the bloom pass picks it up and it glows). The same entity also carries a
+  // PointLightComponent - position follows its Transform, so moving / gizmo-ing
+  // a lamp moves both its cube and its light (Light componentization demo).
+  const struct {
+    glm::vec3 pos;
+    glm::vec3 color;
+  } kLamps[] = {
+      {{-4.0f, 1.6f, -4.0f}, {6.0f, 2.5f, 1.0f}},   // warm
+      {{4.0f, 1.6f, -4.0f}, {2.5f, 6.0f, 1.0f}},    // green
+      {{-4.0f, 1.6f, 4.0f}, {1.0f, 4.0f, 7.0f}},    // blue
+      {{4.0f, 1.6f, 4.0f}, {7.0f, 7.0f, 7.0f}},     // white
+  };
+  Ref<Mesh> unit_cube = Mesh::CreateCube();
+  for (const auto &lamp_def : kLamps) {
+    Entity lamp = active_scene_->CreateEntity("Emissive Lamp");
+    lamp.AddComponent<Transform>(lamp_def.pos);
+    lamp.GetComponent<Transform>().scale = glm::vec3(0.3f);
+
+    auto material = CreateRef<Material>();
+    material->SetShader(AssetManager::Instance().GetShader("pbr"));
+    material->SetBaseColorFactor(glm::vec4(lamp_def.color, 1.0f));
+    material->SetUnlit(true);  // output the HDR colour directly -> blooms
+    lamp.AddComponent<MeshComponent>(unit_cube, material);
+
+    PointLightComponent light;
+    light.light.color     = lamp_def.color * 0.2f;  // tint the scene like the lamp
+    light.light.intensity = 1.0f;
+    light.light.radius    = 8.0f;
+    lamp.AddComponent<PointLightComponent>(light);
+  }
+
+  LOG_INFO("Editor")
+      << "Collision playground created (ground + targets + bouncer + camera + "
+         "emissive lamp cubes)";
 }
 
 void Editor::SetGridVisible(bool visible) {
