@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-09-06 — 引擎 axis-angle 旋转 + 首个 1:1 LO 端口（multiple_lights）
+
+- **需求（选 A）**：给引擎加任意轴旋转，以便 LO 那种 `rotate(axis, angle)` 能 1:1 复刻。
+- **改动（4b3b253，dev）**：
+  - `Transform::SetRotationAxisAngle(axis, degrees)`：内部存成欧拉(度)，净旋转 == axis-angle；编辑器/动画/Lua/物理回写零改动。`ExampleApp::Setup` 增加 `fov`（LO 用 45°）。
+  - helpers 增加 `examples::PutAxis(...)`（位置+轴角+缩放）与 `examples::BlinnTextured(...)`。
+  - **`ex_2_6_multiple_lights` 重写为首个 1:1 LO 端口**：Blinn 管线 + container2 贴图 + LO 的 10 个立方体位置/绕(1,.3,.5)·20°·i 轴角旋转 + 4 个 LO 点光（lo_attenuation c1/l.09/q.032、白 ~0.8）+ 暗淡方向光 + 灰 .1 背景 + LO 相机(0,0,3) FOV45 望 -Z。capture 验证倾斜木箱/灯位标记。
+  - 与 LO 的已知差异：窗口 16:9 vs LO 800×600(4:3)（横向取景略不同）；相机手电聚光省略（宿主为轨道相机）。
+- **模板确立**：后续 2.lighting/5.advanced_lighting 逐场景按此套路 1:1 端口。
+
+---
+
 ## 2026-09-06 — LO 光衰减 + examples 命名规则（为 1:1 复刻铺路）
 
 - **需求**：1:1 复刻 LO 前，先把 LO 的点/聚光衰减（constant/linear/quadratic）做进引擎；给示例 target 起名时能直接对上 LO 章节/源码。
