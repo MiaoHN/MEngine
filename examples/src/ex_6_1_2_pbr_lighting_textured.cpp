@@ -68,10 +68,12 @@ std::shared_ptr<Scene> BuildPbrTextured() {
   l.quadratic      = 1.0f;
   s->AddPointLight(l);
 
-  // No IBL / no sun; 0.1 clear; engine PBR post (ACES tone + gamma), clean LO
+  // No IBL / no sun; LO's raw 0.1 clear reads ~RGB 25 while the engine's post
+  // tone+gamma would lift 0.1 to a medium grey, so feed ~0.011 linear to keep
+  // the background dark like LO. Engine PBR post (ACES tone + gamma), clean LO
   // figure (no bloom / god rays / TAA / SSAO).
   examples::NoSun(*s);
-  examples::SolidBackground(*s, glm::vec3(0.1f, 0.1f, 0.1f), 0.0f);
+  examples::SolidBackground(*s, glm::vec3(0.011f, 0.011f, 0.011f), 0.0f);
   s->SetBloomEnabled(false);
   s->SetGodRaysStrength(0.0f);
   s->SetTAAEnabled(false);

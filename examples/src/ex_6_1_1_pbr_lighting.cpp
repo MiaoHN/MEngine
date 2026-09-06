@@ -53,11 +53,13 @@ std::shared_ptr<Scene> BuildPbrLighting() {
     s->AddPointLight(l);
   }
 
-  // LO 1.1 has no IBL / no sun; plain 0.1 clear. Engine PBR path (not blinn_lo),
-  // so post stays engine (ACES tone + gamma); kill bloom/god-rays/TAA for the
-  // clean LO figure.
+  // LO 1.1 has no IBL / no sun; plain 0.1 clear written RAW (no tone/gamma) ->
+  // ~RGB 25. The engine's composite tone+gamma lifts the background, so feed it
+  // a much smaller linear value (~0.011) so the final background reads like
+  // LO's dark 0.1 clear. Engine PBR path (not blinn_lo); kill bloom/god-rays/
+  // TAA for the clean LO figure.
   examples::NoSun(*s);
-  examples::SolidBackground(*s, glm::vec3(0.1f, 0.1f, 0.1f), 0.0f);
+  examples::SolidBackground(*s, glm::vec3(0.011f, 0.011f, 0.011f), 0.0f);
   s->SetBloomEnabled(false);
   s->SetGodRaysStrength(0.0f);
   s->SetTAAEnabled(false);
