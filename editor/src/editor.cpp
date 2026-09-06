@@ -2912,13 +2912,12 @@ void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
   ImGui::DockBuilderDockWindow("Log", dock_bottom);
   ImGui::DockBuilderDockWindow("Timeline", dock_bottom);
 
-  // Central area: the Viewport keeps most of the space, with the Script Editor
-  // docked beside it so code and the game view stay visible together.
-  ImGuiID dock_editor   = 0;
-  ImGuiID dock_viewport = 0;
-  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.32f, &dock_editor, &dock_viewport);
-  ImGui::DockBuilderDockWindow("Viewport", dock_viewport);
-  ImGui::DockBuilderDockWindow("Script Editor", dock_editor);
+  // Central area: the Viewport and the Script Editor share ONE dock node, so
+  // ImGui shows them as two tabs of a single window (click the tab to switch
+  // between the game view and the code editor). Dock the Viewport first so it
+  // is the initially visible tab.
+  ImGui::DockBuilderDockWindow("Viewport", dockspace_id);
+  ImGui::DockBuilderDockWindow("Script Editor", dockspace_id);
 
   // Right column: Information on top, Lighting + Rendering below.
   ImGuiID dock_right_info = 0;
