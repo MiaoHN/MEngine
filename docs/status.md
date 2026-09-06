@@ -352,9 +352,9 @@
 - [x] M4f：TAA（时间抗锯齿）
 - [x] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [x] M6：LO 移植期（三管线/后期 tone 模式/BRDF LUT/镜面 IBL 开关/环境覆盖/examples）
-- [ ] 场景序列化（`LoadScene/SaveScene`）
+- [x] 场景序列化（`LoadScene/SaveScene`，JSON：实体+材质+灯光+渲染参数；editor File→Open/Save）
 - [ ] 补全 Vulkan 资源后端
-- [ ] 深度整理：文档同步、重复抽象清理、Light 组件化、Renderer uniform 批量/去重
+- [ ] 深度整理：Light 组件化、Model 多网格/多材质 + `.mtl`、Renderer uniform 批量/去重、Editor 渲染选项接入
 
 ## 已知问题 / 技术债
 

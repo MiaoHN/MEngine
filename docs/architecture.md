@@ -123,6 +123,6 @@ sequenceDiagram
 - 渲染主路径为 **3D PBR**（含阴影/SSAO/IBL(irradiance+prefilter+BRDF LUT)/后期/三套材质管线），
   状态里程碑见 [status.md](./status.md)（M1–M6）；渲染层细节与剩余局限见 [rendering.md](./rendering.md)。
 - **Vulkan 后端是半成品**：`VulkanRHI` 有 swapchain 等初始化代码，但 `Vulkan*ResourceBackend` 大多是空壳。
-- `Scene::LoadScene/SaveScene`（场景序列化）仍为 TODO。
+- `Scene::LoadScene/SaveScene`（场景序列化，JSON）已实现，editor File→Open/Save 与 Play 快照在用。
 - ~~`RenderContext` 重复抽象~~：`render_context.hpp` 无人引用且无实现，已删除。
 - 光照未组件化：方向光为引擎字段、点光/聚光为场景级列表（计划抽象为 ECS `Light` 组件）。

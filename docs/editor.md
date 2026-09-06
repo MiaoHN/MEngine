@@ -30,7 +30,7 @@ graph TB
 
 | 面板 | 函数 | 说明 |
 | --- | --- | --- |
-| 菜单栏 | `BeginImGui()` | File（Open 占位）+ View（面板显隐 + Reset Layout） |
+| 菜单栏 | `BeginImGui()` | File（Open / Save / Save As…，原生对话框）+ View（面板显隐 + Reset Layout） |
 | 内容浏览器 | `ShowImGuiContentBrowser()` | 遍历 `assets/` 目录，图片缩略图 + 拖拽源（`CONTENT_BROWSER_ITEM` payload） |
 | 视口 | `ShowImGuiViewport()` | 显示视口 FBO 纹理；工具栏（Translate/Rotate/Scale + Play/Stop）；接收模型拖入 |
 | 场景层级 | `ShowImGuiScene()` | **父/子层级树**（缩进 + 展开/折叠，子实体随父实体移动/旋转/缩放）；Create（Empty/Cube/Plane/Sphere/Camera）+ Delete（级联删除子树）+ Duplicate（整棵子树深拷贝）；右键节点可 Create Child / Duplicate / Delete / Unparent；**拖拽到另一节点 = 重新父化**，拖到列表下方空区 = 解除父化 |
@@ -50,7 +50,7 @@ graph TB
 
 ## 当前局限
 
-- 场景序列化（`LoadScene/SaveScene`）未实现。
 - OBJ 的 `.mtl` 未解析（贴图靠文件名约定自动套用）。
 - 模型/场景面板尚无多选、撤销/重做。
 - 内容浏览器无面包屑/刷新按钮。
+- M6 新增的渲染选项（Reinhard/LO tone、环境 HDR 路径/翻转、`SetIblSpecular`、背景色等）尚未接入面板。

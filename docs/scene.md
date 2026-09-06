@@ -61,7 +61,9 @@ entt::entity GetHandle() const;
 - `DestroyEntity(entity)`：销毁实体（TODO 标记，基本实现）。
 - `GetAllEntitiesWith<Components...>()`：返回满足组件组合的实体列表。
 - `GetAllEntities()`：全部实体。
-- `LoadScene/SaveScene(path)`：**TODO，未实现**。
+- `LoadScene/SaveScene(path)`：**已实现**（`scene_serializer.cpp`，JSON）：实体（Tag/Transform/
+  MeshComponent(含材质)/CameraComponent/RigidBody/Collider/CameraController）+ 灯光 + 渲染参数；
+  材质贴图以相对 assets 根存储。editor 的 File→Open/Save/Save As 与 Play 快照均走它。
 - `OnUpdateEditor(camera)` / `OnUpdateSimulation(dt, camera)`：编辑器/模拟更新（后者 TODO）。
 - `OnUpdateRuntime(dt, vw, vh)`：运行时更新——找 primary 相机，设置投影并渲染；无 primary 相机则用默认相机。
 - `Render(camera)`：遍历 `Sprite2D` 与 `AnimatedSprite2D` 实体，调用 `renderer_->RenderSprite(...)`。
@@ -85,5 +87,5 @@ entt::entity GetHandle() const;
 ## 3D 化的衔接点
 
 - `Transform`（TRS + 四元数）已是 3D 语义，直接用于 3D 网格。
-- `Scene::LoadScene/SaveScene` 尚未实现，是资产/场景序列化的切入点。
+- `Scene::LoadScene/SaveScene` 已实现（JSON 序列化），编辑器与 Play 快照在用。
 - 详见 [roadmap.md](./roadmap.md)。
