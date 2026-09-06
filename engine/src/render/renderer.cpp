@@ -436,7 +436,11 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   shader->SetUniform("prefiltered_map", 6);
   shader->SetUniform("brdf_lut", 13);
   shader->SetUniform("max_prefilter_mip", skybox_->GetMaxPrefilterMip());
-  shader->SetUniform("ibl_intensity", ibl_intensity_);
+  // The skybox IS the environment light source: with it disabled there is no
+  // IBL at all, so metals / reflections go dark and only direct lights remain
+  // (otherwise toggling the skybox only changed the background, not the look).
+  const float ibl_intensity = skybox_enabled_ ? ibl_intensity_ : 0.0f;
+  shader->SetUniform("ibl_intensity", ibl_intensity);
   shader->SetUniform("u_ibl_specular", ibl_specular_);
 
   // Screen-space ambient occlusion.
