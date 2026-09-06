@@ -81,9 +81,10 @@
 ## 6. pbr
 | 目录 | 内容 | 状态 |
 |---|---|---|
-| 1.x lighting / textured | PBR 直射 | ✅ 引擎即 PBR（GGX）；PBR 扫参/纹理演示见 `ex_2_3_materials` 之前的 PBR 版 / `ex_2_4` / normal_mapping |
+| 1.1.lighting | PBR 直射 | ✅ `ex_6_1_1_pbr_lighting`（引擎 PBR：7×7 红球，metallic=行/7、roughness=列/7，4×300 白光 1/d²；IBL 关、clear 0.1；后处理 ACES vs LO Reinhard）|
+| 1.2.lighting_textured | PBR 直射+贴图 | ✅ `ex_6_1_2_pbr_lighting_textured`（rusted_iron albedo/normal/ao 贴图 raw；引擎用合并 MR 贴图、LO 分开 metallic/roughness 两张灰度 → 以标量金属/粗糙近似，见文件头注）|
 | 2.x ibl (irradiance/specular conversion) | IBL 预计算 | ⛔ 引擎 skybox 在内部已完成 IBL（prefilter/irradiance）；非用户层 |
-| PBR 资源 (rusted_iron/gold 等) | — | 可下载到 `assets/textures/pbr/` 后做 PBR 贴图材质场景 ⬜ |
+| PBR 资源 (rusted_iron/gold 等) | — | ✅ 已镜像到 `assets/textures/pbr/{rusted_iron,gold,grass,plastic,wall}/`（6.1.2 已用 rusted_iron）|
 
 ## 7. in_practice / 8. guest
 | 目录 | 内容 | 状态 |
@@ -107,6 +108,8 @@ ex_5_4_normal_mapping      -> 5.advanced_lighting/4.normal_mapping (✅ blinn_lo
 ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom (✅ blinn_lo 1:1)
 ex_5_8_deferred_shading   -> 5.advanced_lighting/8.1.deferred_shading (◐ 前向等效：9 背包 + 32 盏彩点光；引擎为前向、点光上限 32 blinn_lo)
 ex_5_9_ssao               -> 5.advanced_lighting/9.ssao (✅ 引擎真实 SSAO 演示，空格 on/off)
+ex_6_1_1_pbr_lighting     -> 6.pbr/1.1.lighting (✅ 引擎 PBR 直射：7×7 金属/粗糙矩阵)
+ex_6_1_2_pbr_lighting_textured -> 6.pbr/1.2.lighting_textured (◐ 引擎 PBR 贴图：rusted_iron；MR 分离贴图→标量近似)
 ```
 > 每个 target 对应 LO 源码：`LearnOpenGL/src/<章>/<小节>/<源码名>.cpp`（CMake 注释里已写死）。
 > 新建端口一律沿用该命名，如 `ex_3_1_model_loading`、`ex_6_1_1_pbr_lighting` 等。

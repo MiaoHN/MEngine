@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-06 — LO 6.pbr 复刻：6.1.1 lighting + 6.1.2 lighting_textured（引擎 PBR 直射）
+
+- **用户**：刚才压测那个先不要了；继续复刻 LO 的 PBR 部分场景。
+- **ex_6_1_1_pbr_lighting** ← LO 6.pbr/1.1.lighting：7×7 红球（albedo 0.5 红），`metallic=row/7`、`roughness=clamp(col/7,.05,1)`；4 盏 300 白光 (±10,±10,10)，LO `1/d²` 衰减（lo_attenuation c0/l0/q1）；引擎 PBR、IBL 关（skybox off、ibl 0）、clear 0.1、bloom/god-rays/TAA/SSAO 关；引擎后处理 ACES+gamma（LO 1.1.fs 用 Reinhard → 近似）；相机 dist 21 拉远取整幅矩阵。
+- **ex_6_1_2_pbr_lighting_textured** ← LO 1.2：7×7 **rusted_iron** 球 + 单白光 (0,0,10) 强度150、1/d²；albedo/normal/ao 三张贴图 raw 载入（与 LO 一致不解码）；引擎 PBR 的 MR 是**合并贴图**（G=rough、B=metal），而 LO 是分开的 metallic/roughness 两张灰度 → 用标量 metal 0.9 / rough 0.6 近似（文件头注释了该引擎限制）。
+- **素材**：`assets/textures/pbr/{rusted_iron,gold,grass,plastic,wall}`（此前 LO 镜像）。
+- **验证**：capture 观感与 LO 图一致：6.1.1 上行金属镜面高光→下行哑光、左滑右糙；6.1.2 锈铁斑驳金属球。2.x IBL 系列为引擎内部能力，未单列（PORTING 已注明）。
+- 撤销了上一轮 `ex_5_8_light_stress`（未提交，已删文件 + 去掉 CMake 注册）。
+
+---
+
 ## 2026-09-06 — 窗口标题实时 FPS（引擎 Application + 每个 example 标题带 demo 名）
 
 - **用户**：每个 example 的窗口 title 上能不能加上 FPS。
