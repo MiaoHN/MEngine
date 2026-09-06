@@ -5,6 +5,18 @@
 
 ---
 
+## 2026-09-06 — 后处理“线性直出” + LO 数值审计（修复 MEngine 方块整体偏亮）
+
+- **用户反馈**：整体亮度仍偏高；要求逐项比对渲染参数是否与 LO 对齐。
+- **根因（审计）**：引擎默认 composite 做 **ACES + gamma**，会把 LO 那种“未 tone map 的原始值”整体抬亮（且 sRGB 贴图字节被当线性再 gamma ≈ 2.2× 提亮）。LO 教程是直接把 shader 结果写回 framebuffer。
+- **改动（8214d5e，dev）**：
+  - 引擎：`Scene/Renderer/PostProcessing::SetLinearOutput(bool)`；composite `u_linear_output=1` 时 **clamp(hdr)，不做 ACES/gamma**（默认关闭，其余场景不变）。LO 端口调用 `SetLinearOutput(true)` + 曝光 1.0。
+  - `ex_2_6_multiple_lights` 数值对齐：方向光 0.4(=LO diffuse 0.4)、IBL 0.15≈dir ambient 0.05、材质 spec 0.4（去掉“发白”）、背景 0.008 近黑、点光 0.8 + LO c/l/q。capture：黑背景、受光面亮、白灯，已接近 LO。
+- **仍存的差异（列清单，待选）**：(1) LO 是 Phong(reflect)，我们 Blinn(H)；(2) LO spec 不乘 NdotL；(3) LO 每灯 ambient/diffuse/spec 分离且 ambient 乘衰减，我们只有 color+intensity；(4) LO 用 container2_specular 逐像素高光贴图，我们只有统一标量；(5) gamma 已可用 SetLinearOutput 对齐。
+  → 下一步二选一：A) 给引擎把 blinn 路径做成 LO-exact（每灯三分量 + specular 贴图 + Phong 分支）；B) 停在“观感接近”。
+
+---
+
 ## 2026-09-06 — Material 自发光 + ex_2_6_multiple_lights 调成 LO 观感
 
 - **用户对比 LO 截图反馈**：我们的背景/环境太亮、灯位小立方不是“纯白发光”，不像 LO。
