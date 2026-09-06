@@ -2872,8 +2872,8 @@ void Editor::CreateEngineDemo() {
   // General-engine presentation settings (ACES + gamma, sun + skybox, bloom).
   auto &sun = active_scene_->GetLight();
   sun.direction = glm::normalize(glm::vec3(-0.4f, -1.0f, -0.3f));
-  sun.color     = glm::vec3(1.6f);
-  sun.ambient   = glm::vec3(0.04f);
+  sun.color     = glm::vec3(1.35f);
+  sun.ambient   = glm::vec3(0.02f);
   sun.diffuse   = glm::vec3(1.0f);
   sun.specular  = glm::vec3(1.0f);
   active_scene_->SetLoLighting(false);
@@ -2881,7 +2881,7 @@ void Editor::CreateEngineDemo() {
   active_scene_->SetLoHdrTone(false);
   active_scene_->SetReinhardTone(false);
   active_scene_->SetSkyboxEnabled(true);
-  active_scene_->SetIblIntensity(0.35f);
+  active_scene_->SetIblIntensity(0.18f);
   active_scene_->SetExposure(1.0f);
   active_scene_->SetBloomEnabled(true);
   active_scene_->SetBloomThreshold(1.0f);
@@ -3224,6 +3224,61 @@ void Editor::RunSceneFileSelftest(const std::string &path) {
 
 void Editor::CreateModelEntity(const std::filesystem::path &path) {
   LOG_INFO("Editor") << "Importing model: " << path.filename().string();
+
+  // Multi-material OBJ (e.g. the nanosuit): import as a root entity with one
+  // CHILD per `usemtl` part, so each part keeps its own texture/material. The
+  // root carries the auto-fit transform; children are identity-posed.
+  if (path.extension() == ".obj") {
+    // Only import as a grouped entity tree for genuinely multi-material OBJs
+    // (several `usemtl` parts, e.g. the nanosuit). Single-material OBJs fall
+    // through to the legacy path so their .mtl / sibling-texture heuristic and
+    // single-entity behaviour stay unchanged.
+    if (Ref<ObjModel> model = ModelLoader::LoadObjModel(path.string()); model && model->parts.size() > 1) {
+      const std::string stem = path.stem().string();
+      Entity            root = CreateEntityWithUniqueName(stem);
+      auto             &rt   = root.AddComponent<Transform>();
+
+      const Ref<Shader> pbr = AssetManager::Instance().GetShader("pbr");
+      glm::vec3         bmin(std::numeric_limits<float>::max());
+      glm::vec3         bmax(std::numeric_limits<float>::lowest());
+      for (size_t i = 0; i < model->parts.size(); ++i) {
+        ObjModelPart &part = model->parts[i];
+        if (!part.material) part.material = CreateDefaultMaterial();
+        part.material->SetShader(pbr);
+        // OBJ .mtl files are specular-workflow: no metallic/roughness maps. Map
+        // that onto a low-roughness dielectric when a specular map is present so
+        // the model keeps its sheen under the engine's PBR shader.
+        if (part.material->GetSpecularMap()) {
+          part.material->SetMetallicFactor(0.0f);
+          part.material->SetRoughnessFactor(0.4f);
+        }
+        for (const auto &v : part.mesh->GetVertices()) {
+          bmin = glm::min(bmin, v.position);
+          bmax = glm::max(bmax, v.position);
+        }
+        const std::string part_name = part.name.empty() ? (stem + " part") : part.name;
+        Entity            child     = CreateEntityWithUniqueName(part_name);
+        child.AddComponent<Transform>();
+        child.AddComponent<MeshComponent>(part.mesh, part.material);
+        active_scene_->SetParent(child.GetHandle(), root.GetHandle());
+      }
+
+      // Auto-fit the whole model: scale so the longest axis is ~2 units and
+      // rest the bottom of its bounds on the ground grid.
+      const glm::vec3 extent     = bmax - bmin;
+      const float     max_extent = std::max({extent.x, extent.y, extent.z});
+      if (max_extent > 0.0001f) {
+        const float fit_scale     = 2.0f / max_extent;
+        rt.scale                  = glm::vec3(fit_scale);
+        rt.translation            = -glm::vec3((bmin + bmax) * 0.5f) * fit_scale;
+        rt.translation.y          = -bmin.y * fit_scale;  // sit on the grid
+      }
+
+      selected_entity_ = root;
+      LOG_INFO("Editor") << "Imported multi-material model '" << stem << "': " << model->parts.size() << " parts";
+      return;
+    }
+  }
 
   Ref<Mesh>     mesh;
   Ref<Material> material;
