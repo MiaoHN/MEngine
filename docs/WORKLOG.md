@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-09-06 — 引擎多方向光（带阴影主光 + 最多 4 个无阴影补光）
+
+- **engine 多方向光**：`DirectionalLightComponent` 实体可多个——第一个是**带阴影主光**（沿用原 shadow-map 路径），其余变成额外的无阴影方向光（补光/彩色填充）。renderer 增 `directional_extras_`（`Set/Clear/GetDirectionalExtras`，上限 `kMaxDirectionalExtras=4`）；`SyncLightComponents` 每帧收集全部方向光实体、推导方向后拆分主光 + extras。
+- **着色器**：`pbr_frag` / `blinn_frag`（引擎路径）声明 `MAX_DIR_EXTRA 4` + `dir_extra_count/dir_extra_dir[]/dir_extra_color[]` 数组 uniform；主方向光块之后叠加无阴影补光（pbr 加 BRDF 项、blinn 加 diffuse+spec 项）。upload 放在 per-pass uniform cache 守卫内（同 shader 只传一次）。LO 精确 `blinn_lo` **保持单方向光不动**。
+- **editor**：Lighting 面板方向光区改为列出**全部**方向光实体（点击选中），首个标注“Primary（cast shadows）”，其余为无阴影补光；无实体时仍显示 Scene Sun 兜底 + “Add Directional Light”。光源示意图本就可为每个方向光实体各画一个太阳盘+箭头，天然支持补光瞄准。
+- 回归：editor / `example_ex_6_2_2_ibl_specular`（pbr）编译运行通过，headless 30 帧截图与改造前一致（`dir_extra_count=0` 默认不改变渲染）；LO exe、默认 PBR/ACES 编辑器场景不受影响。
+- 下一步：C（引擎 Model/MeshLibrary 正规化：把“导入拆子实体”升级为单实体多材质模型组件）。
+
+---
+
 ## 2026-09-06 — 多材质模型 + OBJ spec/反射资源 + 点光软阴影 + 默认调暗
 
 - **点光软阴影（PCF）**：`pbr/blinn` 前向着色器把点阴影改为切线空间 5×5 PCF（`point_shadow_size` 上传 cube 面分辨率）→ Rendering 面板 `Shadow PCF Radius` 可调软硬。commit `1fc4cd8`。
