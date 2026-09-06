@@ -200,6 +200,9 @@ class Scene {
   void SetSSAOEnabled(bool enabled);
   void SetTAAEnabled(bool enabled);
   void SetBloomEnabled(bool enabled);
+  /// @brief Raw/linear composite (no ACES/gamma) for LearnOpenGL-style scenes.
+  void SetLinearOutput(bool enabled);
+  [[nodiscard]] bool IsLinearOutput() const;
 
   [[nodiscard]] bool       IsSSAOEnabled() const;
   [[nodiscard]] bool       IsTAAEnabled() const;

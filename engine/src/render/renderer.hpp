@@ -154,6 +154,10 @@ class Renderer {
   void SetBloomEnabled(bool enabled);
   [[nodiscard]] bool IsBloomEnabled() const;
 
+  /// @brief Raw/linear composite output (no ACES, no gamma) - LearnOpenGL parity.
+  void SetLinearOutput(bool enabled);
+  [[nodiscard]] bool IsLinearOutput() const;
+
   void SetRenderMode(RenderMode mode) { render_mode_ = mode; }
   [[nodiscard]] RenderMode GetRenderMode() const { return render_mode_; }
 

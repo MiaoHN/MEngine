@@ -28,7 +28,7 @@ std::shared_ptr<Scene> BuildMultipleLights() {
       {1.5f, 0.2f, -1.5f},    {-1.3f, 1.0f, -1.5f},
   };
   const glm::vec3 axis  = glm::vec3(1.0f, 0.3f, 0.5f);
-  const auto      crate = []() { return examples::BlinnTextured("textures/container2.png", 32.0f, 0.9f); };
+  const auto      crate = []() { return examples::BlinnTextured("textures/container2.png", 32.0f, 0.4f); };
   for (int i = 0; i < 10; ++i) {
     PutAxis(*s, Mesh::CreateCube(), crate(), cube_pos[i], axis, 20.0f * static_cast<float>(i));
   }
@@ -50,12 +50,14 @@ std::shared_ptr<Scene> BuildMultipleLights() {
     Put(*s, Mesh::CreateCube(), examples::Unlit(glm::vec3(1.0f)), point_pos[i], 0.2f);
   }
 
-  // --- dim directional light, near-black background, no ambient (LO look)
-  examples::Sun(*s, {-0.2f, -1.0f, -0.3f}, glm::vec3(0.6f, 0.6f, 0.6f));
-  // Linear clear colour must be tiny: the engine's post gamma-corrects, so a
-  // raw "0.1" would come out as mid-grey. ~0.01 renders near-black like LO.
-  examples::SolidBackground(*s, glm::vec3(0.008f, 0.008f, 0.008f), 0.0f);
-  s->SetExposure(0.85f);
+  // --- dim directional light (LO diffuse 0.4), near-black background, only a
+  //     tiny ambient (= LO dirLight ambient ~0.05), and RAW linear output so
+  //     the engine's ACES/gamma doesn't brighten it like LO's untonemapped view.
+  examples::Sun(*s, {-0.2f, -1.0f, -0.3f}, glm::vec3(0.4f, 0.4f, 0.4f));
+  examples::SolidBackground(*s, glm::vec3(0.008f, 0.008f, 0.008f), 0.15f);
+  s->SetExposure(1.0f);
+  s->SetLinearOutput(true);
+  s->SetTAAEnabled(false);
   return s;
 }
 }  // namespace

@@ -1309,6 +1309,8 @@ void Scene::SetSSAOEnabled(bool enabled) { renderer_->SetSSAOEnabled(enabled); }
 void Scene::SetTAAEnabled(bool enabled) { renderer_->SetTAAEnabled(enabled); }
 
 void Scene::SetBloomEnabled(bool enabled) { renderer_->SetBloomEnabled(enabled); }
+void Scene::SetLinearOutput(bool enabled) { renderer_->SetLinearOutput(enabled); }
+bool Scene::IsLinearOutput() const { return renderer_->IsLinearOutput(); }
 
 bool Scene::IsSSAOEnabled() const { return renderer_->IsSSAOEnabled(); }
 

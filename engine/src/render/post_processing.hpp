@@ -47,6 +47,11 @@ class PostProcessing {
   void SetBloomEnabled(bool enabled) { bloom_enabled_ = enabled; }
   void SetTAAEnabled(bool enabled) { taa_enabled_ = enabled; }
 
+  /// @brief Raw/linear composite output (no ACES, no gamma) for
+  /// LearnOpenGL-style ports that don't tone map.
+  void SetLinearOutput(bool enabled) { linear_output_ = enabled; }
+  [[nodiscard]] bool IsLinearOutput() const { return linear_output_; }
+
   [[nodiscard]] float GetExposure() const { return exposure_; }
   [[nodiscard]] float GetBloomStrength() const { return bloom_strength_; }
   [[nodiscard]] float GetBloomThreshold() const { return bloom_threshold_; }
@@ -90,6 +95,7 @@ class PostProcessing {
   float bloom_threshold_ = 1.0f;
   float god_rays_strength_ = 0.05f;
   bool  bloom_enabled_   = true;
+  bool  linear_output_   = false;  // raw composite (no ACES/gamma)
 
   unsigned int fullscreen_vao_ = 0;
 
