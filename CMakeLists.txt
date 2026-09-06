@@ -10,6 +10,7 @@ option(MENGINE_ENABLE_VULKAN "Enable Vulkan backend" ON)
 option(MENGINE_BUILD_SANDBOX "Build the sandbox example" ON)
 option(MENGINE_BUILD_EDITOR "Build the editor" ON)
 option(MENGINE_BUILD_VOXEL "Build the voxel (Minecraft-like) example" ON)
+option(MENGINE_BUILD_EXAMPLES "Build the LearnOpenGL-style lighting examples" ON)
 
 if(MENGINE_ENABLE_VULKAN)
   find_package(Vulkan QUIET)
@@ -97,6 +98,10 @@ endif()
 
 if(MENGINE_BUILD_VOXEL)
   add_subdirectory(voxel)
+endif()
+
+if(MENGINE_BUILD_EXAMPLES)
+  add_subdirectory(examples)
 endif()
 
 # Sync compile_commands.json into the top-level build directory so VS Code
