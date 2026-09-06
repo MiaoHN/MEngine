@@ -5,6 +5,17 @@
 
 ---
 
+## 2026-09-06 — 引擎新增第二套 Blinn-Phong 光照管线（可与 PBR 二选一）
+
+- **需求**：为让 LO 示例能 **1:1** 复刻（LO 本身是 Blinn-Phong），希望引擎提供“两套可选”的光照管线。
+- **做法**（通用能力，默认不影响 PBR）：
+  - 新增 `assets/shaders/blinn_vert.glsl`（= pbr_vert 同构）+ `blinn_frag.glsl`：**经典 Blinn-Phong**（漫反射=albedo*光；镜面=light_color*specular_intensity*pow(Blinn H, shininess)；环境光=albedo*ibl_intensity*0.35），且与 pbr 共用同套 uniform —— 方向/点/聚光数组、PCF+点光立方阴影、SSAO、法线贴图、`u_render_mode`、输出 alpha。
+  - `Material::SetShader(GetShader("blinn"))` 即选用；新增 `Material::SetShininess`（默认 32），Renderer 上传统一 `material_shininess`（pbr 无此 uniform，自动忽略）。pbr 着色器零改动。
+  - `example_helpers.hpp` 加 `examples::Blinn(color, shininess, spec)`；新演示 `example_blinn_lighting`（同 basic_lighting 构图、Blinn 高光）验证通过。
+- **验证**：`example_blinn_lighting` capture 白立方+清晰高光+阴影、深背景；debug 全量零警告；提交 `82da1ba`（dev）。后续 1:1 复刻 LO 场景可用 Blinn 管线做高光更贴近原文。
+
+---
+
 ## 2026-09-06 — examples 复刻 LearnOpenGL：贴图/法线贴图场景 + 全量对照表
 
 - **用户动作**：把整个 LearnOpenGL 仓库（代码+resources）放进根 `LearnOpenGL/`（已加 .gitignore 不提交）；要求参考它把 src 示例用 **MEngine 公共 API** 复刻、代码整理到 `examples/`。
