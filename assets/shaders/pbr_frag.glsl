@@ -57,6 +57,7 @@ uniform int   point_light_lo_attenuation[MAX_POINT_LIGHTS];
 uniform samplerCube point_light_shadow_maps[MAX_POINT_LIGHTS];
 uniform int   point_light_has_shadow[MAX_POINT_LIGHTS];
 uniform float point_light_far_planes[MAX_POINT_LIGHTS];
+uniform float point_shadow_size = 512.0;  // cube face resolution of the point shadow maps
 
 #define MAX_SPOT_LIGHTS 4
 uniform int   spot_light_count = 0;
@@ -136,10 +137,29 @@ float ShadowCalculation(vec3 frag_pos_world, vec3 N, vec3 L) {
 float PointShadowCalculation(int light_index, vec3 light_pos, vec3 N, vec3 L) {
   vec3  frag_to_light = FragPos - light_pos;
   float current       = length(frag_to_light);
-  float closest       = texture(point_light_shadow_maps[light_index], frag_to_light).r *
-                  point_light_far_planes[light_index];
+  if (current <= 1e-5) {
+    return 1.0;
+  }
+  vec3 dir = frag_to_light / current;
+
+  // PCF: perturb the cube sampling direction in the plane perpendicular to the
+  // light ray. A cubemap texel subtends ~2/N radians, so spread the 5x5 taps by
+  // shadow_pcf_radius texels (returns the lit fraction, 1.0 = fully lit).
+  vec3  up   = abs(dir.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+  vec3  t    = normalize(cross(up, dir));
+  vec3  b    = cross(dir, t);
+  float step = (2.0 / point_shadow_size) * max(shadow_pcf_radius, 1.0);
+
   float bias = max(0.05 * (1.0 - dot(N, L)), 0.005);
-  return (current - bias > closest) ? 0.0 : 1.0;
+  float lit  = 0.0;
+  for (int x = -2; x <= 2; ++x) {
+    for (int y = -2; y <= 2; ++y) {
+      vec3  sd      = normalize(dir + (t * float(x) + b * float(y)) * step);
+      float closest = texture(point_light_shadow_maps[light_index], sd).r * point_light_far_planes[light_index];
+      lit += (current - bias > closest) ? 0.0 : 1.0;
+    }
+  }
+  return lit / 25.0;
 }
 
 vec3 PointLightContribution(vec3 light_pos, vec3 light_color, float intensity, float radius, bool lo_attenuation,
