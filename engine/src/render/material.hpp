@@ -48,6 +48,11 @@ class Material {
   void SetTranslucent(bool translucent) { translucent_ = translucent; }
   [[nodiscard]] bool IsTranslucent() const { return translucent_; }
 
+  /// @brief Blinn-Phong specular exponent (used only by the "blinn" shader;
+  /// the pbr shader ignores it).
+  void SetShininess(float shininess) { shininess_ = shininess; }
+  [[nodiscard]] float GetShininess() const { return shininess_; }
+
   [[nodiscard]] const glm::vec4 &GetBaseColorFactor() const { return base_color_factor_; }
   [[nodiscard]] float GetMetallicFactor() const { return metallic_factor_; }
   [[nodiscard]] float GetRoughnessFactor() const { return roughness_factor_; }
@@ -61,10 +66,11 @@ class Material {
   Ref<Texture> ao_map_;
 
   glm::vec4 base_color_factor_{1.0f};
-  float     metallic_factor_ = 1.0f;
+  float     metallic_factor_  = 1.0f;
   float     roughness_factor_ = 1.0f;
-  float     specular_factor_ = 1.0f;
-  bool      translucent_ = false;
+  float     specular_factor_  = 1.0f;
+  float     shininess_        = 32.0f;
+  bool      translucent_      = false;
   // Closed, opaque meshes are the norm (primitives, models, stress grids), so
   // back-face culling is on by default: interior/back faces of tightly packed
   // geometry (e.g. adjacent cubes) are not rasterised, which removes the

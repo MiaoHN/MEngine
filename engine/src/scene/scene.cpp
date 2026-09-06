@@ -137,7 +137,8 @@ bool MaterialLessForBatching(const Ref<Material> &a, const Ref<Material> &b) {
   }
   if (a->GetMetallicFactor() != b->GetMetallicFactor()) return a->GetMetallicFactor() < b->GetMetallicFactor();
   if (a->GetRoughnessFactor() != b->GetRoughnessFactor()) return a->GetRoughnessFactor() < b->GetRoughnessFactor();
-  return a->GetSpecularFactor() < b->GetSpecularFactor();
+  if (a->GetSpecularFactor() != b->GetSpecularFactor()) return a->GetSpecularFactor() < b->GetSpecularFactor();
+  return a->GetShininess() < b->GetShininess();
 }
 
 /// @brief True when two materials are interchangeable for draw batching: same

@@ -36,6 +36,18 @@ inline Ref<Material> Pbr(const glm::vec3 &color, float metallic, float roughness
   return m;
 }
 
+/// @brief A classic Blinn-Phong material (the second lighting pipeline). It
+/// uses the "blinn" shader; `shininess` is the specular exponent and
+/// `specular` its strength. Ambient is driven by the scene's ibl_intensity.
+inline Ref<Material> Blinn(const glm::vec3 &color, float shininess = 32.0f, float specular = 0.5f) {
+  Ref<Material> m = CreateRef<Material>();
+  m->SetShader(AssetManager::Instance().GetShader("blinn"));
+  m->SetBaseColorFactor(glm::vec4(color, 1.0f));
+  m->SetSpecularFactor(specular);
+  m->SetShininess(shininess);
+  return m;
+}
+
 /// @brief A PBR material with an albedo texture (asset-relative path) and
 /// optional normal map + roughness.
 inline Ref<Material> PbrTextured(const std::string &albedo_path, const std::string &normal_path = "",

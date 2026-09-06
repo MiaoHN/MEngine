@@ -10,6 +10,12 @@
 > 状态：✅ = 已复刻可运行；◐ = 部分/可等价（引擎能力演示）; ⛔ = 底层裸 GL 特性，
 > 公共 API 无法直译（或在 MEngine 内部已实现，非示例层）；⬜ = 待做。
 
+> **两套光照管线可选**：MEngine 现在同时提供 **PBR(GGX，默认)** 和 **Blinn-Phong**
+> （`assets/shaders/blinn_*`，LO 同款光照模型）。材质里 `SetShader(GetShader("pbr"))`
+> 或 `("blinn")` 即选管线；`example_helpers.hpp` 的 `Pbr(...)` / `Blinn(...)` 分别造
+> 两类材质。Blinn 材质的 `shininess`=高光指数、`specular`=高光强度、环境光由 `ibl_intensity`
+> 控制——这样 1:1 复刻 LO 场景时可用 Blinn 把高光做得和原文几乎一致。
+
 ## 1. getting_started（入门：都是裸管线/窗口/VBO/着色器底层）
 | 目录 | 内容 | 状态 |
 |---|---|---|
@@ -48,7 +54,7 @@
 ## 5. advanced_lighting
 | 目录 | 内容 | MEngine 成品 |
 |---|---|---|
-| 1.advanced_lighting | Blinn-Phong | ◐ 引擎用 GGX PBR；等价高光 via roughness 已演示（basic_lighting）|
+| 1.advanced_lighting | Blinn-Phong | ✅ 引擎现提供 **Blinn-Phong 管线**（shader "blinn"）；`example_blinn_lighting` 演示同款高光 |
 | 2.gamma_correction | Gamma | ◐ 引擎输出已含 gamma（post）；无单独场景 |
 | 3.x shadow_mapping (+point/soft/csm) | 阴影映射/点阴影 | ✅ `example_shadow_mapping`（方向光+立方体点光阴影）；CSM ⬜（引擎单级）|
 | 4.normal_mapping | 法线贴图 | ✅ `example_normal_mapping`（砖墙 albedo+normal，引擎 pbr 法线槽）|
@@ -76,7 +82,8 @@
 ## 现有例子命名对照（examples/src）
 ```
 colors              -> 2.lighting/1.colors
-basic_lighting      -> 2.lighting/2.x
+basic_lighting      -> 2.lighting/2.x (PBR)
+blinn_lighting      -> 2.lighting/2.x (Blinn-Phong 管线)
 materials           -> 2.lighting/3.x
 lighting_maps       -> 2.lighting/4.x   (新增)
 multiple_lights     -> 2.lighting/6

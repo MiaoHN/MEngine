@@ -32,7 +32,8 @@ mengine_enable_warnings(example_app)
 # LearnOpenGL "2. lighting" chapter (one exe per scene)
 set(MENGINE_EXAMPLE_DEMOS
   colors                # 1.colors
-  basic_lighting        # 2.x basic lighting (diffuse+specular)
+  basic_lighting        # 2.x basic lighting (diffuse+specular, PBR)
+  blinn_lighting        # 2.x basic lighting on the Blinn-Phong pipeline
   materials             # 3.x materials
   lighting_maps         # 4.x lighting maps (container2 diffuse texture)
   multiple_lights       # 6.multiple_lights
