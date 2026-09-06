@@ -59,6 +59,10 @@ uniform vec3  point_light_positions[MAX_POINT_LIGHTS];
 uniform vec3  point_light_colors[MAX_POINT_LIGHTS];
 uniform float point_light_intensities[MAX_POINT_LIGHTS];
 uniform float point_light_radii[MAX_POINT_LIGHTS];
+uniform float point_light_constants[MAX_POINT_LIGHTS];
+uniform float point_light_linears[MAX_POINT_LIGHTS];
+uniform float point_light_quadratics[MAX_POINT_LIGHTS];
+uniform int   point_light_lo_attenuation[MAX_POINT_LIGHTS];
 uniform samplerCube point_light_shadow_maps[MAX_POINT_LIGHTS];
 uniform int   point_light_has_shadow[MAX_POINT_LIGHTS];
 uniform float point_light_far_planes[MAX_POINT_LIGHTS];
@@ -72,6 +76,10 @@ uniform float spot_light_intensities[MAX_SPOT_LIGHTS];
 uniform float spot_light_ranges[MAX_SPOT_LIGHTS];
 uniform float spot_light_cutoffs[MAX_SPOT_LIGHTS];
 uniform float spot_light_outer_cutoffs[MAX_SPOT_LIGHTS];
+uniform float spot_light_constants[MAX_SPOT_LIGHTS];
+uniform float spot_light_linears[MAX_SPOT_LIGHTS];
+uniform float spot_light_quadratics[MAX_SPOT_LIGHTS];
+uniform int   spot_light_lo_attenuation[MAX_SPOT_LIGHTS];
 
 float ShadowCalculation(vec3 frag_pos_world, vec3 N, vec3 L) {
   vec4 clip = light_view_proj * vec4(frag_pos_world, 1.0);
@@ -108,10 +116,15 @@ float PointShadowCalculation(int light_index, vec3 light_pos, vec3 N, vec3 L) {
   return (current - bias > closest) ? 0.0 : 1.0;
 }
 
-float DistanceAttenuation(vec3 light_pos, float radius) {
+float DistanceAttenuation(vec3 light_pos, float radius, bool lo_attenuation, float constant, float linear,
+                          float quadratic) {
   vec3  L        = light_pos - FragPos;
   float distance = length(L);
-  float att      = clamp(1.0 - pow(distance / max(radius, 0.001), 4.0), 0.0, 1.0);
+  if (lo_attenuation) {
+    // LearnOpenGL: 1 / (constant + linear*d + quadratic*d^2)
+    return 1.0 / max(constant + linear * distance + quadratic * distance * distance, 0.0001);
+  }
+  float att = clamp(1.0 - pow(distance / max(radius, 0.001), 4.0), 0.0, 1.0);
   att *= att;
   return att / max(distance * distance, 0.001);
 }
@@ -172,7 +185,9 @@ void main() {
     if (NdotLp <= 0.0) {
       continue;
     }
-    float att = DistanceAttenuation(point_light_positions[i], point_light_radii[i]);
+    float att = DistanceAttenuation(point_light_positions[i], point_light_radii[i],
+                                    point_light_lo_attenuation[i] == 1, point_light_constants[i],
+                                    point_light_linears[i], point_light_quadratics[i]);
     vec3  H   = normalize(V + Lp);
     vec3  diffuse  = albedo * point_light_colors[i] * point_light_intensities[i] * NdotLp;
     vec3  specular = point_light_colors[i] * point_light_intensities[i] * kSpec *
@@ -194,7 +209,10 @@ void main() {
     float theta   = dot(-Ls, normalize(spot_light_directions[i]));
     float epsilon = spot_light_cutoffs[i] - spot_light_outer_cutoffs[i];
     float cone    = clamp((theta - spot_light_outer_cutoffs[i]) / max(epsilon, 0.0001), 0.0, 1.0);
-    float att     = DistanceAttenuation(spot_light_positions[i], spot_light_ranges[i]) * cone;
+    float att = DistanceAttenuation(spot_light_positions[i], spot_light_ranges[i],
+                                    spot_light_lo_attenuation[i] == 1, spot_light_constants[i],
+                                    spot_light_linears[i], spot_light_quadratics[i]) *
+                cone;
     vec3  H       = normalize(V + Ls);
     vec3  diffuse  = albedo * spot_light_colors[i] * spot_light_intensities[i] * NdotLs;
     vec3  specular = spot_light_colors[i] * spot_light_intensities[i] * kSpec *

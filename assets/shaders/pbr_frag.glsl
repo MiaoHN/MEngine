@@ -46,6 +46,10 @@ uniform vec3  point_light_positions[MAX_POINT_LIGHTS];
 uniform vec3  point_light_colors[MAX_POINT_LIGHTS];
 uniform float point_light_intensities[MAX_POINT_LIGHTS];
 uniform float point_light_radii[MAX_POINT_LIGHTS];
+uniform float point_light_constants[MAX_POINT_LIGHTS];
+uniform float point_light_linears[MAX_POINT_LIGHTS];
+uniform float point_light_quadratics[MAX_POINT_LIGHTS];
+uniform int   point_light_lo_attenuation[MAX_POINT_LIGHTS];
 uniform samplerCube point_light_shadow_maps[MAX_POINT_LIGHTS];
 uniform int   point_light_has_shadow[MAX_POINT_LIGHTS];
 uniform float point_light_far_planes[MAX_POINT_LIGHTS];
@@ -59,6 +63,10 @@ uniform float spot_light_intensities[MAX_SPOT_LIGHTS];
 uniform float spot_light_ranges[MAX_SPOT_LIGHTS];
 uniform float spot_light_cutoffs[MAX_SPOT_LIGHTS];
 uniform float spot_light_outer_cutoffs[MAX_SPOT_LIGHTS];
+uniform float spot_light_constants[MAX_SPOT_LIGHTS];
+uniform float spot_light_linears[MAX_SPOT_LIGHTS];
+uniform float spot_light_quadratics[MAX_SPOT_LIGHTS];
+uniform int   spot_light_lo_attenuation[MAX_SPOT_LIGHTS];
 
 const float PI = 3.14159265359;
 
@@ -130,15 +138,22 @@ float PointShadowCalculation(int light_index, vec3 light_pos, vec3 N, vec3 L) {
   return (current - bias > closest) ? 0.0 : 1.0;
 }
 
-vec3 PointLightContribution(vec3 light_pos, vec3 light_color, float intensity, float radius, vec3 N, vec3 V,
+vec3 PointLightContribution(vec3 light_pos, vec3 light_color, float intensity, float radius, bool lo_attenuation,
+                            float constant, float linear, float quadratic, vec3 N, vec3 V,
                             vec3 albedo, float metallic, float roughness, float specular_intensity, vec3 F0) {
   vec3  L        = light_pos - FragPos;
   float distance = length(L);
   L             = normalize(L);
 
-  float attenuation = clamp(1.0 - pow(distance / radius, 4.0), 0.0, 1.0);
-  attenuation *= attenuation;
-  attenuation /= max(distance * distance, 0.001);
+  float attenuation;
+  if (lo_attenuation) {
+    // LearnOpenGL: 1 / (constant + linear*d + quadratic*d^2)
+    attenuation = 1.0 / max(constant + linear * distance + quadratic * distance * distance, 0.0001);
+  } else {
+    attenuation = clamp(1.0 - pow(distance / radius, 4.0), 0.0, 1.0);
+    attenuation *= attenuation;
+    attenuation /= max(distance * distance, 0.001);
+  }
 
   vec3  H   = normalize(V + L);
   float NDF = DistributionGGX(N, H, roughness);
@@ -157,15 +172,22 @@ vec3 PointLightContribution(vec3 light_pos, vec3 light_color, float intensity, f
 }
 
 vec3 SpotLightContribution(vec3 light_pos, vec3 light_dir, vec3 light_color, float intensity, float range,
-                           float cutoff, float outer_cutoff, vec3 N, vec3 V, vec3 albedo, float metallic,
+                           float cutoff, float outer_cutoff, bool lo_attenuation,
+                           float constant, float linear, float quadratic,
+                           vec3 N, vec3 V, vec3 albedo, float metallic,
                            float roughness, float specular_intensity, vec3 F0) {
   vec3  L        = light_pos - FragPos;
   float distance = length(L);
   L             = normalize(L);
 
-  float attenuation = clamp(1.0 - pow(distance / range, 4.0), 0.0, 1.0);
-  attenuation *= attenuation;
-  attenuation /= max(distance * distance, 0.001);
+  float attenuation;
+  if (lo_attenuation) {
+    attenuation = 1.0 / max(constant + linear * distance + quadratic * distance * distance, 0.0001);
+  } else {
+    attenuation = clamp(1.0 - pow(distance / range, 4.0), 0.0, 1.0);
+    attenuation *= attenuation;
+    attenuation /= max(distance * distance, 0.001);
+  }
 
   float theta          = dot(-L, normalize(light_dir));
   float epsilon        = cutoff - outer_cutoff;
@@ -254,7 +276,9 @@ void main() {
   vec3 color = ambient + direct;
   for (int i = 0; i < point_light_count && i < MAX_POINT_LIGHTS; ++i) {
     vec3 contribution = PointLightContribution(point_light_positions[i], point_light_colors[i],
-                                               point_light_intensities[i], point_light_radii[i], N, V, albedo,
+                                               point_light_intensities[i], point_light_radii[i],
+                                               point_light_lo_attenuation[i] == 1, point_light_constants[i],
+                                               point_light_linears[i], point_light_quadratics[i], N, V, albedo,
                                                metallic, roughness, specular_intensity, F0);
     if (point_light_has_shadow[i] == 1) {
       vec3 L_pl = normalize(point_light_positions[i] - FragPos);
@@ -265,8 +289,9 @@ void main() {
   for (int i = 0; i < spot_light_count && i < MAX_SPOT_LIGHTS; ++i) {
     color += SpotLightContribution(spot_light_positions[i], spot_light_directions[i], spot_light_colors[i],
                                    spot_light_intensities[i], spot_light_ranges[i], spot_light_cutoffs[i],
-                                   spot_light_outer_cutoffs[i], N, V, albedo, metallic, roughness,
-                                   specular_intensity, F0);
+                                   spot_light_outer_cutoffs[i], spot_light_lo_attenuation[i] == 1,
+                                   spot_light_constants[i], spot_light_linears[i], spot_light_quadratics[i],
+                                   N, V, albedo, metallic, roughness, specular_intensity, F0);
   }
   // HDR linear output; tone mapping + gamma happen in the post-process pass.
   // Alpha is the material opacity so translucent surfaces (alpha blending on,

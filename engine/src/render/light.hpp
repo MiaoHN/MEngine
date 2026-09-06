@@ -41,6 +41,13 @@ struct PointLight {
   float     radius    = 4.0f;
   bool      casts_shadow = false;
 
+  // LearnOpenGL-style attenuation (1 / (constant + linear*d + quadratic*d^2)).
+  // Used only when lo_attenuation is true (radius-based falloff otherwise).
+  bool  lo_attenuation = false;
+  float constant  = 1.0f;
+  float linear    = 0.09f;
+  float quadratic = 0.032f;
+
   /// @brief Six perspective view-projection matrices (one per cube face, in
   /// GL_TEXTURE_CUBE_MAP_* order) for omnidirectional shadow mapping.
   [[nodiscard]] std::array<glm::mat4, 6> GetShadowMatrices() const {
@@ -86,6 +93,13 @@ struct SpotLight {
   float     range        = 8.0f;
   float     cutoff       = glm::cos(glm::radians(12.5f));
   float     outer_cutoff = glm::cos(glm::radians(17.5f));
+
+  // LearnOpenGL-style attenuation (1 / (constant + linear*d + quadratic*d^2)).
+  // Used only when lo_attenuation is true (range-based falloff otherwise).
+  bool  lo_attenuation = false;
+  float constant  = 1.0f;
+  float linear    = 0.09f;
+  float quadratic = 0.032f;
 };
 
 }  // namespace MEngine

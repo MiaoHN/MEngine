@@ -397,6 +397,10 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
     shader->SetUniform("point_light_colors[" + index + "]", light.color);
     shader->SetUniform("point_light_intensities[" + index + "]", light.intensity);
     shader->SetUniform("point_light_radii[" + index + "]", light.radius);
+    shader->SetUniform("point_light_constants[" + index + "]", light.constant);
+    shader->SetUniform("point_light_linears[" + index + "]", light.linear);
+    shader->SetUniform("point_light_quadratics[" + index + "]", light.quadratic);
+    shader->SetUniform("point_light_lo_attenuation[" + index + "]", light.lo_attenuation ? 1 : 0);
 
     const int shadow_index = GetPointShadowIndex(i);
     const int has_shadow   = shadow_index >= 0 ? 1 : 0;
@@ -425,6 +429,10 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
     shader->SetUniform("spot_light_ranges[" + index + "]", light.range);
     shader->SetUniform("spot_light_cutoffs[" + index + "]", light.cutoff);
     shader->SetUniform("spot_light_outer_cutoffs[" + index + "]", light.outer_cutoff);
+    shader->SetUniform("spot_light_constants[" + index + "]", light.constant);
+    shader->SetUniform("spot_light_linears[" + index + "]", light.linear);
+    shader->SetUniform("spot_light_quadratics[" + index + "]", light.quadratic);
+    shader->SetUniform("spot_light_lo_attenuation[" + index + "]", light.lo_attenuation ? 1 : 0);
   }
 
   // Per-instance model matrices (locations 3..6, divisor 1) + instanced draw.
