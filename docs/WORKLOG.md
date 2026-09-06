@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-09-06 — examples 复刻 LearnOpenGL：贴图/法线贴图场景 + 全量对照表
+
+- **用户动作**：把整个 LearnOpenGL 仓库（代码+resources）放进根 `LearnOpenGL/`（已加 .gitignore 不提交）；要求参考它把 src 示例用 **MEngine 公共 API** 复刻、代码整理到 `examples/`。
+- **结论/结构**：全部 ~90 个底层示例不可能（也不该）一比一用公共 API 直译。新增 **`examples/PORTING.md` 全量对照表**：把 8 章 src 逐目录标注 → ✅ 已复刻 / ◐ 引擎等价 / ⛔ 裸 GL 底层特性（MEngine 内部或需引擎扩展）/ ⬜ 待做，方便查阅与后续推进。
+- **本轮新增（都 headless capture 验证）**：
+  - `example_lighting_maps`（LO 2.lighting/4）：container2 贴图木箱 + 方向光/近距点光高光；从本地 LearnOpenGL 拷贝 `container2.png/_specular.png`、`brickwall.jpg/_normal.jpg` 到 `assets/textures/`。
+  - `example_normal_mapping`（LO 5.advanced_lighting/4）：UV 平铺砖墙平面（新 helpers `TiledPlane/TiledWall` 生成可平铺 UV 网格）+ albedo/normal 贴图（走引擎 pbr 法线槽，dFdx TBN）→ 侧光下砖缝凹凸清晰。
+  - CMake demo 列表按章节分组（2.lighting、5.advanced_lighting）便于对照。
+- **引擎能力核查**：`AssetManager::GetTexture(path)` 直接按 asset root 加载任意 png/jpg（stb_image、翻转 V、REPEAT+LINEAR）；`ModelLoader::LoadObj` 只有 mesh（无 mtl），glTF 才有完整材质；法线贴图可用。
+- **提交**：`2aa09bc`（dev）。后续按 PORTING.md 推进：model_loading、gamma/SSAO 演示、PBR 贴图组等；反射/文本/2D 游戏等需引擎能力扩展再议。
+
+---
+
 ## 2026-09-06 — examples：按 LearnOpenGL 复刻的“光照/高级光照”演示（每个场景一个独立可执行）
 
 - **需求**：参考 JoeyDeVries/LearnOpenGL，用 **MEngine 自己复刻**光照/高级光照实现与测试场景；每个场景做成**不同可执行文件**，代码统一放 `examples/`；示例贴图资源版权用户确认无碍（可直接从 GitHub 下，后续再加纹理场景时用）。
