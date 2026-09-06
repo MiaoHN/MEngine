@@ -1183,8 +1183,9 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
   // writing depth so surfaces behind them stay visible.
   uint64_t visible_main = 0;
   uint64_t culled_main  = 0;
-  {
+  { 
     renderer_->BeginScene();
+    renderer_->ResetFrameUniformCache();  // upload scene constants once per shader this pass
     const auto t_start = clock::now();
     std::vector<const RenderItem *> opaque;
     std::vector<const RenderItem *> translucent;

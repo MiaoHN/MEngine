@@ -385,6 +385,12 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
   shader->SetUniform("u_albedo_srgb", material->IsAlbedoSRGB() ? 1 : 0);
   shader->SetUniform("material_shininess", material->GetShininess());
   shader->SetUniform("u_material_unlit", material->IsUnlit() ? 1 : 0);
+  // Scene / view constants (lights, shadow, IBL, SSAO, point & spot arrays) are
+  // identical for every draw in one main pass: upload them once per shader
+  // program (cached until the next ResetFrameUniformCache) instead of once per
+  // draw. Material uniforms / textures above stay per draw.
+  if (shader.get() != cached_scene_shader_) {
+    cached_scene_shader_ = shader.get();
   shader->SetUniform("u_render_mode", render_mode_ == RenderMode::Unlit ? 1 : 0);
   shader->SetUniform("u_lo_exact", lo_lighting_ ? 1 : 0);
   shader->SetUniform("u_lo_blinn_spec", lo_blinn_spec_ ? 1 : 0);
@@ -483,6 +489,7 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
     shader->SetUniform("spot_light_linears[" + index + "]", light.linear);
     shader->SetUniform("spot_light_quadratics[" + index + "]", light.quadratic);
     shader->SetUniform("spot_light_lo_attenuation[" + index + "]", light.lo_attenuation ? 1 : 0);
+  }
   }
 
   // Per-instance model matrices (locations 3..6, divisor 1) + instanced draw.

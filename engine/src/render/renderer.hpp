@@ -200,6 +200,11 @@ class Renderer {
 
   /// @brief Clears the per-frame counters (call at the start of a scene pass).
   void ResetFrameStats() const { stats_ = RenderStats{}; }
+  /// @brief Clears the once-per-main-pass "scene constants per shader" upload
+  /// cache (call at the start of each main scene pass). DrawMeshInstanced then
+  /// skips re-uploading the light/IBL/SSAO/spot arrays on later draws that use
+  /// the same shader, since those values only change between passes.
+  void ResetFrameUniformCache() const { cached_scene_shader_ = nullptr; }
   /// @brief Per-frame counters (draw calls, triangles, culled entities).
   [[nodiscard]] const RenderStats &GetFrameStats() const { return stats_; }
   /// @brief Records how many entities the scene's frustum culling rejected.
@@ -240,6 +245,7 @@ class Renderer {
   RenderMode render_mode_  = RenderMode::Lit;
 
   mutable RenderStats stats_;
+  mutable const Shader *cached_scene_shader_ = nullptr;
 };
 
 }  // namespace MEngine
