@@ -191,6 +191,12 @@ class Scene {
   void SetShadowPcfRadius(float radius);
   void SetIblIntensity(float intensity);
   void SetGodRaysStrength(float strength);
+  /// @brief Enables/disables the skybox background (IBL lighting unchanged).
+  void SetSkyboxEnabled(bool enabled);
+  [[nodiscard]] bool IsSkyboxEnabled() const;
+  /// @brief Solid scene background used when the skybox is disabled.
+  void SetBackgroundColor(const glm::vec3 &color);
+  [[nodiscard]] const glm::vec3 &GetBackgroundColor() const;
   void SetSSAOEnabled(bool enabled);
   void SetTAAEnabled(bool enabled);
   void SetBloomEnabled(bool enabled);

@@ -101,10 +101,10 @@ void PostProcessing::CreateColorFramebuffer(unsigned int &fbo, unsigned int &tex
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void PostProcessing::BeginScene() const {
+void PostProcessing::BeginScene(const glm::vec3 &clear_color) const {
   glBindFramebuffer(GL_FRAMEBUFFER, scene_fbo_);
   glViewport(0, 0, width_, height_);
-  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClearColor(clear_color.r, clear_color.g, clear_color.b, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 

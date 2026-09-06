@@ -1233,10 +1233,13 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     pass_times_ms_[3] = time_ms(t_start);
   }
 
-  // Skybox background (drawn after the meshes with depth test LEQUAL).
+  // Skybox background (drawn after the meshes with depth test LEQUAL). When
+  // disabled the scene keeps the solid background color from BeginScene.
   {
     const auto t_start = clock::now();
-    renderer_->RenderSkybox(view, render_proj);
+    if (renderer_->IsSkyboxEnabled()) {
+      renderer_->RenderSkybox(view, render_proj);
+    }
     renderer_->EndScene();
     pass_times_ms_[4] = time_ms(t_start);
   }
@@ -1292,6 +1295,11 @@ void Scene::SetShadowPcfRadius(float radius) { renderer_->SetShadowPcfRadius(rad
 void Scene::SetIblIntensity(float intensity) { renderer_->SetIblIntensity(intensity); }
 
 void Scene::SetGodRaysStrength(float strength) { renderer_->SetGodRaysStrength(strength); }
+
+void Scene::SetSkyboxEnabled(bool enabled) { renderer_->SetSkyboxEnabled(enabled); }
+bool Scene::IsSkyboxEnabled() const { return renderer_->IsSkyboxEnabled(); }
+void Scene::SetBackgroundColor(const glm::vec3 &color) { renderer_->SetBackgroundColor(color); }
+const glm::vec3 &Scene::GetBackgroundColor() const { return renderer_->GetBackgroundColor(); }
 
 void Scene::SetSSAOEnabled(bool enabled) { renderer_->SetSSAOEnabled(enabled); }
 

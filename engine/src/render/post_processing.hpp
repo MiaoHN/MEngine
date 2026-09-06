@@ -21,8 +21,9 @@ class PostProcessing {
   PostProcessing(const PostProcessing &)            = delete;
   PostProcessing &operator=(const PostProcessing &) = delete;
 
-  /// Binds the HDR scene framebuffer, sets the viewport and clears it.
-  void BeginScene() const;
+  /// Binds the HDR scene framebuffer, sets the viewport and clears it to
+  /// `clear_color` (the solid background shown when the skybox is disabled).
+  void BeginScene(const glm::vec3 &clear_color) const;
   /// Unbinds the HDR scene framebuffer.
   void EndScene() const;
   /// Runs god rays + bloom + tone mapping and composites to `target_fbo`

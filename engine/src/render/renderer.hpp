@@ -143,6 +143,14 @@ class Renderer {
   void SetIblIntensity(float intensity);
   void SetGodRaysStrength(float strength);
 
+  /// @brief Toggles drawing the skybox as the scene background (the IBL
+  /// environment still lights the scene either way).
+  void SetSkyboxEnabled(bool enabled) { skybox_enabled_ = enabled; }
+  [[nodiscard]] bool IsSkyboxEnabled() const { return skybox_enabled_; }
+  /// @brief Solid color the scene clears to when the skybox is disabled.
+  void SetBackgroundColor(const glm::vec3 &color) { background_color_ = color; }
+  [[nodiscard]] const glm::vec3 &GetBackgroundColor() const { return background_color_; }
+
   void SetBloomEnabled(bool enabled);
   [[nodiscard]] bool IsBloomEnabled() const;
 
@@ -182,6 +190,8 @@ class Renderer {
   float shadow_pcf_radius_ = 2.0f;
   float ibl_intensity_     = 1.0f;
   bool  ssao_enabled_      = false;
+  bool  skybox_enabled_    = true;
+  glm::vec3 background_color_{0.0f};
   RenderMode render_mode_  = RenderMode::Lit;
 
   mutable RenderStats stats_;

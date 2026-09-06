@@ -258,7 +258,7 @@ void Renderer::GenerateSSAO(const glm::mat4 &proj, const glm::mat4 &view) const 
 
 void Renderer::BindSSAO(unsigned int slot) const { ssao_->BindTexture(slot); }
 
-void Renderer::BeginScene() const { post_processing_->BeginScene(); }
+void Renderer::BeginScene() const { post_processing_->BeginScene(background_color_); }
 
 void Renderer::EndScene() const { post_processing_->EndScene(); }
 
