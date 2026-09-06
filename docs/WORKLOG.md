@@ -5,6 +5,15 @@
 
 ---
 
+## 2026-09-06 — ex_5_6 hdr/bloom（LO 5.advanced_lighting/7.bloom）LO-exact 化
+
+- **引擎（composite）**：新增 **`u_lo_hdr_tone`**（PostProcessing/Renderer/Scene::SetLoHdrTone）：LO 6.hdr/7.bloom 的色调 `1 - exp(-x*exposure)` 后接 gamma（区别于默认 ACES+gamma 与线性直出两种模式）。引擎 bloom（亮度阈值 luminance>threshold + 高斯模糊 + composite 叠加）本就与 LO 同构。
+- **ex_5_6_hdr_bloom** ← LO 7.bloom：黑底；木地板（wood.png 拷贝自 LO 资源）+ 6 个 container2 方块（LO 位置/绕 (1,0,1) 旋转/缩放，引擎 cube 单±0.5 故 scale=2×LO）；4 个 HDR 点光（白 5 / 红 10 / 蓝 15 / 绿 5，**无 ambient/spec、衰减 1/d²** = lo_attenuation c0/l0/q1）；4 个亮色自发光光源小方块；`SetLoHdrTone(true)` + bloom on（threshold 1.0、strength 1.0 全量叠加）+ exposure 1.0 + NoSun；相机 (0,0,5) FOV45 4:3。
+- **验证**：debug 构建过；capture 800×600：木地板 + 方块 + 彩色光池/自发光光晕，符合 LO bloom 版式。
+- **下一步**：同章最后 shadow_mapping（ex_5_3）。
+
+---
+
 ## 2026-09-06 — ex_5_4 normal_mapping（LO 5.advanced_lighting/4）LO-exact 化
 
 - **用户**：做 5.advanced_lighting 章节（逐场景进行中）。

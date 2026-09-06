@@ -158,6 +158,10 @@ class Renderer {
   void SetLinearOutput(bool enabled);
   [[nodiscard]] bool IsLinearOutput() const;
 
+  /// @brief LearnOpenGL 6.hdr / 7.bloom tone mapping (1-exp(-x) + gamma).
+  void SetLoHdrTone(bool enabled);
+  [[nodiscard]] bool IsLoHdrTone() const;
+
   /// @brief LearnOpenGL-exact lighting mode (for the "blinn" shader): each light
   /// contributes a separate ambient/diffuse/specular term like LO's shaders
   /// (Phong reflect specular without NdotL, no shadow/AO, specular map read

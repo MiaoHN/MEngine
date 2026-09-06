@@ -101,6 +101,16 @@ inline Ref<Material> BlinnLoNormalMapped(const std::string &albedo_path, const s
   return m;
 }
 
+/// @brief LearnOpenGL-exact textured Blinn material with just a diffuse map
+/// (wood floor etc.). LO 7.bloom's shader has no specular term, so no spec map.
+inline Ref<Material> BlinnLoDiffuse(const std::string &albedo_path, float shininess = 32.0f) {
+  Ref<Material> m = CreateRef<Material>();
+  m->SetShader(AssetManager::Instance().GetShader("blinn_lo"));
+  m->SetAlbedoMap(AssetManager::Instance().GetTexture(albedo_path));
+  m->SetShininess(shininess);
+  return m;
+}
+
 /// @brief Switches a scene to LearnOpenGL-exact parity: per-light
 /// ambient/diffuse/specular lighting, raw linear composite output, no
 /// skybox/IBL/tone/gamma, plain dark background (LO clears to 0.1), no TAA /

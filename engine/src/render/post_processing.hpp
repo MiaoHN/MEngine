@@ -52,6 +52,11 @@ class PostProcessing {
   void SetLinearOutput(bool enabled) { linear_output_ = enabled; }
   [[nodiscard]] bool IsLinearOutput() const { return linear_output_; }
 
+  /// @brief LearnOpenGL 6.hdr / 7.bloom tone mapping: 1 - exp(-hdr) then
+  /// gamma (instead of ACES). Only meaningful when linear output is off.
+  void SetLoHdrTone(bool enabled) { lo_hdr_tone_ = enabled; }
+  [[nodiscard]] bool IsLoHdrTone() const { return lo_hdr_tone_; }
+
   [[nodiscard]] float GetExposure() const { return exposure_; }
   [[nodiscard]] float GetBloomStrength() const { return bloom_strength_; }
   [[nodiscard]] float GetBloomThreshold() const { return bloom_threshold_; }
@@ -96,6 +101,7 @@ class PostProcessing {
   float god_rays_strength_ = 0.05f;
   bool  bloom_enabled_   = true;
   bool  linear_output_   = false;  // raw composite (no ACES/gamma)
+  bool  lo_hdr_tone_     = false;  // LO 1-exp(-x) tone + gamma
 
   unsigned int fullscreen_vao_ = 0;
 

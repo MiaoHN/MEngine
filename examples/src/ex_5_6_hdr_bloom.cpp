@@ -1,36 +1,80 @@
-// LearnOpenGL "HDR + Bloom" - bright bulbs (very intense point lights at
-// polished white cubes) over a dark floor, with the bloom pass enabled.
+// = LearnOpenGL 5.advanced_lighting/7.bloom (HDR + bloom)
+//   source: LearnOpenGL/src/5.advanced_lighting/7.bloom/bloom.cpp
+//
+// LO-exact HDR + bloom port on the "blinn_lo" path + the engine bloom pass
+// (brightness threshold > 1 luminance, Gaussian blur) and the LO tone map
+// (1 - exp(-x * exposure) then gamma) via Scene::SetLoHdrTone.
+//   - wood floor + a few container2 cubes (LO positions/rotations/scales)
+//   - 4 point lights with HDR colors, NO ambient/specular, attenuation 1/d^2
+//     (LO 7.bloom.fs); a small emissive cube marks each light
+//   - LO camera (0,0,5) FOV 45, 4:3 window, black clear
+#include <memory>
+
 #include "example_app.hpp"
 #include "example_helpers.hpp"
 
 using namespace MEngine;
 using MEngine::examples::Put;
+using MEngine::examples::PutAxis;
 
 namespace {
 std::shared_ptr<Scene> BuildHdrBloom() {
   auto s = std::make_shared<Scene>();
-  Put(*s, Mesh::CreatePlane(30.0f), examples::Pbr(glm::vec3(0.05f, 0.05f, 0.07f), 0.0f, 0.9f), {0, 0, 0});
 
-  const glm::vec3 bulb_col[4] = {{1.0f, 0.25f, 0.2f}, {0.3f, 1.0f, 0.35f}, {0.3f, 0.6f, 1.0f}, {1.0f, 0.9f, 0.3f}};
-  for (int i = 0; i < 4; ++i) {
-    const float x = static_cast<float>(i - 1) * 2.6f;
-    Put(*s, Mesh::CreateCube(), examples::Pbr(glm::vec3(1.0f), 0.0f, 0.04f), {x, 1.4f, 0.0f}, 0.45f);
-    PointLight l;
-    l.position  = {x, 1.4f, 0.0f};
-    l.color     = bulb_col[i];
-    l.intensity = 70.0f;
-    l.radius    = 14.0f;
-    s->AddPointLight(l);
-    Put(*s, Mesh::CreateCube(), examples::Pbr(bulb_col[i] * 0.25f, 0.0f, 0.06f), {x * 0.5f, 0.5f, 1.6f}, 0.9f);
+  // --- wood floor: LO's floor cube (translate (0,-1,0), scale (12.5,0.5,12.5)
+  //     with a ±1 cube == engine unit cube scaled x2, so (25,1,25)).
+  {
+    Entity floor = s->CreateEntity("floor");
+    auto &t      = floor.AddComponent<Transform>();
+    t.translation = {0.0f, -1.0f, 0.0f};
+    t.scale       = glm::vec3(25.0f, 1.0f, 25.0f);
+    floor.AddComponent<MeshComponent>(Mesh::CreateCube(),
+                                      examples::BlinnLoDiffuse("textures/wood.png"));
   }
 
-  examples::Sun(*s, {-0.3f, -1.0f, -0.4f}, glm::vec3(0.18f, 0.18f, 0.2f));
-  examples::SolidBackground(*s, glm::vec3(0.03f, 0.03f, 0.04f), 0.06f);
-  s->SetExposure(0.85f);
+  // --- scenery container2 cubes (LO positions/rotations; engine scale = 2x LO
+  //     scale because our cube is unit-sized while LO's renderCube is ±1).
+  const auto crate = []() { return examples::BlinnLoDiffuse("textures/container2.png"); };
+  Put(*s, Mesh::CreateCube(), crate(), {0.0f, 1.5f, 0.0f}, 1.0f);      // LO scale .5
+  Put(*s, Mesh::CreateCube(), crate(), {2.0f, 0.0f, 1.0f}, 1.0f);      // LO scale .5
+  PutAxis(*s, Mesh::CreateCube(), crate(), {-1.0f, -1.0f, 2.0f}, glm::normalize(glm::vec3(1, 0, 1)), 60.0f, 2.0f);
+  PutAxis(*s, Mesh::CreateCube(), crate(), {0.0f, 2.7f, 4.0f}, glm::normalize(glm::vec3(1, 0, 1)), 23.0f, 2.5f);
+  PutAxis(*s, Mesh::CreateCube(), crate(), {-2.0f, 1.0f, -3.0f}, glm::normalize(glm::vec3(1, 0, 1)), 124.0f, 2.0f);
+  Put(*s, Mesh::CreateCube(), crate(), {-3.0f, 0.0f, 0.0f}, 1.0f);     // LO scale .5
+
+  // --- 4 point lights (LO 7.bloom.fs): HDR color, no ambient/specular,
+  //     attenuation 1/d^2 (constant 0 / linear 0 / quadratic 1).
+  const glm::vec3 light_pos[4] = {{0.0f, 0.5f, 1.5f}, {-4.0f, 0.5f, -3.0f}, {3.0f, 0.5f, 1.0f}, {-0.8f, 2.4f, -1.0f}};
+  const glm::vec3 light_col[4] = {{5.0f, 5.0f, 5.0f}, {10.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 15.0f}, {0.0f, 5.0f, 0.0f}};
+  for (int i = 0; i < 4; ++i) {
+    PointLight l;
+    l.position       = light_pos[i];
+    l.ambient        = glm::vec3(0.0f);
+    l.diffuse        = light_col[i];
+    l.specular       = glm::vec3(0.0f);
+    l.lo_attenuation = true;
+    l.constant       = 0.0f;   // LO: 1 / (distance^2)
+    l.linear         = 0.0f;
+    l.quadratic      = 1.0f;
+    s->AddPointLight(l);
+    // bright emissive light-source cube (LO lightColor box, scale .25 -> 0.5)
+    Put(*s, Mesh::CreateCube(), examples::Unlit(light_col[i]), light_pos[i], 0.5f);
+  }
+
+  // LO 7.bloom has no sun; black clear; LO HDR tone + gamma, bloom on.
+  examples::NoSun(*s);
+  s->SetLoLighting(true);
+  s->SetLinearOutput(false);
+  s->SetLoHdrTone(true);
+  s->SetSkyboxEnabled(false);
+  s->SetBackgroundColor(glm::vec3(0.0f));
+  s->SetIblIntensity(0.0f);
+  s->SetExposure(1.0f);
+  s->SetTAAEnabled(false);
+  s->SetSSAOEnabled(false);
   s->SetBloomEnabled(true);
-  s->SetBloomThreshold(0.8f);
-  s->SetBloomStrength(0.45f);
-  s->SetTAAEnabled(true);
+  s->SetBloomThreshold(1.0f);
+  s->SetBloomStrength(1.0f);  // LO adds the blurred bright buffer directly
   return s;
 }
 }  // namespace
@@ -38,5 +82,6 @@ std::shared_ptr<Scene> BuildHdrBloom() {
 ::MEngine::Application *CreateApplication() {
   MEngine::Application::SetStartupWindowSize(800, 600);  // LO's 800x600 (4:3)
   return new MEngine::examples::ExampleApp(
-      MEngine::examples::ExampleApp::Setup{BuildHdrBloom, "HDR + Bloom", {0, 1.6f, 0}, 0.0f, 13.0f, 9.5f});
+      MEngine::examples::ExampleApp::Setup{BuildHdrBloom, "LO 5.6 hdr + bloom", {0, 0, 0}, 0.0f, 0.0f, 5.0f,
+                                           45.0f});
 }

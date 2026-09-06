@@ -1315,6 +1315,9 @@ void Scene::SetBloomEnabled(bool enabled) { renderer_->SetBloomEnabled(enabled);
 void Scene::SetLinearOutput(bool enabled) { renderer_->SetLinearOutput(enabled); }
 bool Scene::IsLinearOutput() const { return renderer_->IsLinearOutput(); }
 
+void Scene::SetLoHdrTone(bool enabled) { renderer_->SetLoHdrTone(enabled); }
+bool Scene::IsLoHdrTone() const { return renderer_->IsLoHdrTone(); }
+
 void Scene::SetLoLighting(bool enabled) { renderer_->SetLoLighting(enabled); }
 bool Scene::IsLoLighting() const { return renderer_->IsLoLighting(); }
 

@@ -73,8 +73,8 @@
 | 3.x shadow_mapping (+point/soft/csm) | 阴影映射/点阴影 | ✅ `ex_5_3_shadow_mapping`（方向光+立方体点光阴影）；CSM ⬜（引擎单级）|
 | 4.normal_mapping | 法线贴图 | ✅ `ex_5_4_normal_mapping`（blinn_lo + 法线贴图：2×2 砖墙，点光 0.5,1,0.3，ambient .1/diffuse 1/spec(材质 0.2 灰)，Blinn 高光 `SetLoBlinnSpec`）|
 | 5.x parallax (incl steep/pom) | 视差映射 | ⬜（引擎 pbr 无视差；需引擎扩展或 ⛔）|
-| 6.hdr | HDR | ◐ 引擎 HDR 内部；`ex_5_6_hdr_bloom` 演示高动态亮度 |
-| 7.bloom | 泛光 | ✅ `ex_5_6_hdr_bloom`（bloom）|
+| 6.hdr | HDR | ✅ `ex_5_6_hdr_bloom`（blinn_lo，LO 曝光色调 `1-exp(-x)`+gamma，`SetLoHdrTone`）|
+| 7.bloom | 泛光 | ✅ `ex_5_6_hdr_bloom`（引擎 bloom：亮度阈值>1 + 高斯模糊；木地板 + container 方块 + 4 HDR 点光 1/d²）|
 | 8.x deferred (+volumes) | 延迟着色 | ⛔ 引擎为前向+实例化 |
 | 9.ssao | 屏幕空间环境光遮蔽 | ◐ 引擎已有 SSAO（内部开关）；可做一个 SSAO 开关演示 exe ⬜ |
 
@@ -103,7 +103,7 @@ ex_2_4_lighting_maps       -> 2.lighting/4.2.lighting_maps_specular_map (✅ bli
 ex_2_5_light_casters       -> 2.lighting/5.3.light_casters_spot / 5.4 soft (✅ blinn_lo 1:1，相机手电)
 ex_2_6_multiple_lights     -> 2.lighting/6.multiple_lights (✅ blinn_lo 1:1)
 ex_5_3_shadow_mapping      -> 5.advanced_lighting/3.1.x shadow_mapping + 3.2 point_shadows (PBR 演示)
-ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom (PBR 演示)
+ex_5_6_hdr_bloom           -> 5.advanced_lighting/6.hdr + 7.bloom (✅ blinn_lo 1:1)
 ex_5_4_normal_mapping      -> 5.advanced_lighting/4.normal_mapping (PBR 演示)
 ```
 > 每个 target 对应 LO 源码：`LearnOpenGL/src/<章>/<小节>/<源码名>.cpp`（CMake 注释里已写死）。

@@ -310,6 +310,9 @@ void Renderer::SetIblIntensity(float intensity) { ibl_intensity_ = intensity; }
 void Renderer::SetLinearOutput(bool enabled) { post_processing_->SetLinearOutput(enabled); }
 bool Renderer::IsLinearOutput() const { return post_processing_->IsLinearOutput(); }
 
+void Renderer::SetLoHdrTone(bool enabled) { post_processing_->SetLoHdrTone(enabled); }
+bool Renderer::IsLoHdrTone() const { return post_processing_->IsLoHdrTone(); }
+
 void Renderer::SetGodRaysStrength(float strength) { post_processing_->SetGodRaysStrength(strength); }
 
 void Renderer::SetBloomEnabled(bool enabled) { post_processing_->SetBloomEnabled(enabled); }
