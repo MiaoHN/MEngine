@@ -129,8 +129,10 @@ void Editor::OnUpdate(float dt) {
 
     if (ImGui::BeginDragDropSource()) {
       std::filesystem::path relativePath(path);
-      const wchar_t        *itemPath = relativePath.c_str();
-      ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", itemPath, (wcslen(itemPath) + 1) * sizeof(wchar_t));
+      using PathChar = std::filesystem::path::value_type;
+      const PathChar *itemPath = relativePath.c_str();
+      ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", itemPath,
+                                (std::char_traits<PathChar>::length(itemPath) + 1) * sizeof(PathChar));
       ImGui::EndDragDropSource();
     }
 
@@ -497,7 +499,7 @@ void Editor::ShowImGuiProperties() {
       ImGui::Button("Texture", ImVec2(100.0f, 0.0f));
       if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-          const wchar_t           *path = (const wchar_t *)payload->Data;
+          const auto              *path = static_cast<const std::filesystem::path::value_type *>(payload->Data);
           std::filesystem::path    texturePath(path);
           std::shared_ptr<Texture> texture = Texture::Create(texturePath.string());
           component.texture                = texture;
