@@ -3,6 +3,7 @@
 # meshing, player physics, picking etc. live entirely here.
 add_executable(voxel
   src/voxel_atlas.cpp
+  src/voxel_streamer.cpp
   src/voxel_world.cpp
   src/voxel_app.cpp
 )
@@ -24,6 +25,7 @@ target_include_directories(voxel SYSTEM PRIVATE
 target_link_libraries(voxel
   engine
   glfw
+  Threads::Threads
 )
 
 mengine_enable_warnings(voxel)

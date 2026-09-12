@@ -5,6 +5,27 @@
 
 ---
 
+## 2026-09-12 — voxel 性能：区块加载与渲染解耦（Minecraft 式异步区块流水线 + 已加载区块常驻）
+
+- **问题**：`voxel_app` 把「生成 + 网格化 + GPU 上传 + 建实体」全放在帧循环里同步做，而且玩家每跨过一个 16 格区块边界就**整个重建**半径 5 的 121 个区块（实测该调用耗时 ≈1.0 s，期间渲染完全停住）。此外旧网格器每个方块都走一次 `unordered_map` 查找（每区块约 6.1 万次）。
+- **做法（只改 `voxel/`，engine 未动，仍只用公共 API）**：
+  - `voxel_world`：世界改为**线程安全**——chunk map 加 `mutex`，生成放在锁外（生成是只依赖 seed 的纯函数，可并行），只有插入串行化；新增纯函数 `TerrainHeight()`（不生成、不加锁）与 `GenerateChunkData()`；新增 `ChunkSnapshot`（本区块 16×16×40 + 四个 XZ 邻居各一圈边界，一次加锁拷贝）——网格化改为读快照，**锁内零哈希查找**；`PrepareChunk` / `BuildChunkMesh(World&,...)` 被 `BuildChunkMesh(ChunkSnapshot&,...)` 取代；新增 `UnloadChunk` 释放远处数据。
+  - **新增 `voxel_streamer.{hpp,cpp}`**：`ChunkStreamer` = 工作线程池（cores-1，上限 4，`MENGINE_VOXEL_WORKERS=<n>` 可覆盖）+ 任务队列 + 结果队列。任务按**距离环由近到远**入队；破坏/放置走 `RequestRemeshWithNeighbours` **插队**。每个 mesh 结果带 per-chunk 请求 id，过期结果（编辑前生成）在 `Drain` 中丢弃；离开半径的区块用 cancel 标记，worker 直接跳过不做无用功；未上传结果上限 24，避免 worker 抢跑整个世界的 GPU 上传。**`Mesh::Create` + 建/删实体只在渲染线程**（GL 要求）。
+  - `voxel_app`：跨区块时只调 `SetCenter`（纯记账，不生成、不建 mesh）；每帧 `UploadFinishedChunks` 有**每帧预算 3 ms / 最多 4 个**（至少 1 个保证进度）；`tiles_` 从 `vector` 改为按区块 key 的 `unordered_map`，跨界不再清空重建；物理用 `GroundReady`（玩家脚下 3×3 已出 mesh）门控，出生/传送/掉出世界时不会穿进未加载区域；出生点搜索改用纯 `TerrainHeight`（原来最坏会同步生成 441 个区块，现在 0 个）；启动 `PrewarmSpawn` 只等玩家周围 3×3（≈50 ms，相当于 Loading），其余后台流式补上。
+- **验证**：
+  - 远距传送（`MENGINE_VOXEL_DEBUG_CAM="400,26,400,60,-10"`）触发 121 区块全量重载，新增的每帧统计窗口输出 `avg 1.10 ms worst 5.43 ms`（该窗口含整轮加载爆发；旧实现同场景是 ≈1.0 s/帧），之后稳定在 `avg 0.002 ms worst 0.003 ms`，`121 tiles/121 tracked/0 jobs in flight`（无抖动、无重复入队）。
+  - A/B 截图回归（同 seed、同 debug cam、同 `--capture-frame 200`）：`tools/ppm_diff.py`（新增）平均通道差 **0.004/255**，差异是沿高对比边缘的 1–2 级噪声 + 约 29 个像素（物理门控使落点相差几毫秒导致的半透明排序差异），**没有任何区块形状/缺面差异**。
+  - clang debug 零警告；`--frames 240` / `--frames 600 --hidden` 长跑稳定。
+- **追加（同日，第二轮：已加载区块常驻 + 消掉跨区块抖动）**：
+  - **双环流式（MC 的 render distance vs simulation distance）**：`ChunkStreamer::SetCenter(center, load_radius, keep_radius)`——内环（默认 5）主动生成/网格化，外环（默认 8，`MENGINE_VOXEL_KEEP`，最小 load+2）为**常驻环**：区块保留体素数据 + 实体 + mesh 并且**继续渲染**，只是不再更新；走出 keep 环才回收。看回去/走回去时地形不会消失也不需要重新生成（resident 区块重新进入 load 环直接复用，连 mesh job 都不发）。
+  - **实体池**：回收的 tile 不再 `Scene::DestroyEntity`，而是摘掉 `MeshComponent`（释放 GPU buffer）后实体进 `free_tiles_` 池，新进入的区块从池里取实体复用。原因：实测 `Scene::DestroyEntity` ≈ **1.3 ms/实体**（引擎记账 + debug 构建的逐行日志），而释放 mesh ≈ 0.1 ms、重挂 `MeshComponent` 几乎免费。
+  - **每帧共享预算**：上传（≤3 个）与回收（≤8 个）共用 4 ms deadline，每帧至少推进一个，爆发分摊到多帧。
+  - 验证（debug，`MENGINE_VOXEL_AUTOWALK=14` 沿 +X 飞 2400 帧 ≈ 280 格，每 16 格一次跨区）：`worst update 0.4 / upload ≤5 / retire ≤1.4 ms`，`avg ≈0.15 ms/frame`，稳定在 `184 tiles/184 tracked (63 resident)/0 jobs`；对比：改造前跨一次区 **75 ms**（旧同步实现 **≈1.0 s**）。相机朝后（yaw 150）截图可见刚从身后飞过的地形；`MENGINE_VOXEL_KEEP=7` 与 `=12` 同帧截图差异 50.3%（平均 27.6/255），证明常驻区块确实参与渲染。
+  - release 构建（windows-clang-release）编译零警告并且可运行；MSVC debug 同上。
+- **下一步**：真机试玩确认手感（行走/飞行时区块弹出的节奏、挖矿后重网格化的延迟），可选：视距/常驻半径做成运行时可调（面板或键盘），以及把「已探索区域永久保留 + 存盘」做成引擎级能力。
+
+---
+
 ## 2026-09-06 — 视差映射 Parallax Occlusion Mapping（POM，D 项）
 
 - **engine 材质**：`Material` 增 height map 槽 + `height_scale` 因子；`Renderer::DrawMeshInstanced` 把高度图绑到纹理单元 15（避开 shadow/IBL/SSAO/点光阴影 8..11 等），逐 draw 上传 `height_scale`；合批比较加 height map + scale，视差/非视差材质不会误合并。commit `576d9f2`。
