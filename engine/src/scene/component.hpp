@@ -317,6 +317,10 @@ struct SpriteComponent {
   glm::vec4    color{1.0f, 1.0f, 1.0f, 1.0f};   // tint (rgb) + opacity (a)
   glm::vec4    uv_rect{0.0f, 0.0f, 1.0f, 1.0f}; // normalized (u0, v0, u1, v1)
   glm::vec2    size{1.0f, 1.0f};                // world units, before Transform.scale
+  /// How many times the texture is repeated across the quad. (1,1) stretches the
+  /// texture over the sprite; a larger value turns it into a repeating pattern
+  /// (see SetTiledSize), which is how a background keeps its texel aspect.
+  glm::vec2    tiling{1.0f, 1.0f};
   bool         flip_x = false;
   bool         flip_y = false;
   int          sorting_layer  = 0;  // higher draws later (on top)
@@ -351,13 +355,33 @@ struct SpriteComponent {
     size             = glm::vec2(w / ppu, h / ppu);
   }
 
-  /// @brief Shared unit quad matching the current uv_rect / flip flags (cached).
+  /// @brief Makes the sprite `world_size` units large and tiles the texture so
+  /// its texels stay square: one texture repeat per texture-size-in-units at
+  /// `pixels_per_unit`. This is the repeating-background setup (a big floor, a
+  /// parallax pattern) - `size` alone would stretch the texture across it.
+  ///
+  /// Keeps `uv_rect` as-is, so tile the whole texture for a seamless pattern.
+  /// A 32x32 texture at 32 px/unit is 1 world unit per repeat. Needs a loaded
+  /// texture; without one only `size` changes.
+  void SetTiledSize(const glm::vec2 &world_size, float pixels_per_unit = 32.0f) {
+    size = world_size;
+    const float ppu = (pixels_per_unit > 0.0f) ? pixels_per_unit : 32.0f;
+    if (!texture || texture->GetWidth() <= 0 || texture->GetHeight() <= 0) {
+      return;
+    }
+    const glm::vec2 repeat = glm::vec2(static_cast<float>(texture->GetWidth()), static_cast<float>(texture->GetHeight())) /
+                             ppu;
+    tiling = glm::vec2(world_size.x / repeat.x, world_size.y / repeat.y);
+  }
+
+  /// @brief Shared unit quad matching the current uv_rect / flips / tiling (cached).
   [[nodiscard]] const Ref<Mesh> &GetQuad() const {
     const int flips = (flip_x ? 1 : 0) | (flip_y ? 2 : 0);
-    if (quad_ == nullptr || quad_src_flips_ != flips || quad_src_uv_ != uv_rect) {
-      quad_           = GetSpriteQuad(uv_rect, flip_x, flip_y);
-      quad_src_uv_    = uv_rect;
-      quad_src_flips_ = flips;
+    if (quad_ == nullptr || quad_src_flips_ != flips || quad_src_uv_ != uv_rect || quad_src_tiling_ != tiling) {
+      quad_            = GetSpriteQuad(uv_rect, flip_x, flip_y, tiling);
+      quad_src_uv_     = uv_rect;
+      quad_src_tiling_ = tiling;
+      quad_src_flips_  = flips;
     }
     return quad_;
   }
@@ -379,6 +403,7 @@ struct SpriteComponent {
   mutable Ref<Mesh>     quad_;
   mutable Ref<Material> material_;
   mutable glm::vec4     quad_src_uv_{-1.0f};
+  mutable glm::vec2     quad_src_tiling_{-1.0f};
   mutable int           quad_src_flips_ = -1;
   mutable Ref<Texture>  material_src_texture_;
   mutable glm::vec4     material_src_color_{-1.0f};

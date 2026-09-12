@@ -44,12 +44,20 @@ struct SpriteSheet {
 };
 
 /// @brief Shared 1x1 sprite quad in the XY plane (centered, facing +Z, uv (0,0)
-/// at the bottom-left) whose texture coordinates cover `uv_rect`.
+/// at the bottom-left) whose texture coordinates cover `uv_rect`, repeated
+/// `tiling` times across the quad.
 ///
-/// Quads are cached per (rect, flip) so every sprite showing the same sheet
-/// frame shares one `Mesh` — and therefore batches into a single instanced draw
-/// when the material matches too. Render thread only.
-[[nodiscard]] Ref<Mesh> GetSpriteQuad(const glm::vec4 &uv_rect, bool flip_x = false, bool flip_y = false);
+/// `tiling` is how a repeating texture keeps its texel aspect: a background
+/// sprite of 18x11 units that should show one 32 px texture repeat per unit
+/// passes `tiling = (18, 11)` instead of being stretched over the whole quad.
+/// The sampler wraps (GL_REPEAT), so tiling works for the whole texture; the
+/// repeated region is `uv_rect`, i.e. a sheet frame repeats its own rectangle.
+///
+/// Quads are cached per (rect, flip, tiling) so every sprite showing the same
+/// sheet frame shares one `Mesh` — and therefore batches into a single instanced
+/// draw when the material matches too. Render thread only.
+[[nodiscard]] Ref<Mesh> GetSpriteQuad(const glm::vec4 &uv_rect, bool flip_x = false, bool flip_y = false,
+                                      const glm::vec2 &tiling = glm::vec2(1.0f));
 
 /// @brief Unlit, alpha-blended, double-sided material for sprites: albedo =
 /// `texture` (its alpha is used), tinted by `color` (rgb + opacity).

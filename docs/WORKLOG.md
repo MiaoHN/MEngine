@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-09-12 — 2D 收尾：精灵平铺（方形格）+ 精灵动画示例（qoguldsd.png）+ 修编辑器断言
+
+- **问题 1：2D 视口里的“背景方块网格不是方的”**。原因不是网格几何，而是 `New 2D Scene` 的示例背景
+  是一张**被拉伸的精灵**：`Transform.scale = (18, 11)` 而贴图是 32×32 的棋盘 → 棋盘格被拉成 4.5×2.75
+  单位（≈1.64:1）的矩形。2D 里“平铺”本来就是缺的能力（旧 `Sprite2D` 有 `tiling_factor`，重构时丢了）。
+  - **新增精灵平铺**：`GetSpriteQuad(uv_rect, flip, tiling)` 现在把平铺烘进 UV（`u1 = u0 + (u1-u0)*tiling`，
+    翻转与平铺互不干扰），四边形的缓存键加上 tiling；采样器本来就是 `GL_REPEAT`，所以平铺是零额外状态的。
+    `SpriteComponent` 增 `tiling` 字段 + `SetTiledSize(world_size, pixels_per_unit = 32)`：按贴图自身
+    尺寸换算重复次数（32×32 贴图 @32px/unit = 1 单位重复一次），这样**纹素永远是方的**——不管精灵多大、
+    视口什么宽高比。序列化加 `"tiling"`；Sprite 检查器加 `Tiling` 滑条 + `Tile at 32 px/unit` 一键按钮。
+  - 示例背景改用**真实资产** `textures/checkerboard.png`（64×64，1 单位 = 32px）平铺 30×18：既方形又能
+    随场景保存/重新打开原样复现（原来的程序化棋盘贴图没有路径，存盘后重开会变成纯色块）。
+- **问题 2：sprite 动画**。`assets/textures/qoguldsd.png` 是一张 6 帧横向走路循环（198×32，每帧 33×32）。
+  `New 2D Scene` 的示例场景现在直接带一个**动画精灵**：
+  `SpriteSheet{6, 1}` + `SpriteAnimationComponent{fps 8, loop}` + `fit_pixels(32)`（不拉伸帧像素），
+  另加一个静态精灵做层序对照。`SpriteAnimationComponent` 本来就已存在（`StepSimulation` 里推进），
+  这次补上**编辑态预览**：Edit 模式下 2D 场景每帧调 `Scene::UpdateSpriteAnimations(dt)`——2D 场景是“看着排”
+  的，走路循环只在 Play 模式下动就没法用。Play 模式仍然走 `StepSimulation`（不重复推进）。
+- **问题 3（顺手修掉的崩溃）**：编辑器在 debug 下偶尔 `Assertion failed: size_arg.x != 0.0f &&
+  size_arg.y != 0.0f`（`imgui_widgets.cpp:763`，即 `InvisibleButton`），随后**弹出断言对话框卡住进程**——
+  之前“`--scene` 打开时编辑器卡死”的真凶就是它。三个拖放热区把 `GetContentRegionAvail().x` 直接当宽度
+  传给 `InvisibleButton`，而窗口在“隐藏/自适应尺寸”的那几帧里该值确实是 0（ImGui 只有在窗口尺寸算完之后
+  才会设 `SkipItems`）。改为统一的 `FullWidthDropZone(id, height)` 助手，宽度取下限 1px。
+- **验证**：
+  - 像素级测量 2D 视口截图里的棋盘节距：水平 12px / 垂直 12px（修改前是 4.5×2.75 单位 ≈ 1.64:1 的矩形格），
+    即**方格已方**。
+  - 动画：同场景隔帧截两张（第 8 帧 vs 第 36 帧）做差异，变化像素恰好落在狐狸精灵所在的 51×50 px 区域
+    （2550 px，0.18%），证明编辑态确实在动。
+  - 场景往返：保存后 `.scene` 里 `Backdrop.tiling = [30,18]`（贴图 `textures/checkerboard.png`）、
+    `Fox.sprite.texture = "textures/qoguldsd.png"` + `sprite_animation{columns 6, rows 1, fps 8, loop}`，
+    重新打开一致。
+  - 回归：`sandbox2d` 截图与改动前一致（默认 `tiling = (1,1)` 时 UV 计算是恒等变换）；clang debug 全量构建
+    零警告。
+- **下一步**：`uv_rect` + 平铺组合目前是“重复选中的那一帧”（图集平铺需要 shader 端按子矩形取模）；
+  其余同前（tilemap/图集工具、2D 物理、2D 相机组件、精灵锚点）。
+
+---
+
 ## 2026-09-12 — 2D 支持：场景维度 + 独立 2D 渲染路径 + 编辑器 2D 视口（sandbox2d）
 
 - **问题/目标**：引擎此前只有 3D（PBR/阴影/IBL/后处理）主路径，旧的 `Sprite2D`/`AnimatedSprite2D` 与

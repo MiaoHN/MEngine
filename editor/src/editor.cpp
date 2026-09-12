@@ -311,6 +311,18 @@ bool ContainsIgnoreCase(const std::string &haystack, const std::string &needle) 
   return it != haystack.end();
 }
 
+/// @brief Invisible hit target spanning the remaining width, used as a drag-drop
+/// zone by the inspectors.
+///
+/// The width is clamped: `InvisibleButton` rejects a zero-sized target, and
+/// `GetContentRegionAvail().x` really is 0 for the frames in which a window is
+/// laid out while still hidden / auto-fitting (a docked panel that is not the
+/// active tab is only skipped once ImGui has sized it). Panels also keep their
+/// content valid while hidden, so the value reaches the call.
+void FullWidthDropZone(const char *id, float height) {
+  ImGui::InvisibleButton(id, ImVec2(std::max(ImGui::GetContentRegionAvail().x, 1.0f), height));
+}
+
 /// @brief Applies a polished dark theme (VS Code / Visual Studio-style neutral
 /// charcoal base + blue accent) to the ImGui style.
 void SetupImGuiStyle() {
@@ -632,6 +644,14 @@ void Editor::OnUpdate(float dt) {
   } else if (active_scene_->IsAnimationPlaying()) {
     // Edit-mode timeline playback: drive the animated entities every frame.
     active_scene_->AdvanceAnimation(dt);
+  }
+
+  // Sprite-sheet animations preview in the editor itself (a 2D scene is authored
+  // by looking at it, and a walk cycle that only runs in Play mode is invisible
+  // while you lay the level out). Play mode already advances them through
+  // StepSimulation above.
+  if (game_mode_ == GameMode::Edit && active_scene_->Is2D()) {
+    active_scene_->UpdateSpriteAnimations(dt);
   }
 
   // Render the scene into the viewport framebuffer (Edit = editor camera,
@@ -1637,7 +1657,7 @@ void Editor::ShowImGuiProperties() {
 
     DrawComponent<MeshComponent>("Mesh", selected_entity_, [](auto &component) {
       // Drop zone: drag a model file (.obj/.gltf/.glb) here to (re)assign the mesh.
-      ImGui::InvisibleButton("##MeshDropZone", ImVec2(ImGui::GetContentRegionAvail().x, 24.0f));
+      FullWidthDropZone("##MeshDropZone", 24.0f);
       const ImVec2 zone_min = ImGui::GetItemRectMin();
       const ImVec2 zone_max = ImGui::GetItemRectMax();
       if (ImGui::BeginDragDropTarget()) {
@@ -1852,6 +1872,13 @@ void Editor::ShowImGuiProperties() {
 
       ImGui::ColorEdit4("Tint", glm::value_ptr(component.color));
       ImGui::DragFloat2("Size (world units)", glm::value_ptr(component.size), 0.05f, 0.001f, 1000.0f);
+      ImGui::DragFloat2("Tiling", glm::value_ptr(component.tiling), 0.05f, 0.0f, 1000.0f);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Texture repeats across the quad. (1,1) stretches the texture;\n"
+                          "a larger value turns the sprite into a repeating pattern.\n"
+                          "Tiling != Size stretches the texels: use Tile for a seamless\n"
+                          "background whose cells stay square.");
+      }
       ImGui::Checkbox("Flip X", &component.flip_x);
       ImGui::SameLine();
       ImGui::Checkbox("Flip Y", &component.flip_y);
@@ -1876,6 +1903,15 @@ void Editor::ShowImGuiProperties() {
       }
       if (ImGui::Button("Fit to 32 px/unit")) {
         component.FitPixels(sheet, 32.0f);
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Tile at 32 px/unit")) {
+        component.SetTiledSize(component.size, 32.0f);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Repeat the texture at its own size (32 px = 1 unit) over the\n"
+                          "current Size, so the pattern keeps square texels - the usual\n"
+                          "repeating-background setup.");
       }
     });
 
@@ -2026,7 +2062,7 @@ void Editor::ShowImGuiProperties() {
       }
 
       // Drop a .lua from the Content Browser here to assign it.
-      ImGui::InvisibleButton("##LuaScriptDropZone", ImVec2(ImGui::GetContentRegionAvail().x, 20.0f));
+      FullWidthDropZone("##LuaScriptDropZone", 20.0f);
       if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
           const std::filesystem::path file_path(static_cast<const wchar_t *>(payload->Data));
@@ -2243,7 +2279,7 @@ void Editor::ShowImGuiRendering() {
   }
 
   ImGui::TextDisabled("Drag a .hdr below to replace the skybox / IBL environment");
-  ImGui::InvisibleButton("##EnvDrop", ImVec2(ImGui::GetContentRegionAvail().x, 22.0f));
+  FullWidthDropZone("##EnvDrop", 22.0f);
   const ImVec2 env_min = ImGui::GetItemRectMin();
   const ImVec2 env_max = ImGui::GetItemRectMax();
   if (ImGui::BeginDragDropTarget()) {
@@ -3487,22 +3523,47 @@ void Editor::Create2DDemo() {
   // Orthographic primary camera looking down -Z at the XY plane.
   active_scene_->EnsurePrimaryCamera2D();
 
-  // A back sprite (own sorting layer) and a hero sprite so the draw order is
-  // visible in the inspector right away.
-  Entity backdrop     = CreateEntityWithUniqueName("Backdrop");
-  auto  &back_transform = backdrop.AddComponent<Transform>();
-  back_transform.scale = glm::vec3(18.0f, 11.0f, 1.0f);
-  auto &back_sprite         = backdrop.AddComponent<SpriteComponent>(DefaultSpriteTexture());
-  back_sprite.color         = glm::vec4(0.35f, 0.55f, 0.85f, 1.0f);
+  // Tiled background: the sprite is 30x18 units but the texture repeats at its
+  // own size (64 px = 2 units at 32 px/unit) instead of being stretched over it,
+  // so the pattern keeps square cells whatever the viewport aspect is. A real
+  // asset is used (not the procedural default) so the demo saves and reloads
+  // exactly as authored.
+  Entity             backdrop       = CreateEntityWithUniqueName("Backdrop");
+  auto              &back_transform = backdrop.AddComponent<Transform>();
+  back_transform.scale              = glm::vec3(1.0f);
+  auto &back_sprite = backdrop.AddComponent<SpriteComponent>(
+      AssetManager::Instance().GetTexture("textures/checkerboard.png"));
+  back_sprite.SetTiledSize(glm::vec2(30.0f, 18.0f));
+  back_sprite.color         = glm::vec4(0.30f, 0.40f, 0.55f, 1.0f);
   back_sprite.sorting_layer = -10;
 
-  Entity hero            = CreateEntityWithUniqueName("Hero");
-  hero.AddComponent<Transform>();
-  auto &hero_sprite         = hero.AddComponent<SpriteComponent>(DefaultSpriteTexture());
-  hero_sprite.size          = glm::vec2(1.5f, 1.5f);
-  hero_sprite.sorting_layer = 0;
+  // A sprite sheet animation: assets/textures/qoguldsd.png holds a 6 frame
+  // horizontal walk cycle (33x32 px per frame), so a 6x1 sheet plus a
+  // SpriteAnimationComponent is all it takes. It animates in Edit mode too (the
+  // editor previews 2D sheet animations), and pressing Play keeps it running.
+  const SpriteSheet fox_sheet{6, 1};
+  Entity            fox          = CreateEntityWithUniqueName("Fox");
+  auto             &fox_tr       = fox.AddComponent<Transform>();
+  fox_tr.translation             = glm::vec3(-2.0f, -1.0f, 0.0f);
+  auto &fox_sprite = fox.AddComponent<SpriteComponent>(AssetManager::Instance().GetTexture("textures/qoguldsd.png"));
+  fox_sprite.FitPixels(fox_sheet, 32.0f);  // frame pixel aspect, nothing stretched
+  fox_sprite.sorting_layer = 0;
+  fox_sprite.SetSheetFrame(fox_sheet, 0);
+  auto &fox_animation = fox.AddComponent<SpriteAnimationComponent>();
+  fox_animation.sheet = fox_sheet;
+  fox_animation.fps   = 8.0f;
+  fox_animation.loop  = true;
 
-  selected_entity_ = hero;
+  // A second, static sprite in front of the background (own sorting layer) so
+  // the draw order is visible in the inspector right away.
+  Entity hero               = CreateEntityWithUniqueName("Hero");
+  auto  &hero_tr            = hero.AddComponent<Transform>();
+  hero_tr.translation       = glm::vec3(1.6f, 0.4f, 0.0f);
+  auto &hero_sprite = hero.AddComponent<SpriteComponent>(AssetManager::Instance().GetTexture("textures/awesomeface.png"));
+  hero_sprite.size          = glm::vec2(1.5f, 1.5f);
+  hero_sprite.sorting_layer = 5;
+
+  selected_entity_ = fox;
 }
 
 void Editor::SyncViewModeToScene() { ApplyViewMode(); }

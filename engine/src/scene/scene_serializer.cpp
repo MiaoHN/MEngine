@@ -394,6 +394,7 @@ json EntityToJson(Entity &entity, int parent_index = -1) {
     j["color"]          = Vec4ToJson(sprite.color);
     j["uv_rect"]        = Vec4ToJson(sprite.uv_rect);
     j["size"]           = Vec2ToJson(sprite.size);
+    j["tiling"]         = Vec2ToJson(sprite.tiling);
     j["flip_x"]         = sprite.flip_x;
     j["flip_y"]         = sprite.flip_y;
     j["sorting_layer"]  = sprite.sorting_layer;
@@ -605,6 +606,7 @@ Entity LoadEntityFromJson(Scene &scene, const json &e) {
     sprite.color          = Vec4FromJson(j.value("color", json()), glm::vec4(1.0f));
     sprite.uv_rect        = Vec4FromJson(j.value("uv_rect", json()), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
     sprite.size           = Vec2FromJson(j.value("size", json()), glm::vec2(1.0f));
+    sprite.tiling         = Vec2FromJson(j.value("tiling", json()), glm::vec2(1.0f));
     sprite.flip_x         = j.value("flip_x", false);
     sprite.flip_y         = j.value("flip_y", false);
     sprite.sorting_layer  = j.value("sorting_layer", 0);

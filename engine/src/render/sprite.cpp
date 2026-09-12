@@ -15,14 +15,16 @@ namespace MEngine {
 namespace {
 
 /// @brief Cache key of one quad variant: the UV rectangle (quantized to 1e-4 so
-/// float noise from a sheet calculation cannot create duplicate meshes) plus the
-/// two flip flags.
+/// float noise from a sheet calculation cannot create duplicate meshes), the two
+/// flip flags and the tiling factor.
 struct QuadKey {
-  int32_t uv[4] = {0, 0, 0, 0};
-  uint8_t flips = 0;
+  int32_t uv[4]     = {0, 0, 0, 0};
+  int32_t tiling[2] = {0, 0};
+  uint8_t flips     = 0;
 
   bool operator==(const QuadKey &other) const {
-    return flips == other.flips && std::memcmp(uv, other.uv, sizeof(uv)) == 0;
+    return flips == other.flips && std::memcmp(uv, other.uv, sizeof(uv)) == 0 &&
+           std::memcmp(tiling, other.tiling, sizeof(tiling)) == 0;
   }
 };
 
@@ -30,6 +32,9 @@ struct QuadKeyHash {
   size_t operator()(const QuadKey &key) const {
     size_t h = 1469598103934665603ull;
     for (const int32_t v : key.uv) {
+      h = (h ^ static_cast<size_t>(static_cast<uint32_t>(v))) * 1099511628211ull;
+    }
+    for (const int32_t v : key.tiling) {
       h = (h ^ static_cast<size_t>(static_cast<uint32_t>(v))) * 1099511628211ull;
     }
     return (h ^ key.flips) * 1099511628211ull;
@@ -65,24 +70,28 @@ glm::vec4 SpriteSheet::FrameRect(int frame) const {
   return {u0, v0, u1, v1};
 }
 
-Ref<Mesh> GetSpriteQuad(const glm::vec4 &uv_rect, bool flip_x, bool flip_y) {
+Ref<Mesh> GetSpriteQuad(const glm::vec4 &uv_rect, bool flip_x, bool flip_y, const glm::vec2 &tiling) {
   QuadKey key;
-  key.uv[0] = Quantize(uv_rect.x);
-  key.uv[1] = Quantize(uv_rect.y);
-  key.uv[2] = Quantize(uv_rect.z);
-  key.uv[3] = Quantize(uv_rect.w);
-  key.flips = static_cast<uint8_t>((flip_x ? 1u : 0u) | (flip_y ? 2u : 0u));
+  key.uv[0]     = Quantize(uv_rect.x);
+  key.uv[1]     = Quantize(uv_rect.y);
+  key.uv[2]     = Quantize(uv_rect.z);
+  key.uv[3]     = Quantize(uv_rect.w);
+  key.tiling[0] = Quantize(tiling.x);
+  key.tiling[1] = Quantize(tiling.y);
+  key.flips     = static_cast<uint8_t>((flip_x ? 1u : 0u) | (flip_y ? 2u : 0u));
 
   auto &cache = QuadCache();
   if (const auto it = cache.find(key); it != cache.end()) {
     return it->second;
   }
 
-  // Unit quad centered on the origin, facing +Z, wound CCW seen from +Z.
+  // Unit quad centered on the origin, facing +Z, wound CCW seen from +Z. Tiling
+  // only scales the UV EXTENT, so flipping stays correct and a flipped axis
+  // mirrors its repeat instead of breaking it.
   const float u0 = flip_x ? uv_rect.z : uv_rect.x;
-  const float u1 = flip_x ? uv_rect.x : uv_rect.z;
+  const float u1 = u0 + ((flip_x ? uv_rect.x : uv_rect.z) - u0) * tiling.x;
   const float v0 = flip_y ? uv_rect.w : uv_rect.y;
-  const float v1 = flip_y ? uv_rect.y : uv_rect.w;
+  const float v1 = v0 + ((flip_y ? uv_rect.y : uv_rect.w) - v0) * tiling.y;
 
   const std::vector<Vertex> vertices = {
       {{-0.5f, -0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {u0, v0}},

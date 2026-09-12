@@ -45,8 +45,8 @@ entt::entity GetHandle() const;
 | `Tag` | `std::string tag` + `editor_only` | 实体名称（`editor_only` 的实体不参与保存/Play 快照） |
 | `Transform` | `translation/rotation/scale`（vec3） | 变换，`GetTransform()` 用四元数构建 TRS 矩阵 |
 | `CameraComponent` | `camera`（`Camera`）+ `primary`（bool） | 相机组件：透视/正交一体的 `Camera`，`primary` 标记运行时主相机 |
-| `SpriteComponent` | `texture/color/uv_rect/size/flip_x/flip_y/sorting_layer/order_in_layer` | **2D 精灵**（`render/sprite.hpp`）：`GetQuad()` 按 `uv_rect`+翻转缓存单位四边形，`GetMaterial()` 按贴图+tint 缓存 unlit 混合材质；`SetSheetFrame/SetWholeTexture/FitPixels` |
-| `SpriteAnimationComponent` | `sheet/first_frame/frame_count/fps/loop/ping_pong/playing/time/frame` | 帧动画：`SpriteSheet` 网格逐帧写回同实体的 `SpriteComponent::uv_rect`（`Scene::StepSimulation` 里统一推进） |
+| `SpriteComponent` | `texture/color/uv_rect/size/tiling/flip_x/flip_y/sorting_layer/order_in_layer` | **2D 精灵**（`render/sprite.hpp`）：`GetQuad()` 按 `uv_rect`+翻转+平铺缓存单位四边形，`GetMaterial()` 按贴图+tint 缓存 unlit 混合材质；`SetSheetFrame/SetWholeTexture/FitPixels/SetTiledSize`（后者按贴图尺寸换算重复次数，保证纹素是方的） |
+| `SpriteAnimationComponent` | `sheet/first_frame/frame_count/fps/loop/ping_pong/playing/time/frame` | 帧动画：`SpriteSheet` 网格逐帧写回同实体的 `SpriteComponent::uv_rect`（`Scene::StepSimulation` 里统一推进；编辑器 Edit 模式 2D 场景也调 `UpdateSpriteAnimations` 预览） |
 | `MeshComponent` | `mesh`(Ref\<Mesh\>)/`material`(Ref\<Material\>) | 3D 网格渲染，需配合 `Transform` |
 | `ModelComponent` | `model`(Ref\<Model\>)/`source` | 多材质模型（单个实体多个 part），光照/阴影/合批与 `MeshComponent` 一致 |
 | `RigidBody` / `Collider` | 质量/速度/形状等 | Jolt 物理，`StepSimulation` 固定步长推进 |

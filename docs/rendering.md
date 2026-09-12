@@ -279,10 +279,15 @@ graph LR
     D --> E[Renderer::End2DScene<br/>恢复深度测试/写]
 ```
 
-- **组件**：`SpriteComponent`（texture / tint / `uv_rect` / size / flip / sorting_layer / order_in_layer，
-  `GetQuad()` 按 `uv_rect+flip` 缓存单位四边形，`GetMaterial()` 按 texture+tint 缓存材质）+
+- **组件**：`SpriteComponent`（texture / tint / `uv_rect` / size / `tiling` / flip / sorting_layer / order_in_layer，
+  `GetQuad()` 按 `uv_rect+flip+tiling` 缓存单位四边形，`GetMaterial()` 按 texture+tint 缓存材质）+
   `SpriteAnimationComponent`（`SpriteSheet` 网格逐帧推进 `uv_rect`，`Scene::StepSimulation` 里统一
-  `UpdateSpriteAnimations`）。`render/sprite.{hpp,cpp}` 提供 `SpriteSheet`、四边形/材质缓存。
+  `UpdateSpriteAnimations`；编辑器 Edit 模式会调它做预览）。`render/sprite.{hpp,cpp}` 提供 `SpriteSheet`、
+  四边形/材质缓存。
+- **平铺**：`tiling` = 贴图在四边形上重复几次，直接烘进 UV（采样器是 `GL_REPEAT`），翻转与平铺互不干扰。
+  这是“重复背景”能力：`SetTiledSize(world_size, ppu)` 按贴图自身尺寸换算重复次数，**纹素永远是方的**，
+  不会被拉伸（只用 `size` 贴一张 32×32 模板去铺 30×18 单位的地面就会变成 1.64:1 的长方格）。
+  注意 `uv_rect` + 平铺 = 重复“选中的那一帧”，图集无缝平铺需要 shader 端按子矩形取模。
 - **排序**：`sorting_layer` → `order_in_layer` → 世界 z（越大越靠前/后画），与 Unity 的 Sorting Layer /
   Order in Layer 一致；不再按到相机距离排序。
 - **合批**：连续且 `mesh` 相同、材质内容相同（`SameMaterialForBatching`）的精灵合成一次
@@ -307,5 +312,5 @@ graph LR
 6. **点光阴影无 PCF**：逐面全量重绘，可分层渲染/软阴影优化。
 7. **2D 批处理按“连续区间”而非全局分组**：跨 layer 的相同精灵不会合并；2D 精灵不写入深度，
    因此需要依赖 `sorting_layer` 显式分层（与其它引擎相同）。
-8. **纹理图集/九宫格**：`SpriteComponent` 支持 `uv_rect` 子矩形，但还没有 atlas 打包工具与
-   sliced sprite（九宫格）支持。
+8. **纹理图集/九宫格**：`SpriteComponent` 支持 `uv_rect` 子矩形与 `tiling` 重复，但还没有 atlas 打包工具，
+   也没有 sliced sprite（九宫格）；图集 + 平铺的无缝重复需要 shader 端按子矩形取模。
