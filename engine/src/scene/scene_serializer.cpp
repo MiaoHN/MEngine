@@ -920,104 +920,22 @@ void Scene::SaveScene(const std::string &path) {
 }
 
 void Scene::LoadScene(const std::string &path) {
-  std::ifstream in(path);
-  if (!in) {
-    LOG_ERROR("Scene") << "Failed to open scene file: " << path;
-    return;
-  }
-
-  json root;
-  in >> root;
-
-  // Clear the current scene state before rebuilding it from the file. The
-  // script engine must be reset too: its instances reference the old entities
-  // and main script (their OnDestroy hooks fire here, before the registry is
-  // wiped). Per-entity instances are re-synced lazily from the new components
-  // on the next StartAll/Update.
+  // Standalone player entry point: a player owns the WHOLE scene, so start from
+  // a completely empty registry (editor-only helpers included) and then load
+  // through the very same loader the editor uses.
+  //
+  // There used to be a second, hand-written copy of the JSON loading here, and
+  // it silently drifted: it never read the scene dimension, so a launched 2D
+  // scene was rendered by the 3D pipeline (HDR + tone mapping + distance
+  // sorting) and came out washed out / over-bright. One loader, one behaviour.
+  StopSimulationIfRunning();
   script_engine_->Clear();
-  main_script_.clear();
   registry_.clear();
   entities_.clear();
-  renderer_->ClearPointLights();
-  renderer_->ClearSpotLights();
-  anim_time_    = 0.0f;
-  anim_playing_ = false;
 
-  // Directional light.
-  if (root.contains("directional_light")) {
-    const auto &j = root["directional_light"];
-    authored_directional_light_.direction = Vec3FromJson(j.value("direction", json()), glm::vec3(-0.3f, -1.0f, -0.4f));
-    authored_directional_light_.color     = Vec3FromJson(j.value("color", json()), glm::vec3(2.5f));
-    renderer_->SetLight(authored_directional_light_);
+  if (!OpenSceneFile(path)) {
+    LOG_ERROR("Scene") << "Failed to load scene: " << path;
   }
-
-  // Point lights.
-  if (root.contains("point_lights") && root["point_lights"].is_array()) {
-    for (const auto &j : root["point_lights"]) {
-      PointLight light;
-      light.position     = Vec3FromJson(j.value("position", json()));
-      light.color        = Vec3FromJson(j.value("color", json()), glm::vec3(1.0f));
-      light.intensity    = j.value("intensity", 1.0f);
-      light.radius       = j.value("radius", 4.0f);
-      light.casts_shadow = j.value("casts_shadow", false);
-      renderer_->AddPointLight(light);
-    }
-  }
-
-  // Spot lights.
-  if (root.contains("spot_lights") && root["spot_lights"].is_array()) {
-    for (const auto &j : root["spot_lights"]) {
-      SpotLight light;
-      light.position     = Vec3FromJson(j.value("position", json()));
-      light.direction    = Vec3FromJson(j.value("direction", json()), glm::vec3(0.0f, -1.0f, 0.0f));
-      light.color        = Vec3FromJson(j.value("color", json()), glm::vec3(1.0f));
-      light.intensity    = j.value("intensity", 1.0f);
-      light.range        = j.value("range", 8.0f);
-      light.cutoff       = j.value("cutoff", light.cutoff);
-      light.outer_cutoff = j.value("outer_cutoff", light.outer_cutoff);
-      renderer_->AddSpotLight(light);
-    }
-  }
-
-  // Render settings.
-  if (root.contains("render")) {
-    const auto &j = root["render"];
-    SetRenderMode(RenderModeFromString(j.value("render_mode", "lit")));
-    SetExposure(j.value("exposure", 1.0f));
-    SetBloomEnabled(j.value("bloom_enabled", false));
-    SetBloomStrength(j.value("bloom_strength", 0.015f));
-    SetBloomThreshold(j.value("bloom_threshold", 1.0f));
-    SetGodRaysStrength(j.value("god_rays", 0.06f));
-    SetSSAOEnabled(j.value("ssao", true));
-    SetTAAEnabled(j.value("taa", true));
-    SetIblIntensity(j.value("ibl_intensity", 0.8f));
-    SetShadowPcfRadius(j.value("pcf_radius", 4.0f));
-    SetSkyboxEnabled(j.value("skybox", true));
-    SetBackgroundColor(Vec3FromJson(j.value("background", json()), glm::vec3(0.0f)));
-    SetLinearOutput(j.value("linear_output", false));
-    SetLoHdrTone(j.value("lo_hdr_tone", false));
-    SetReinhardTone(j.value("reinhard_tone", false));
-    SetIblSpecular(j.value("ibl_specular", true));
-  }
-
-  // Entities.
-  LoadEntitiesFromJson(*this, root.value("entities", json()));
-
-  // Scene-level animation settings. Length falls back to the longest clip so
-  // files saved before the explicit length existed still get a usable range.
-  if (root.contains("animation") && root["animation"].is_object()) {
-    const auto &j = root["animation"];
-    anim_loop_    = j.value("loop", true);
-    anim_length_  = j.value("length", std::max(GetAnimationDuration(), 1.0f));
-  }
-
-  // Scene main script (loaded after the entities it may reference).
-  main_script_ = root.value("main_script", "");
-  if (!main_script_.empty()) {
-    script_engine_->LoadMainScript(main_script_);
-  }
-
-  LOG_INFO("Scene") << "Loaded scene from " << path << " (" << entities_.size() << " entities)";
 }
 
 void Scene::CapturePlaySnapshot() {

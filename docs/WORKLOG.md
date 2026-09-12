@@ -5,6 +5,34 @@
 
 ---
 
+## 2026-09-12 — 修 Launch 后 2D 场景过亮过曝（编辑器 / 独立播放器两套加载器漂移）
+
+- **问题（用户报告）**：编辑器里点 Launch 之后，独立窗口里的 2D 场景**过亮/过曝**（深蓝格纹背景变成浅灰蓝、精灵发白、对比度丢失）。
+- **根因**：`Scene` 里有**两套场景加载器**，并且已经漂移：
+  - 编辑器走 `OpenSceneFile()` —— 会读顶层 `"dimension"`（并推断旧文件）、精灵/动画/Lua 组件、以及 `InitDimension` 的 2D 默认值；
+  - 独立播放器（`sandbox2d` / `sandbox3d` 的 `--scene`）走另一个手写的 `LoadScene()` —— 是 2D 之前就存在的旧实现，
+    **从来不读 `"dimension"`**。
+  于是被 Launch 出去的 2D 场景 `Is2D()` 为 false → `RenderFromPrimaryCamera` 走 `RenderMeshes` 的 **3D 管线**：
+  精灵被丢进 3D 的半透明通道 → HDR 缓冲 → ACES tone mapping + gamma，颜色被抬亮、对比度被压扁，绘制顺序也从
+  （sorting layer → order → z）变成按距离排序。实测：编辑器视口格纹是 `(56,80,112)/(72,96,136)`，
+  Launch 出来是 `(160,176,192)/(168,192,208)`。
+  另外旧 `LoadScene` 用 `in >> root` 且**没有 try/catch**，遇到非 JSON 的残留场景文件会直接抛异常终止（`assets/scenes/test.scene` 就是 INI 格式的遗留文件）。
+- **修法**：删掉那份重复实现，`Scene::LoadScene()` 变成「**清空整个 registry**（播放器拥有整个场景，编辑器专用 helper 也不留）
+  → 调用 `OpenSceneFile()`」。一套加载逻辑，编辑器和独立播放器不可能再对同一个场景有不同理解。
+  顺带修掉旧实现的异常崩溃：现在解析失败会 `LOG_ERROR` 返回 false（`LoadScene` 里再补一条兜底日志）。
+- **验证**：
+  - Launch 复现（`sandbox2d --scene <2D 场景>`，cwd 与编辑器一致）：修复后背景格纹 = `(56,80,112)/(72,96,136)`，
+    **与编辑器 2D 视口逐值一致**；精灵黄色从发白变回饱和 `(248,216,80)`；不再有 `RenderStats ... post=` 行（确认没走 3D 管线）。
+  - 尺寸对照：同一场景里笑脸精灵在独立窗口 1600×900 下是 102×102 px（≈1.36 单位，符合 1.5 单位外形），
+    编辑器小视口里 67×68 px —— 只是窗口/面板大小差异，不是缩放问题。
+  - 回归：`sandbox3d --scene`（带相机的 3D 场景）仍走 3D 管线正常渲染（浅蓝背景 + 灰方块）；
+    `physics_test.scene`（无相机的物理场景）文本上仍能加载（渲染为空是「没有相机」的正常行为）；
+    `assets/scenes/test.scene`（INI 遗留文件）现在只报错不崩溃。
+  - clang debug 全量构建零警告。
+- **下一步**：`assets/scenes/test.scene` 这类历史遗留文件可以清理或标记废弃；其余同前。
+
+---
+
 ## 2026-09-12 — 修 2D Play/Stop 后画面全毁（贴图路径二次解析）+ fox 可控走路动画
 
 - **问题（用户报告）**：2D 场景按 Play 再按 Stop 之后，“除了黑紫方块其他啥都看不到”。那些黑紫方块正是引擎的

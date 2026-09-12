@@ -144,6 +144,10 @@ class Scene {
 
   std::vector<Entity> &GetAllEntities() { return entities_; }
 
+  /// @brief Standalone-player scene load: wipes the registry completely (no
+  /// editor-only helpers survive) and then loads the file through the same
+  /// loader the editor uses (`OpenSceneFile`), so the editor and a launched
+  /// standalone always agree on a scene - including its dimension.
   void LoadScene(const std::string &path);
   void SaveScene(const std::string &path);
 

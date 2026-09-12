@@ -73,8 +73,13 @@ entt::entity GetHandle() const;
 - `DestroyEntity(entity)`：销毁实体（TODO 标记，基本实现）。
 - `GetAllEntitiesWith<Components...>()`：返回满足组件组合的实体列表。
 - `GetAllEntities()`：全部实体。
-- `LoadScene/SaveScene(path)`：**已实现**（`scene_serializer.cpp`，JSON）：顶层 `dimension`（`"2d"`/`"3d"`）+ 实体（Tag/Transform/MeshComponent(含材质)/ModelComponent/CameraComponent/RigidBody/Collider/CameraController/SpriteComponent/SpriteAnimationComponent）+ 灯光 + 渲染参数；
-  材质贴图以相对 assets 根存储。editor 的 File→Open/Save/Save As 与 Play 快照均走它。
+- `OpenSceneFile(path)`：**编辑器/运行时的唯一加载器**（`scene_serializer.cpp`，JSON）：顶层 `dimension`（`"2d"`/`"3d"`）
+  + 实体（Tag/Transform/MeshComponent(含材质)/ModelComponent/CameraComponent/RigidBody/Collider/CameraController/
+  SpriteComponent/SpriteAnimationComponent/LuaScriptComponent）+ 灯光 + 渲染参数；材质与精灵贴图以相对 assets 根存储。
+  editor 的 File→Open/Save/Save As、`--scene` 与 Play 快照恢复均走它。
+- `LoadScene(path)`：**独立播放器入口**——清空整个 registry（编辑器专用 helper 也不留）后调用 `OpenSceneFile`。
+  只有一套加载逻辑（历史上手写的第二份实现漏读了 `"dimension"`，导致 Launch 出去的 2D 场景被 3D 管线渲染而过曝）。
+- `SaveScene(path)`：序列化上述内容。
 - `GetContentBounds(min, max)`：场景内所有可渲染物（网格/模型 part/精灵四边形）的世界 AABB，供编辑器取景用。
 - `RenderMeshes(...)` / `Render2D(...)` / `RenderFromPrimaryCamera(...)`：见下文。
 - 已删除：`Render/OnUpdateEditor/OnUpdateSimulation/OnUpdateRuntime`（开发期的多入口渲染函数，现在只有
