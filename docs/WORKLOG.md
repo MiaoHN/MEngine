@@ -5,6 +5,48 @@
 
 ---
 
+## 2026-09-12 — 文档整理 + GitHub Pages 站点（MkDocs Material + Actions 自动发布）
+
+- **目标**：把散在 `docs/` 的十几篇文档整理成有导航的站点，并用 GitHub Actions 自动发布到 gh-pages。
+- **站点**：
+  - 新增 `mkdocs.yml`（Material 主题，中英搜索、深浅色、`--strict` 校验）+ `requirements-docs.txt`（固定
+    `mkdocs-material>=9.5,<10`）+ `.github/workflows/docs.yml`（push 到 `main`/`dev` 且文档有改动 →
+    构建 → `actions/deploy-pages` 发布；需要仓库 Settings → Pages 的 Source 设为 “GitHub Actions”）。
+  - `docs/README.md` 重写成站点首页 + 文档地图（按「上手 / 渲染 / 2D与场景 / 编辑器与流程」分组），
+    `nav` 覆盖全部 14 个页面，页尾写明写文档的三条纪律（新页要进 nav、相对链接必须存在、图用 mermaid）。
+  - `site/` 加入 `.gitignore`；本地三条命令（`pip install -r requirements-docs.txt` / `mkdocs serve` /
+    `mkdocs build --strict`）写进了 `docs/README.md`、根 `README.md` 与 `build-and-toolchain.md`。
+- **mermaid 踩坑（已解决）**：Material 自带的 mermaid 流程会挂 `pre.mermaid`，但实测（9.7.7）它把块替换成
+  **空的 `<div class="mermaid">`**，图源丢失、渲染不出来；同时它是在运行时从 unpkg 拉未固定版本的 mermaid。
+  改为**自管**：fence 用私有 class `mermaid-diagram`（主题不会碰），`docs/javascripts/mermaid.js` 用固定版本
+  （jsdelivr mermaid@11.4.1）渲染，并处理 Material 的 instant navigation 与深浅色切换（MutationObserver；
+  图源存进 `data-md-source`，否则二次渲染会拿到上一次的 SVG 文本而失败）；失败时保留源码并标红，不留空框。
+  浏览器实测：`pre.mermaid-diagram` 2 个 → SVG 2 个、切到 dark 再渲染仍 2 个、控制台 0 报错。
+- **内容整理（修正与代码不一致的地方）**：
+  - `architecture.md`：`sandbox` → `sandbox3d`/`sandbox2d`；`render` 模块职责更新；「运行时数据流」从
+    「3D 主路径 + 2D 是历史路径（RenderContext/RenderPass 待清理）」改成 **两条一等路径的分派**
+    （`RenderFromPrimaryCamera` → `RenderMeshes` / `Render2D`），并删掉已删除类的遗留描述。
+  - `core.md`：删掉已删除的 `command.hpp` 行与 `Command/RenderCommand` 小节，补上鼠标输入 API。
+  - `roadmap.md`：标题/目标改为「2D + 3D 引擎」（不再写“从 2D 升级为 3D”），清理项里
+    `RenderContext/RenderPass/RenderPipeline/command.hpp` 标记为**已删除**，现状表补上 2D/序列化现状。
+  - `scene.md`：ECS 组件图里的 `Sprite2D`/`AnimatedSprite2D`/`AABB`/`Circle` → 现行组件；
+    补充「一个加载器」说明（`OpenSceneFile` + `LoadScene` 转发）。
+  - `rendering.md`：架构图里残留的 `PIPELINE` 节点改成 `RENDERER --> IRHI`。
+  - `PERFORMANCE.md`：命令里的 `sandbox/sandbox.exe` → `sandbox3d/sandbox3d.exe`，补一条 2D 冒烟命令。
+  - `build-and-toolchain.md`：目标结构补 `sandbox3d`/`sandbox2d`/`voxel`/`examples`；CI 小节补 docs 工作流；
+    依赖清单更新（jolt/miniaudio/nlohmann/tinygltf；spdlog 仍未接入）。
+  - 新增 `docs/2d.md`：2D 完整使用姿势（场景维度、两条路径对照表、`SpriteComponent` 字段表、帧动画、
+    平铺、Lua 控制角色、编辑器 2D 工作流、sandbox2d 与无头验证、已知边界）。
+  - 根 `README.md` 重写：特性（2D/3D 双一等）、文档站点链接、构建 preset、目标清单（editor/sandbox2d/
+    sandbox3d/voxel/examples）与命令行示例（`--scene` / `--frames N --hidden --capture-frame M`）、
+    文档站点本地命令。
+- **验证**：`mkdocs build --strict` 退出码 0、无 WARNING（CI 同命令）；本地 `mkdocs serve` 后用浏览器逐项确认：
+  导航 14 页、首页 44 个链接、中文搜索索引（lunr.zh）已生成、mermaid 图在 light/dark 都渲染成功、
+  `2d.md` 标题与表格/代码块正常。
+- **下一步**：给渲染/2D 各补一组截图（文档里引用），其余同前。
+
+---
+
 ## 2026-09-12 — 修 Launch 后 2D 场景过亮过曝（编辑器 / 独立播放器两套加载器漂移）
 
 - **问题（用户报告）**：编辑器里点 Launch 之后，独立窗口里的 2D 场景**过亮/过曝**（深蓝格纹背景变成浅灰蓝、精灵发白、对比度丢失）。

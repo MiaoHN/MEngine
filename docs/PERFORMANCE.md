@@ -2,7 +2,7 @@
 
 > 配套整理重构计划见 [DEV-PLAN.md](./DEV-PLAN.md)。本文记录 P3 渲染优化
 > （视锥剔除 + GPU 实例化 + 材质内容批处理 + uniform 缓存）的测量方法、
-> 数据与结论。所有数据**无人值守**采集：`sandbox --scene --frames N --hidden`
+> 数据与结论。所有数据**无人值守**采集：`sandbox3d --scene --frames N --hidden`
 > 运行后解析 `mengine.log` 中的 `[RenderStats]` 周期行（每 120 帧一条）。
 
 ## 1. 环境
@@ -23,11 +23,11 @@ cmake --build --preset windows-clang-release
 cmake --build --preset windows-clang-debug
 
 # 无人值守压测（运行 ~2000 帧，从 mengine.log 取 [RenderStats] 行）
-./build/windows-clang-release/sandbox/sandbox.exe \
+./build/windows-clang-release/sandbox3d/sandbox3d.exe \
     --scene assets/scenes/stress_10000.scene --frames 2000 --hidden
 
 # 批处理对照（MENGINE_NO_BATCH=1 时主 pass 逐实体绘制；像素应与批处理完全一致）
-MENGINE_NO_BATCH=1 ./build/windows-clang-release/sandbox/sandbox.exe \
+MENGINE_NO_BATCH=1 ./build/windows-clang-release/sandbox3d/sandbox3d.exe \
     --scene assets/scenes/stress_10000.scene --frames 600 \
     --capture-frame 500 --capture-out nobatch.ppm --hidden
 ```
@@ -92,19 +92,22 @@ RenderStats 记录（见 WORKLOG 2026-09-05 P3 条目）。
 - 场景为静态四色实例布局；动态/独立材质较多的场景批数会增加。
 - 帧率由隐藏窗口无 vsync 测得，不代表编辑器（1600×900 视口 FBO +
   ImGui）的实际帧率。
-- `sandbox --scene` 不加载编辑器默认光照参数（SSAO/TAA/Bloom 由场景
+- `sandbox3d --scene` 不加载编辑器默认光照参数（SSAO/TAA/Bloom 由场景
   决定），本组数据均为后处理默认关闭或轻载状态。
 
 ## 6. 回归冒烟（P5 收尾验证）
 
 ```bash
 # physics 冒烟（物理+脚本，期待 sensor/impact/raycast 日志与干净退出）
-./build/windows-clang-debug/sandbox/sandbox.exe \
+./build/windows-clang-debug/sandbox3d/sandbox3d.exe \
     --scene assets/scenes/physics_test.scene --frames 300 --hidden
 
 # 渲染冒烟（期待 drawcalls<=实体数级、无 ERROR/FATAL）
-./build/windows-clang-debug/sandbox/sandbox.exe \
+./build/windows-clang-debug/sandbox3d/sandbox3d.exe \
     --scene assets/scenes/stress_cull.scene --frames 600 --hidden
+
+# 2D 冒烟（精灵路径：无 3D 阶段，只有几次 drawcall）
+./build/windows-clang-debug/sandbox2d/sandbox2d.exe --frames 120 --hidden
 
 # editor 冒烟（注意：需以 exe 所在目录为工作目录，字体为相对路径）
 cd build/windows-clang-debug/editor && ./editor.exe --frames 200 --hidden

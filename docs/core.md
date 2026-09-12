@@ -13,8 +13,10 @@
 | `platform.hpp` | 平台类型枚举（Windows/Linux/macOS/iOS/Android） |
 | `script_engine.hpp/.cpp` | Lua 脚本加载与执行 |
 | `uuid.hpp/.cpp` | 基于 `mt19937_64` 随机数的 64 位 UUID |
-| `input.hpp` | 键盘输入（基于 GLFW） |
-| `command.hpp` | 命令模式基类（`Command` / `RenderCommand`），当前未被渲染主路径使用 |
+| `input.hpp` | 键盘/鼠标输入（基于 GLFW） |
+
+> `core/command.hpp`（`Command` / `RenderCommand` 早期预留抽象）已随 2D 时代的 `RenderPipeline`/
+> `RenderPass` 一起删除，现在没有任何引用。
 
 ## Application 生命周期
 
@@ -91,10 +93,5 @@ LOG_INFO("Application") << "Application started";
 ## Input
 
 - `Input::IsKeyPressed(keycode)`：基于 `glfwGetKey`，返回 `GLFW_PRESS || GLFW_REPEAT`。
-- 目前只有键盘查询，无鼠标/手柄封装。
-
-## Command（预留）
-
-- `Command` 基类带类型（`Logic/Move/Rotate/Render`）与取消标志。
-- `RenderCommand` 携带 `Sprite2D` 渲染信息与模型/VP 矩阵。
-- 当前未被渲染主路径使用，属于早期预留设计，3D 化时可考虑复用或移除。
+- 鼠标：`Input::GetMouseDelta()` / `Input::IsMouseButtonPressed(button)`（相机控制器与编辑器 2D 视口在用）。
+- Lua 侧只暴露键盘：`MEngine.is_key_down("w")`。

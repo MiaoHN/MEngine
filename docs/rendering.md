@@ -52,7 +52,7 @@ graph TB
     FB --> IFrameBufferBackend
     FACTORY --> GL
     FACTORY --> VK
-    PIPELINE --> IRHI
+    RENDERER --> IRHI
 ```
 
 ## 高层封装

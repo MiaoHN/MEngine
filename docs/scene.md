@@ -13,14 +13,13 @@
 ```mermaid
 graph LR
     Scene["Scene"] -->|持有| Registry["entt::registry"]
-    Registry -->|存储| C1[Tag]
-    Registry -->|存储| C2[Transform]
-    Registry -->|存储| C3[Sprite2D]
-    Registry -->|存储| C4[AnimatedSprite2D]
-    Registry -->|存储| C5[CameraComponent]
-    Registry -->|存储| C6[MeshComponent]
-    Registry -->|存储| C7[AABB]
-    Registry -->|存储| C8[Circle]
+    Registry -->|存储| C1[Tag / Transform]
+    Registry -->|存储| C2["MeshComponent / ModelComponent"]
+    Registry -->|存储| C3["SpriteComponent / SpriteAnimationComponent"]
+    Registry -->|存储| C4[CameraComponent]
+    Registry -->|存储| C5["RigidBody / Collider"]
+    Registry -->|存储| C6["Light 组件 / AnimationComponent"]
+    Registry -->|存储| C7[LuaScriptComponent]
     Entity -->|包装| Registry
 ```
 

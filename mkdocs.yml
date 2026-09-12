@@ -1,0 +1,109 @@
+# MkDocs configuration for the MEngine documentation site.
+#
+# The site is built from `docs/` and published to GitHub Pages by
+# `.github/workflows/docs.yml`. Build it locally with:
+#
+#   python -m pip install -r requirements-docs.txt
+#   python -m mkdocs serve          # live preview on http://127.0.0.1:8000
+#   python -m mkdocs build --strict # what CI runs (warnings become errors)
+#
+site_name: MEngine
+site_description: A small C++17 game engine (ECS + Lua + OpenGL, 2D & 3D) with an ImGui editor.
+site_url: https://miaohn.github.io/MEngine/
+repo_url: https://github.com/MiaoHN/MEngine
+repo_name: MiaoHN/MEngine
+# "Edit this page" points at the default branch that holds the docs.
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+copyright: MIT licensed
+
+theme:
+  name: material
+  language: zh
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: 切换到深色
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: 切换到浅色
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  # ```mermaid blocks. The fence uses a PRIVATE class (mermaid-diagram) on
+  # purpose: Material's built-in mermaid flow hooks on `pre.mermaid` and, with
+  # Material 9.7.7, replaced the block with an empty `<div class="mermaid">`
+  # instead of a rendered diagram. `docs/javascripts/mermaid.js` renders ours and
+  # keeps it working across instant navigation and palette switches.
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid-diagram
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/mermaid.js
+
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+
+nav:
+  - 概览: README.md
+  - 上手:
+      - 构建与工具链: build-and-toolchain.md
+      - 架构总览: architecture.md
+      - 核心层 core: core.md
+  - 渲染:
+      - 渲染层 render: rendering.md
+      - 性能与压测: PERFORMANCE.md
+  - 2D 与场景:
+      - 2D 工作流: 2d.md
+      - 场景层 scene: scene.md
+      - 资源管理: asset-management.md
+  - 编辑器: editor.md
+  - 计划与状态:
+      - 路线图: roadmap.md
+      - 实现状态: status.md
+      - 重构计划 DEV-PLAN: DEV-PLAN.md
+  - 执行日志: WORKLOG.md

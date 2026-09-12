@@ -1,29 +1,34 @@
-# 3D 图形引擎路线图
+# 引擎路线图
 
-> 目标：把 MEngine 从当前"2D 渲染引擎"升级为支持**模型导入 + 3D 渲染**的图形引擎，逐步加入体积光、降噪等常用效果，体验向 Blender / UE 靠拢。
+> 目标：一个同时支持 **2D 与 3D** 的轻量游戏引擎 —— 模型导入、PBR 与后期效果、独立的 2D 精灵路径，
+> 配 ImGui 编辑器，体验向 Blender / UE / Godot 靠拢。
 >
-> 原则：**小步快跑，每阶段可运行、可验证**。必要时允许重构现有结构（已获授权）。
+> 原则：**小步快跑，每阶段可运行、可验证**。必要时允许重构现有结构。
 >
-> **当前进度**：见 [status.md](./status.md)。M1（3D 地基）+ M2a/M2b（OBJ/glTF 导入）+ M3a（PBR 材质）+ M3b（阴影映射）+ M3c（点光源）+ M3d（软阴影/点光阴影/聚光）+ M4a（HDR/Bloom）+ M4b（天空盒/IBL）+ M4c（HDR 环境/预过滤镜面 IBL）+ M4d（SSAO）+ M4e（体积光）+ M4f（TAA）+ M5（编辑器 3D 化 + 资产工作流）已完成 ✅。
+> **当前进度**：见 [status.md](./status.md)。M1（3D 地基）+ M2a/M2b（OBJ/glTF 导入）+ M3a（PBR 材质）+
+> M3b（阴影映射）+ M3c（点光源）+ M3d（软阴影/点光阴影/聚光）+ M4a（HDR/Bloom）+ M4b（天空盒/IBL）+
+> M4c（HDR 环境/预过滤镜面 IBL）+ M4d（SSAO）+ M4e（体积光）+ M4f（TAA）+ M5（编辑器 3D 化 + 资产工作流）+
+> M6（LO 移植期）+ **M7（2D 支持：场景维度 + 独立 2D 路径 + 2D 编辑器视口）** 已完成 ✅。
+> 后续方向见文末「下一步」。
 
 ## 现状评估（做 3D 前必须认清）
 
 | 维度 | 现状 | 对后续的影响 |
 | --- | --- | --- |
-| 渲染 | Mesh 驱动的 PBR 管线（阴影/IBL/SSAO/体积光/TAA） | 后续补多网格/多材质、实例化、间接绘制 |
-| 相机 | 统一 `Camera`（透视 + 正交）+ 编辑器轨道相机 | 可扩展脚本化相机控制 |
+| 渲染 | 两条一等路径：3D Mesh 驱动 PBR 管线（阴影/IBL/SSAO/体积光/TAA）与独立 2D 精灵管线（平铺/帧动画） | 后续补多网格/多材质、间接绘制、2D tilemap/图集 |
+| 相机 | 统一 `Camera`（透视 + 正交）+ 编辑器轨道相机 + 2D 正交视口 | 可扩展脚本化相机控制 |
 | 资源 | `AssetManager`（manifest 映射）+ Shader/Texture 库 | 可扩展 Mesh 库、模型缩略图 |
 | RHI | `IRHI` 抽象存在，OpenGL 可用，Vulkan 空壳 | 需补全 Vulkan 或先以 OpenGL 为主 |
-| 场景 | ECS（EnTT）+ `Transform`/`MeshComponent`/`CameraComponent` | 需补场景序列化、父子层级 |
-| 编辑器 | 3D 视口 + 轨道相机 + Gizmo + 模型导入 + 材质编辑 | 可补多选、撤销/重做、资产预览 |
-| 序列化 | `LoadScene/SaveScene` 未实现 | 需实现场景/资产序列化 |
+| 场景 | ECS（EnTT）+ `Transform`/`MeshComponent`/`ModelComponent`/`SpriteComponent`/`CameraComponent` | 已支持序列化、父子层级、场景维度 |
+| 编辑器 | 3D 视口 + 2D 视口 + 轨道相机 + Gizmo + 模型导入 + 材质编辑 | 可补多选、撤销/重做、资产预览 |
+| 序列化 | `SaveScene` / `OpenSceneFile`（JSON，含 `dimension`）已实现，编辑器与独立播放器共用 | 已够用；可补版本迁移 |
 
-## 需要重构的部分（在 3D 工作前/中完成）
+## 需要重构的部分
 
-1. ✅ **Render 层去 2D 硬编码**：`Renderer` 已改为通用 `DrawMesh(mesh, material, transform)`，2D 精灵路径保留但不再是主路径。
+1. ✅ **Render 层去 2D 硬编码**：`Renderer` 已是通用 `DrawMesh*` + 阶段式接口；2D 现在是独立且完整的第二条路径（M7）。
 2. ⏳ **RHI/Backend 补全**：`IVertexArrayBackend` 已有 OpenGL 实现；`Vulkan*Backend` 仍是空壳，待补全或标记未实现并隔离。
-3. ✅ **相机统一**：引入统一 `Camera`（透视 + 正交），替换了 `Camera2D`/`OrthographicCamera`/`PerspectiveCamera`。
-4. ⏳ **清理冗余**：`RenderContext`（与 `RenderPass` 重复）仍未合并/删除。
+3. ✅ **相机统一**：统一 `Camera`（透视 + 正交）替换了 `Camera2D`/`OrthographicCamera`/`PerspectiveCamera`。
+4. ✅ **清理冗余**：`RenderContext` / `RenderPass` / `RenderPipeline` / `core/command.hpp` 均已删除（无引用）。
 5. ✅ **资源生命周期**：`AssetManager`（manifest 映射）+ `ShaderLibrary`/`TextureLibrary` 统一缓存与路径加载。
 
 ---
@@ -43,7 +48,7 @@ graph LR
 
 - ✅ 重构 `Renderer`：新增 `Mesh`、`VertexBuffer`、`IndexBuffer` 及对应 Backend（OpenGL 先实现，Vulkan 留桩）。
 - ✅ 引入统一 `Camera`（透视 + 正交），替换 `Camera2D`/`OrthographicCamera`/`PerspectiveCamera`。
-- ⏳ 删除/合并 `RenderContext`，统一到 `RenderPass`/`RenderPipeline`（未完成）。
+- ✅ 删除/合并 `RenderContext` / `RenderPass` / `RenderPipeline`（已全部删除，直接调用 RHI + 子模块）。
 - ✅ 建立 `ShaderLibrary`/`TextureLibrary` 等资源缓存，`AssetManager` 统一资产加载。
 
 ### 阶段 1 — 3D 渲染基础

@@ -58,10 +58,12 @@ ctest --preset windows-msvc-debug      # 测试（当前暂无测试用例）
 
 ```
 MEngine/
-├── engine/   → 静态库 engine（依赖 glfw、lua、imgui、ImGuizmo、Threads::Threads）
+├── engine/   → 静态库 engine（依赖 glfw、lua、imgui、ImGuizmo、Jolt、miniaudio、Threads::Threads）
 ├── editor/   → 可执行程序 editor（链接 engine）
-├── sandbox/  → 可执行程序 sandbox（链接 engine）
-└── deps/     → glfw(子目录) / lua / imgui / ImGuizmo 以 add_subdirectory 或静态库方式接入
+├── sandbox/  → 可执行程序 sandbox3d + sandbox2d（链接 engine）
+├── voxel/    → 可执行程序 voxel（链接 engine）
+├── examples/ → 每个 LO 复刻一个可执行程序
+└── deps/     → glfw(子目录) / lua / imgui / ImGuizmo / jolt 等以 add_subdirectory 或静态库方式接入
 ```
 
 依赖接入细节（根 `CMakeLists.txt`）：
@@ -81,6 +83,13 @@ MEngine/
 - Linux (GCC / Clang)：安装 X11 / Wayland / OpenGL 开发包。
 - macOS (AppleClang)。
 
+矩阵只跑 **configure → build → ctest**（Release preset），不跑图形化冒烟；无头渲染验证仍靠上文的
+`--frames N --hidden --capture-frame M` 本地跑。
+
+`.github/workflows/docs.yml` 负责文档站点：在 `main` / `dev` 上文档有改动时用 MkDocs Material 构建
+`docs/` 并发布到 GitHub Pages（首次需在仓库 Settings → Pages 把 Source 设为 “GitHub Actions”）。
+本地等价命令见 [README.md](./README.md) 末尾。
+
 ## 跨平台源码约定
 
 为保证三平台可编译，注意：
@@ -94,6 +103,6 @@ MEngine/
 
 ## 第三方依赖（git submodule）
 
-- entt、glad、glfw、glm、imgui、lua、spdlog、stb（`deps/` 下）。
-- `spdlog` 目前**未接入构建**（README 提及但 CMake 未使用）。
+- entt、glad、glfw、glm、imgui、ImGuizmo、jolt、lua、miniaudio、nlohmann、stb、tinygltf（`deps/` 下）。
+- `spdlog` 仓库里有但**未接入构建**（日志由 `core/logger.hpp` 自己实现）。
 - 克隆时使用 `git clone --recursive`。
