@@ -1,4 +1,4 @@
-#include "sandbox.hpp"
+#include "sandbox_3d.hpp"
 
 #include <cmath>
 #include <cstdlib>
@@ -10,6 +10,8 @@
 #include "render/asset_manager.hpp"
 #include "render/model_loader.hpp"
 #include "utils/profiler.h"
+
+using namespace MEngine;
 
 namespace {
 
@@ -34,7 +36,7 @@ bool AudioSelftestRequested() {
 
 }  // namespace
 
-Sandbox::Sandbox() : Application(Application::GetStartupApi()) {
+Sandbox3D::Sandbox3D() : Application(Application::GetStartupApi()) {
   active_scene_ = std::make_shared<Scene>();
 
   // Standalone play: load a scene saved by the editor instead of the demo.
@@ -151,9 +153,9 @@ Sandbox::Sandbox() : Application(Application::GetStartupApi()) {
   camera_.SetAspect(16.0f / 9.0f);
 }
 
-Sandbox::~Sandbox() {}
+Sandbox3D::~Sandbox3D() {}
 
-void Sandbox::Initialize() {
+void Sandbox3D::Initialize() {
   // Env-gated audio self-test (MENGINE_AUDIO_SELFTEST=1): probes the bundled
   // WAV (decode, no device needed), plays it when an output endpoint exists,
   // then quits after a short bounded run. Ordinary runs are unaffected.
@@ -185,7 +187,7 @@ void Sandbox::Initialize() {
   }
 }
 
-void Sandbox::OnUpdate(float dt) {
+void Sandbox3D::OnUpdate(float dt) {
   PROFILER_FUNCTION();
 
   if (running_loaded_scene_) {
@@ -209,4 +211,4 @@ void Sandbox::OnUpdate(float dt) {
   active_scene_->RenderMeshes(camera_.GetViewMatrix(), camera_.GetProjectionMatrix(), camera_.GetPosition());
 }
 
-Application *CreateApplication() { return new Sandbox(); }
+Application *CreateApplication() { return new Sandbox3D(); }

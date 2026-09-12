@@ -33,6 +33,47 @@ class EditorCamera {
   glm::vec3 fly_position{0.0f, 1.0f, 8.0f};
   float     fly_speed    = 5.0f;
 
+  // --- 2D (orthographic) view mode -----------------------------------------
+  // Used for scenes whose primary camera is orthographic: the editor looks
+  // straight down -Z at the XY plane, pans in screen space and zooms by
+  // changing the orthographic half-height instead of the orbit distance.
+  bool      view_2d    = false;
+  float     ortho_size = 6.0f;  // half-height of the visible area, world units
+  glm::vec2 view_center{0.0f};  // XY point the 2D view is centered on
+  float     view_2d_depth = 10.0f;  // eye distance along +Z (keeps sprites in front)
+  int       viewport_height = 900;  // needed to convert mouse pixels to world units
+
+  [[nodiscard]] bool Is2D() const { return view_2d; }
+
+  /// @brief Enters/leaves the 2D view. Entering keeps the XY position of the
+  /// current focus point so the switch never jumps.
+  void Set2D(bool enabled) {
+    if (enabled == view_2d) {
+      return;
+    }
+    if (enabled) {
+      // Focus the same world point the orbit camera was looking at.
+      view_center = glm::vec2(target.x, target.y);
+    } else {
+      target = glm::vec3(view_center.x, view_center.y, 0.0f);
+      yaw    = 45.0f;
+      pitch  = 30.0f;
+    }
+    view_2d = enabled;
+  }
+
+  /// @brief Moves the 2D view center by a mouse delta in PIXELS.
+  void Pan2D(float dx, float dy) {
+    const float world_per_pixel = (2.0f * ortho_size) / static_cast<float>(std::max(1, viewport_height));
+    view_center.x -= dx * world_per_pixel;
+    view_center.y += dy * world_per_pixel;  // screen y is down, world y is up
+  }
+
+  /// @brief Zooms the 2D view (positive wheel delta zooms in).
+  void Zoom2D(float delta) {
+    ortho_size = glm::clamp(ortho_size * std::pow(0.9f, delta), 0.25f, 500.0f);
+  }
+
   [[nodiscard]] bool IsFlyMode() const { return fly_mode; }
 
   /// @brief Switches between orbit and free-fly. Both directions are seamless:
@@ -66,6 +107,9 @@ class EditorCamera {
 
   /// @brief Camera eye position (orbit-derived, or free-fly position).
   [[nodiscard]] glm::vec3 GetPosition() const {
+    if (view_2d) {
+      return glm::vec3(view_center.x, view_center.y, view_2d_depth);
+    }
     if (fly_mode) {
       return fly_position;
     }
@@ -77,6 +121,12 @@ class EditorCamera {
   }
 
   [[nodiscard]] glm::mat4 GetViewMatrix() const {
+    if (view_2d) {
+      // Straight down -Z at the XY plane, +Y up.
+      const glm::vec3 eye    = GetPosition();
+      const glm::vec3 centre = glm::vec3(view_center.x, view_center.y, 0.0f);
+      return glm::lookAt(eye, centre, glm::vec3(0.0f, 1.0f, 0.0f));
+    }
     if (fly_mode) {
       return glm::lookAt(fly_position, fly_position + ForwardFromAngles(), glm::vec3(0.0f, 1.0f, 0.0f));
     }
@@ -84,6 +134,10 @@ class EditorCamera {
   }
 
   [[nodiscard]] glm::mat4 GetProjectionMatrix() const {
+    if (view_2d) {
+      const float half_width = aspect * ortho_size;
+      return glm::ortho(-half_width, half_width, -ortho_size, ortho_size, near_plane, far_plane);
+    }
     return glm::perspective(glm::radians(fov), aspect, near_plane, far_plane);
   }
 
@@ -112,8 +166,13 @@ class EditorCamera {
     fly_position += (fwd * forward_amount + right * right_amount + up * up_amount) * fly_speed * dt;
   }
 
-  /// @brief Move the target along the camera's right/up axes.
+  /// @brief Move the target along the camera's right/up axes (or pan the 2D view
+  /// when in 2D mode).
   void Pan(float dx, float dy) {
+    if (view_2d) {
+      Pan2D(dx, dy);
+      return;
+    }
     const glm::vec3 forward = GetForward();
     const glm::vec3 right   = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
     const glm::vec3 up      = glm::normalize(glm::cross(right, forward));
@@ -123,8 +182,13 @@ class EditorCamera {
     target += up * (dy * scale);
   }
 
-  /// @brief Change the orbit distance (positive delta zooms in).
+  /// @brief Change the orbit distance (positive delta zooms in). In 2D mode the
+  /// orthographic size is scaled instead.
   void Zoom(float delta) {
+    if (view_2d) {
+      Zoom2D(delta);
+      return;
+    }
     distance -= delta * distance * 0.1f;
     distance = glm::clamp(distance, 0.1f, 10000.0f);
   }
@@ -137,6 +201,9 @@ class EditorCamera {
     fov          = 45.0f;
     fly_mode     = false;
     fly_position = glm::vec3(0.0f, 1.0f, 8.0f);
+    view_2d      = false;
+    ortho_size   = 6.0f;
+    view_center  = glm::vec2(0.0f);
   }
 };
 

@@ -48,15 +48,6 @@ void OpenGLTextureBackend::Bind(unsigned int slot) const {
 
 void OpenGLTextureBackend::Unbind() const { glBindTexture(GL_TEXTURE_2D, 0); }
 
-void OpenGLTextureBackend::SetSubTexture(int frame, int h_frames, int v_frames, int width, int height) {
-  (void)frame;
-  (void)h_frames;
-  (void)v_frames;
-  (void)width;
-  (void)height;
-  // TODO: move sprite UV animation to a dedicated vertex/uv abstraction.
-}
-
 std::vector<char> OpenGLShaderBackend::ReadFile(const std::string &path) {
   std::ifstream file(path, std::ios::ate | std::ios::binary);
   if (!file.is_open()) {

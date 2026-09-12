@@ -28,12 +28,11 @@
 graph TB
     subgraph 高层["高层封装 (面向游戏逻辑)"]
         RENDERER[Renderer]
-        SCENE[Scene::RenderMeshes]
+        SCENE3D[Scene::RenderMeshes]
+        SCENE2D[Scene::Render2D]
     end
 
     subgraph 中间层["渲染资源与组织"]
-        PIPELINE[RenderPipeline]
-        PASS[RenderPass]
         SHADER[Shader / ShaderLibrary]
         TEX[Texture / TextureLibrary]
         FB[FrameBuffer]
@@ -46,13 +45,9 @@ graph TB
         VK[Vulkan 实现]
     end
 
-    RENDERER --> PIPELINE
-    RENDERER --> PASS
-    PIPELINE --> SHADER
-    PIPELINE --> VAO[IVertexArrayBackend]
-    SCENE --> RENDERER
-    PASS --> FB
-    SHADER --> IShaderBackend
+    RENDERER --> SHADER
+    SCENE3D --> RENDERER
+    SCENE2D --> RENDERER
     TEX --> ITextureBackend
     FB --> IFrameBufferBackend
     FACTORY --> GL
@@ -62,25 +57,22 @@ graph TB
 
 ## 高层封装
 
-### Renderer（2D 渲染器）
-- 构造时创建：一个四边形 VAO（顶点含 `aPos`(vec3) + `aTexCoord`(vec2)，索引缓冲 6 个），加载默认 shader（`res/shaders/default_{vert,frag}.glsl`），并组装一个 `RenderPipeline`。
-- 提供 `RenderSprite(Sprite2D&)` 与 `RenderSprite(AnimatedSprite2D&)`：
-  1. 绑定 shader 与 texture（无纹理时生成 1×1 纯色纹理）。
-  2. 设置 `model`、`proj_view`、`texture1` uniform。
-  3. `pipeline_->Execute()` 绘制。
-- ⚠️ 当前是 **2D 专用**：VAO 硬编码为四边形、shader 硬编码为 2D 默认 shader，无 Mesh/模型概念。3D 化需要重构（见 roadmap）。
+### Renderer
+- 3D 主路径的“阶段式”接口：`BeginShadowPass` / `DrawMeshShadowInstanced` / `BeginSSAOPass` /
+  `DrawMeshSSAOInstanced` / `DrawMeshInstanced` / `Skybox` / `PostProcess`，由 `Scene::RenderMeshes`
+  按 阴影 → 点光阴影 → SSAO → 主 pass（HDR FBO）→ 天空盒 → 后处理合成 的顺序驱动。
+- 资源：默认 1×1 白纹理、方向光 shadow map、点光 cube shadow map（`kMaxPointShadows`）、
+  `SSAO`、`Skybox/IBL`、`PostProcessing`（HDR + bloom + god rays + TAA + tone）。
+- `BeginShadowPass`/`BeginPointShadowPass` 负责绑定对应的 FBO + 深度着色器；其它阶段（SSAO/主
+  pass/后处理）由各自的子模块用原始 GL 绑定 FBO/设置 viewport，Renderer 只做转发。
+- 材质/场景 uniform（`proj_view`、`view_pos`、`base_color_factor`、贴图槽、灯光、shadow map、
+  IBL）在 `DrawMeshInstanced` 内按 shader 缓存上传一次。
 
-### RenderPipeline
-- 一个绘制单元 = `IVertexArrayBackend`（几何）+ `Shader`（着色器）。
-- `Execute()`：绑定 shader → 绑定 VAO → `rhi->DrawIndexedTriangles(count)` → 解绑。
+### Renderer 的 2D 通道（`Begin2DScene` / `DrawSprites2D` / `End2DScene`）
+- 见下文「2D 场景」一节：2D 不复用任何 3D 阶段，三个调用即是一整帧。
 
-### RenderPass
-- 持有离屏帧缓冲（`fb_`）与若干 `RenderPipeline`。
-- `Begin()` 绑定 FBO 并清屏；`End()` 解绑回默认帧缓冲；`Execute()` 依次执行所有 pipeline。
-- 帧缓冲 id 由 `IRHI::CreateFramebuffer()` 创建。
-
-### RenderContext（疑似重复抽象）
-- 与 `RenderPass` 几乎一致（持 FBO + pipelines），但**未被使用**。3D 化时可合并或删除。
+> 历史：`RenderPipeline` / `RenderPass` / `RenderContext` / `core/command.hpp` 这套 2D 时代的
+> 绘制抽象已删除（Renderer 直接调 RHI + 子模块，见上）。`RenderContext` 当时就未被使用。
 
 ## 资源类（Backend 模式）
 
@@ -271,10 +263,41 @@ class IRHI {
 - `sandbox/res/shaders/lit_vert.glsl`（M1 新增）：输入 `aPos`/`aNormal`/`aTexCoord`，输出世界空间 `FragPos`/`Normal`，计算法线矩阵。
 - `sandbox/res/shaders/lit_frag.glsl`（M1 新增）：Blinn-Phong 方向光 + 可选纹理（`has_texture`）+ 镜面高光。
 
+## 2D 场景（SceneDimension::Scene2D）
+
+2D 不是“3D 相机换成正交”，而是**另一条渲染路径**：`Scene` 带维度
+（`SceneDimension::Scene2D/Scene3D`，随场景文件序列化），维度为 2D 时
+`Scene::RenderFromPrimaryCamera` 走 `Scene::Render2D`，**完全不经过**阴影/点光阴影/SSAO/HDR/天空盒/
+后处理，只做「一次清屏 + 若干 instanced 批次」，因此 2D 场景的一帧开销与 3D 阶段无关，像素级等于
+美术图（不做 tone mapping / gamma 二次变换）。
+
+```mermaid
+graph LR
+    S[Scene::Render2D] --> B[Renderer::Begin2DScene<br/>绑定 FBO / viewport / 清屏<br/>关深度测试与剔除，开 alpha 混合]
+    B --> L[收集 SpriteComponent<br/>painter 排序 layer → order → z]
+    L --> D[Renderer::DrawSprites2D<br/>同 quad + 同材质内容合批实例化]
+    D --> E[Renderer::End2DScene<br/>恢复深度测试/写]
+```
+
+- **组件**：`SpriteComponent`（texture / tint / `uv_rect` / size / flip / sorting_layer / order_in_layer，
+  `GetQuad()` 按 `uv_rect+flip` 缓存单位四边形，`GetMaterial()` 按 texture+tint 缓存材质）+
+  `SpriteAnimationComponent`（`SpriteSheet` 网格逐帧推进 `uv_rect`，`Scene::StepSimulation` 里统一
+  `UpdateSpriteAnimations`）。`render/sprite.{hpp,cpp}` 提供 `SpriteSheet`、四边形/材质缓存。
+- **排序**：`sorting_layer` → `order_in_layer` → 世界 z（越大越靠前/后画），与 Unity 的 Sorting Layer /
+  Order in Layer 一致；不再按到相机距离排序。
+- **合批**：连续且 `mesh` 相同、材质内容相同（`SameMaterialForBatching`）的精灵合成一次
+  `DrawIndexedInstanced`（800 块地砖 = 少量 draw call）。
+- **着色器**：`assets/shaders/sprite_vert.glsl` / `sprite_frag.glsl`——顶点只做
+  `proj_view * aInstanceModel * aPos`（沿用位置/法线/UV + 实例矩阵 3..6 的引擎惯例），片元是
+  `texel * base_color_factor`，无光照、无 tone mapping。
+- **在 3D 场景里的精灵**：仍走 3D 主 pass 的半透明通道（HDR + tone mapping + 按层/深度排序），
+  两种模式可以混用；只是 2D 场景不会这么做。
+
 ## 当前渲染局限
 
 > M6 已解决项：背面剔除现按材质启用（`CullMode`，默认 Back）；镜面 IBL 已用 split-sum BRDF LUT；
 > 光照/材质已引擎化（`Material` + 场景灯列表 + 三套 shader）。
+> M7 已解决项：2D 有独立渲染路径（不经 3D 阶段/后处理），`Renderer` 不再持有 2D 专用管线/命令抽象。
 
 1. **Vulkan 未完成**：后端空壳，无真实 GPU 资源（网格复用 `IVertexArrayBackend`，接口已就位）。
 2. **光照未组件化**：方向光为引擎字段、点光/聚光为场景级列表，尚未抽象为 ECS Light 组件。
@@ -282,3 +305,7 @@ class IRHI {
 4. **环境 HDR 是 Application 全局静态**：非 per-scene（编辑器运行时切换不灵活）。
 5. **三套 fragment shader 公共部分重复**：BRDF/阴影/IBL/点光循环可收敛为共享 GLSL 头。
 6. **点光阴影无 PCF**：逐面全量重绘，可分层渲染/软阴影优化。
+7. **2D 批处理按“连续区间”而非全局分组**：跨 layer 的相同精灵不会合并；2D 精灵不写入深度，
+   因此需要依赖 `sorting_layer` 显式分层（与其它引擎相同）。
+8. **纹理图集/九宫格**：`SpriteComponent` 支持 `uv_rect` 子矩形，但还没有 atlas 打包工具与
+   sliced sprite（九宫格）支持。

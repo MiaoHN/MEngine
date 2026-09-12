@@ -34,6 +34,14 @@ namespace MEngine {
 class Renderer;
 enum class RenderMode;
 
+/// @brief How a scene is authored and rendered. Chosen per scene (like the
+/// "2D"/"3D" templates of other engines) and stored in the scene file; it
+/// selects the render path and the editor workspace, nothing else.
+enum class SceneDimension {
+  Scene3D,  ///< Perspective camera, lights / shadows / skybox / post-processing.
+  Scene2D,  ///< Orthographic camera, sprites only, one clear + instanced batches.
+};
+
 class Scene {
  public:
   Scene();
@@ -152,28 +160,65 @@ class Scene {
 
   Ref<Camera> GetDefaultCameraInfo() { return default_camera_info_; }
 
-  void OnUpdateEditor(const Camera &camera);
+  // --- scene dimension (2D / 3D) --------------------------------------------
+  // A scene is authored EITHER as 2D or as 3D, like a scene template in Unity or
+  // a 2D/3D viewport in Godot. The dimension is part of the scene file and picks
+  // the render path (see Render2D / RenderMeshes) and the editor workspace; it
+  // never restricts which components exist.
 
-  void OnUpdateSimulation(float dt, const Camera &camera);
+  [[nodiscard]] SceneDimension GetDimension() const { return dimension_; }
+  [[nodiscard]] bool Is2D() const { return dimension_ == SceneDimension::Scene2D; }
 
-  void OnUpdateRuntime(float dt, int vw, int vh);
+  /// @brief Switches the scene between 2D and 3D. Switching to 2D also applies
+  /// the 2D render defaults (no skybox / SSAO / TAA / bloom / god rays / IBL and
+  /// a solid background) because those 3D stages are never executed by the 2D
+  /// render path; switching back to 3D leaves the settings alone.
+  void SetDimension(SceneDimension dimension);
 
-  void Render(const Camera &camera);
+  /// @brief Makes sure the scene has an orthographic primary camera (creating
+  /// "Main Camera" when needed) - the camera a 2D scene is rendered with.
+  Entity EnsurePrimaryCamera2D(float ortho_size = 6.0f, float z = 10.0f);
 
-  /// @brief Draw all entities with a MeshComponent using the given camera.
-  /// `target_fbo` selects the framebuffer the final composite is drawn into
-  /// (0 = default framebuffer); `target_width`/`target_height` override the
-  /// composite viewport when rendering into a custom framebuffer.
+  /// @brief The 2D render path: draws every `SpriteComponent` (sorted by
+  /// sorting layer / order in layer, batched per texture + tint) with an
+  /// orthographic `view`/`proj` directly into `target_fbo`. No lights, shadows,
+  /// SSAO, skybox, HDR buffer or post-processing chain is involved, and depth
+  /// testing is off, so a 2D scene costs exactly one clear plus its sprite
+  /// batches and looks exactly like the source art.
+  void Render2D(const glm::mat4 &view, const glm::mat4 &proj, unsigned int target_fbo = 0, int target_width = 0,
+                int target_height = 0);
+
+  /// @brief Draw all renderable entities (MeshComponent, ModelComponent and
+  /// SpriteComponent) with the given camera — the 3D path. `target_fbo` selects
+  /// the framebuffer the final composite is drawn into (0 = default
+  /// framebuffer); `target_width`/`target_height` override the composite
+  /// viewport when rendering into a custom framebuffer.
   void RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos,
                     unsigned int target_fbo = 0, int target_width = 0, int target_height = 0);
 
-  /// @brief Renders the 3D scene from the primary camera (falling back to the
-  /// default camera when none is marked primary) into `target_fbo`. Used by
-  /// the editor's Play mode.
+  /// @brief Renders the scene from its primary camera into `target_fbo`, through
+  /// the path of the scene's dimension (2D scenes use Render2D, 3D scenes
+  /// RenderMeshes) and falling back to the default camera when no camera is
+  /// marked primary. Used by Play mode and by the standalone sandboxes.
   void RenderFromPrimaryCamera(unsigned int target_fbo = 0, int target_width = 0, int target_height = 0);
 
   /// @brief Returns true when at least one entity has a primary camera.
   [[nodiscard]] bool HasPrimaryCamera();
+
+  /// @brief The primary camera's component, or nullptr when none is marked.
+  [[nodiscard]] CameraComponent *GetPrimaryCameraComponent();
+
+  /// @brief World-space AABB of everything renderable in the scene: mesh /
+  /// model part bounds plus sprite quads. Returns false (leaving the outputs
+  /// untouched) when the scene has nothing renderable — the editor's "Frame All"
+  /// and the 2D viewport's fit use it.
+  bool GetContentBounds(glm::vec3 &out_min, glm::vec3 &out_max);
+
+  /// @brief Advances every `SpriteAnimationComponent` by `delta_time` and writes
+  /// the resulting sheet frame into the entity's `SpriteComponent` UV rectangle.
+  /// Called once per frame from StepSimulation (the editor also calls it to
+  /// preview a sheet animation without simulating).
+  void UpdateSpriteAnimations(float delta_time);
 
   void AddPointLight(const PointLight &light);
   void ClearPointLights();
@@ -325,6 +370,10 @@ class Scene {
 
   Ref<PhysicsWorld> physics_world_;
   bool              simulating_ = false;
+
+  /// @brief Authored dimension of this scene; Scene3D unless set otherwise (or
+  /// inferred from an orthographic primary camera when loading old files).
+  SceneDimension dimension_ = SceneDimension::Scene3D;
 
   /// @brief Shared keyframe-animation timeline clock and playback state.
   float anim_time_    = 0.0f;

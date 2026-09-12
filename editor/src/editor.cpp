@@ -590,6 +590,27 @@ void Editor::OnUpdate(float dt) {
     RunSceneFileSelftest(selftest_scene);
   }
 
+  // Unattended verification of the 2D workspace: MENGINE_EDITOR_SELFTEST_2D_SAVE
+  // creates the default 2D scene, saves it to that path and reports the result.
+  // The saved file doubles as a fixture for `--scene <path>` 2D round-trips.
+  static bool        scene_2d_selftest_done = false;
+  const std::string  selftest_2d_path       = GetEnvVar("MENGINE_EDITOR_SELFTEST_2D_SAVE");
+  if (!selftest_2d_path.empty() && !scene_2d_selftest_done) {
+    scene_2d_selftest_done = true;
+    NewScene2D();
+    const size_t sprites = active_scene_->GetRegistry().view<SpriteComponent>().size();
+    LOG_INFO("Editor") << "[selftest] new 2D scene: dimension=" << (active_scene_->Is2D() ? "2D" : "3D")
+                       << " sprites=" << sprites << " primary_camera=" << active_scene_->HasPrimaryCamera()
+                       << " skybox=" << (active_scene_->IsSkyboxEnabled() ? "on" : "off")
+                       << " 2d_view=" << (Is2DView() ? "yes" : "no");
+    try {
+      active_scene_->SaveScene(selftest_2d_path);
+      LOG_INFO("Editor") << "[selftest] 2D scene saved to " << selftest_2d_path;
+    } catch (...) {
+      LOG_ERROR("Editor") << "[selftest] failed to save 2D scene to " << selftest_2d_path;
+    }
+  }
+
   if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
     glfwSetWindowShouldClose(window_, true);
   }
@@ -613,12 +634,19 @@ void Editor::OnUpdate(float dt) {
     active_scene_->AdvanceAnimation(dt);
   }
 
-  // Render the 3D scene into the viewport framebuffer (Edit = editor camera,
+  // Render the scene into the viewport framebuffer (Edit = editor camera,
   // Play = the scene's primary camera, falling back to the editor camera when
   // no primary camera has been placed).
   editor_camera_.aspect = static_cast<float>(viewport_width_) / static_cast<float>(std::max(1, viewport_height_));
+  editor_camera_.viewport_height = viewport_height_;
+  editor_camera_.Set2D(active_scene_->Is2D());
   if (game_mode_ == GameMode::Play && active_scene_->HasPrimaryCamera()) {
     active_scene_->RenderFromPrimaryCamera(frame_buffer_->GetFrameBufferId(), viewport_width_, viewport_height_);
+  } else if (active_scene_->Is2D()) {
+    // A 2D scene is never rendered by the 3D pipeline, not even for the editor
+    // preview: sprites only, straight into the viewport framebuffer.
+    active_scene_->Render2D(editor_camera_.GetViewMatrix(), editor_camera_.GetProjectionMatrix(),
+                            frame_buffer_->GetFrameBufferId(), viewport_width_, viewport_height_);
   } else {
     active_scene_->RenderMeshes(editor_camera_.GetViewMatrix(), editor_camera_.GetProjectionMatrix(),
                                 editor_camera_.GetPosition(), frame_buffer_->GetFrameBufferId(), viewport_width_,
@@ -659,6 +687,9 @@ void Editor::OnUpdate(float dt) {
       if (ImGui::MenuItem("New Scene", "Ctrl+N")) {
         NewScene();
       }
+      if (ImGui::MenuItem("New 2D Scene")) {
+        NewScene2D();
+      }
       ImGui::Separator();
       if (ImGui::MenuItem("Open Scene...", "Ctrl+O")) {
         OpenSceneDialog();
@@ -684,7 +715,14 @@ void Editor::OnUpdate(float dt) {
     if (ImGui::BeginMenu("View")) {
       ImGui::MenuItem("Content Browser", nullptr, &show_content_browser_);
       ImGui::MenuItem("Scene", nullptr, &show_scene_);
+      // Both viewport panels are listed; only the one matching the scene's
+      // dimension is drawn (2D scenes in the 2D Viewport, 3D scenes in the 3D
+      // one), so the other stays available as a dock tab without being drawn.
       ImGui::MenuItem("Viewport", nullptr, &show_viewport_);
+      ImGui::MenuItem("2D Viewport", nullptr, &show_viewport_2d_);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("The 2D workspace, shown for 2D scenes (%s)", Is2DView() ? "current scene is 2D" : "inactive");
+      }
       ImGui::MenuItem("Properties", nullptr, &show_properties_);
       ImGui::MenuItem("Lighting", nullptr, &show_lighting_);
       ImGui::MenuItem("Rendering", nullptr, &show_rendering_);
@@ -702,7 +740,13 @@ void Editor::OnUpdate(float dt) {
   }
 
   if (show_content_browser_) ShowImGuiContentBrowser();
-  if (show_viewport_) ShowImGuiViewport();
+  // The viewport panel follows the scene's dimension: a 2D scene is edited (and
+  // drawn) in the 2D Viewport, a 3D scene in the 3D Viewport.
+  if (Is2DView()) {
+    if (show_viewport_2d_) ShowImGui2DViewport();
+  } else if (show_viewport_) {
+    ShowImGuiViewport();
+  }
   if (show_scene_) ShowImGuiScene();
   if (show_properties_) ShowImGuiProperties();
   if (show_lighting_) ShowImGuiLighting();
@@ -932,6 +976,8 @@ void Editor::ShowImGuiScene() {
     if (ImGui::MenuItem("Plane")) CreatePrimitive("Plane", AssetManager::Instance().GetMesh("plane"));
     if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere", AssetManager::Instance().GetMesh("sphere"));
     ImGui::Separator();
+    if (ImGui::MenuItem("Sprite")) CreateSpriteEntity();
+    ImGui::Separator();
     if (ImGui::MenuItem("Point Light")) CreatePointLightEntity();
     if (ImGui::MenuItem("Spot Light")) CreateSpotLightEntity();
     if (ImGui::MenuItem("Directional Light")) CreateDirectionalLightEntity();
@@ -1120,8 +1166,10 @@ void Editor::ShowImGuiViewport() {
 
   // Toolbar: fly/orbit toggle + play/stop. Gizmo operations live in an
   // icon-button overlay at the bottom-left of the viewport image.
+  // The width is clamped: a freshly created / freshly docked window reports a
+  // zero content region for one frame, which BeginChild rejects.
   constexpr float toolbar_height = 26.0f;
-  ImGui::BeginChild("##ViewportToolbar", ImVec2(avail.x, toolbar_height));
+  ImGui::BeginChild("##ViewportToolbar", ImVec2(std::max(avail.x, 64.0f), toolbar_height));
   if (ImGui::Button(editor_camera_.IsFlyMode() ? "Orbit" : "Fly")) {
     editor_camera_.SetFlyMode(!editor_camera_.IsFlyMode());
   }
@@ -1285,6 +1333,176 @@ void Editor::ShowImGuiViewport() {
   ImGui::PopStyleVar();
 }
 
+/// @brief The 2D workspace: a dedicated panel for 2D scenes, shown instead of
+/// the 3D "Viewport". It is a flat, orthographic editor — pan with the middle
+/// mouse button, zoom with the wheel, drop a texture to create a sprite — and
+/// it is the only surface a 2D scene is rendered into (`Scene::Render2D`).
+void Editor::ShowImGui2DViewport() {
+  PROFILER_FUNCTION();
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+  ImGui::Begin("2D Viewport");
+
+  const ImVec2 avail = ImGui::GetContentRegionAvail();
+
+  constexpr float toolbar_height = 26.0f;
+  // Clamped like the 3D toolbar: a zero-width content region (first frame of a
+  // newly created window) would trip an ImGui assertion inside BeginChild.
+  ImGui::BeginChild("##Viewport2DToolbar", ImVec2(std::max(avail.x, 64.0f), toolbar_height));
+  const char *play_label = game_mode_ == GameMode::Edit ? "Play" : "Stop";
+  if (ImGui::Button(play_label)) {
+    if (game_mode_ == GameMode::Edit) {
+      game_mode_ = GameMode::Play;
+      active_scene_->StartSimulation();
+      active_scene_->GetScriptEngine().LoadMainScript(active_scene_->GetMainScript());
+      active_scene_->GetScriptEngine().StartAll();
+      SetGridVisible(false);
+    } else {
+      game_mode_ = GameMode::Edit;
+      active_scene_->GetScriptEngine().Clear();
+      active_scene_->StopSimulation();
+      SetGridVisible(true);
+      if (selected_entity_.GetHandle() != entt::null &&
+          !active_scene_->GetRegistry().valid(selected_entity_.GetHandle())) {
+        selected_entity_ = Entity();
+      }
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Sprite")) {
+    CreateSpriteEntity();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Create a sprite under the selection (or at the origin)");
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Frame All")) {
+    // Fit the 2D camera to every sprite's world bounds (uses the scene's AABB).
+    glm::vec3 scene_min;
+    glm::vec3 scene_max;
+    if (active_scene_->GetContentBounds(scene_min, scene_max)) {
+      editor_camera_.view_center = glm::vec2((scene_min.x + scene_max.x) * 0.5f, (scene_min.y + scene_max.y) * 0.5f);
+      const float half_height    = std::max(scene_max.y - scene_min.y, (scene_max.x - scene_min.x) / std::max(0.1f, editor_camera_.aspect));
+      editor_camera_.ortho_size  = glm::clamp(half_height, 0.25f, 500.0f);
+    }
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Center and zoom the 2D view on all sprites");
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Launch")) {
+    LaunchStandalone();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Run the scene standalone in a new window");
+  }
+  ImGui::SameLine();
+  ImGui::TextDisabled("|  middle-drag: pan   wheel: zoom");
+  ImGui::EndChild();
+
+  ImVec2 image_size(avail.x, avail.y - toolbar_height - 4.0f);
+  if (image_size.x < 64.0f) image_size.x = 64.0f;
+  if (image_size.y < 64.0f) image_size.y = 64.0f;
+
+  const int w = static_cast<int>(image_size.x);
+  const int h = static_cast<int>(image_size.y);
+  if (w != viewport_width_ || h != viewport_height_) {
+    viewport_width_   = w;
+    viewport_height_  = h;
+    viewport_resized_ = true;
+  }
+
+  ImGui::Image(reinterpret_cast<void *>(static_cast<intptr_t>(frame_buffer_->GetTextureId())), image_size, ImVec2(0, 1),
+               ImVec2(1, 0));
+
+  // Dropping an image creates a sprite using it — the usual 2D workflow.
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+      if (payload->Data != nullptr) {
+        const std::filesystem::path file_path(static_cast<const wchar_t *>(payload->Data));
+        const std::string           ext = file_path.extension().string();
+        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga") {
+          CreateSpriteEntity();
+          if (selected_entity_.GetHandle() != entt::null &&
+              selected_entity_.HasComponent<SpriteComponent>()) {
+            auto texture = Texture::Create(file_path.string());
+            if (texture) {
+              selected_entity_.GetComponent<SpriteComponent>().SetTexture(texture);
+            }
+          }
+        }
+      }
+    }
+    ImGui::EndDragDropTarget();
+  }
+
+  const ImVec2 image_pos  = ImGui::GetItemRectMin();
+  const ImVec2 image_area = ImGui::GetItemRectSize();
+
+  // 2D navigation: middle-drag pans, wheel zooms. No orbit, no fly.
+  const bool hovered     = ImGui::IsItemHovered();
+  const bool using_gizmo = ImGuizmo::IsUsing();
+  if (hovered && !using_gizmo && game_mode_ == GameMode::Edit) {
+    const ImGuiIO &io = ImGui::GetIO();
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+      editor_camera_.Pan2D(io.MouseDelta.x, io.MouseDelta.y);
+    }
+    if (io.MouseWheel != 0.0f) {
+      editor_camera_.Zoom2D(io.MouseWheel);
+    }
+  }
+
+  if (hovered && game_mode_ == GameMode::Play) {
+    const ImGuiIO &io = ImGui::GetIO();
+    active_scene_->UpdateCameraControllers(io.DeltaTime, glm::vec2(io.MouseDelta.x, io.MouseDelta.y),
+                                           io.MouseDown[ImGuiMouseButton_Right]);
+  }
+
+  if (game_mode_ == GameMode::Edit) {
+    ShowGizmo(image_pos, image_area);
+    DrawCameraGizmos(image_pos, image_area);
+
+    // 2D gizmo operations: sprites translate and scale in the plane; rotate is
+    // offered too (around Z only in practice, the gizmo is unconstrained).
+    constexpr float btn_size = 24.0f;
+    constexpr float padding  = 8.0f;
+    ImGui::SetCursorScreenPos(ImVec2(image_pos.x + padding, image_pos.y + image_area.y - btn_size - padding));
+    struct GizmoButton {
+      const char         *label;
+      const char         *tooltip;
+      ImGuizmo::OPERATION operation;
+    };
+    const GizmoButton buttons[] = {
+        {"T", "Translate (W)", ImGuizmo::TRANSLATE},
+        {"R", "Rotate (E)", ImGuizmo::ROTATE},
+        {"S", "Scale (R)", ImGuizmo::SCALE},
+    };
+    for (const GizmoButton &button : buttons) {
+      ImGui::PushID(button.label);
+      const bool active = gizmo_operation_ == button.operation;
+      if (active) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.24f, 0.54f, 0.92f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.60f, 0.98f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.20f, 0.48f, 0.86f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+      }
+      if (ImGui::Button(button.label, ImVec2(btn_size, btn_size))) {
+        gizmo_operation_ = button.operation;
+      }
+      if (active) {
+        ImGui::PopStyleColor(4);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", button.tooltip);
+      }
+      ImGui::PopID();
+      ImGui::SameLine();
+    }
+  }
+
+  ImGui::End();
+  ImGui::PopStyleVar();
+}
+
 /// @brief Edits one PBR material in place: the four texture-map thumbnails
 /// (drag from the Content Browser, right-click to clear) plus the scalar
 /// factors. Shared by the Mesh and Model (per-part) component inspectors.
@@ -1392,6 +1610,8 @@ void Editor::ShowImGuiProperties() {
     if (ImGui::BeginPopup("AddComponent")) {
       DisplayAddComponentEntry<Transform>("Transform");
       DisplayAddComponentEntry<MeshComponent>("Mesh");
+      DisplayAddComponentEntry<SpriteComponent>("Sprite (2D)");
+      DisplayAddComponentEntry<SpriteAnimationComponent>("Sprite Animation (2D)");
       DisplayAddComponentEntry<CameraComponent>("Camera");
       DisplayAddComponentEntry<CameraController>("Camera Controller");
       DisplayAddComponentEntry<PointLightComponent>("Point Light");
@@ -1593,6 +1813,104 @@ void Editor::ShowImGuiProperties() {
       DrawVec3Control("Ambient", light.ambient);
       DrawVec3Control("Diffuse", light.diffuse);
       DrawVec3Control("Specular", light.specular);
+    });
+
+    DrawComponent<SpriteComponent>("Sprite (2D)", selected_entity_, [&](auto &component) {
+      // Texture slot: drag an image from the Content Browser, right-click to clear.
+      constexpr float thumb = 64.0f;
+      ImGui::BeginGroup();
+      if (component.texture) {
+        ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(component.texture->GetID())), {thumb, thumb},
+                     ImVec2(0, 1), ImVec2(1, 0));
+      } else {
+        ImGui::Button("None", {thumb, thumb});
+      }
+      if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+          const auto *path  = static_cast<const wchar_t *>(payload->Data);
+          component.texture = Texture::Create(std::filesystem::path(path).string());
+          LOG_INFO("Editor") << "Sprite texture -> " << std::filesystem::path(path).filename().string();
+        }
+        ImGui::EndDragDropTarget();
+      }
+      if (component.texture && ImGui::BeginPopupContextItem("SpriteTexture")) {
+        if (ImGui::MenuItem("Clear")) {
+          component.texture = nullptr;
+        }
+        ImGui::EndPopup();
+      }
+      ImGui::Text("Texture");
+      ImGui::EndGroup();
+      ImGui::SameLine();
+      ImGui::BeginGroup();
+      if (component.texture) {
+        ImGui::Text("%d x %d px", component.texture->GetWidth(), component.texture->GetHeight());
+      } else {
+        ImGui::TextDisabled("No texture (plain tinted quad).\nDrag an image here.");
+      }
+      ImGui::EndGroup();
+
+      ImGui::ColorEdit4("Tint", glm::value_ptr(component.color));
+      ImGui::DragFloat2("Size (world units)", glm::value_ptr(component.size), 0.05f, 0.001f, 1000.0f);
+      ImGui::Checkbox("Flip X", &component.flip_x);
+      ImGui::SameLine();
+      ImGui::Checkbox("Flip Y", &component.flip_y);
+      ImGui::DragInt("Sorting Layer", &component.sorting_layer, 0.2f);
+      ImGui::DragInt("Order in Layer", &component.order_in_layer, 0.2f);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Translucent items are drawn in (Sorting Layer, Order in Layer)\n"
+                          "order - the 2D draw order. The entity's Z is not used for sorting.");
+      }
+      ImGui::DragFloat4("UV Rect", glm::value_ptr(component.uv_rect), 0.002f, 0.0f, 1.0f, "%.3f");
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Normalized (u0, v0, u1, v1) sub-rect of the texture:\n"
+                          "the whole texture by default, one sheet cell when animated.");
+      }
+      if (ImGui::Button("Whole Texture")) {
+        component.SetWholeTexture();
+      }
+      ImGui::SameLine();
+      SpriteSheet sheet{1, 1};
+      if (selected_entity_.HasComponent<SpriteAnimationComponent>()) {
+        sheet = selected_entity_.GetComponent<SpriteAnimationComponent>().sheet;
+      }
+      if (ImGui::Button("Fit to 32 px/unit")) {
+        component.FitPixels(sheet, 32.0f);
+      }
+    });
+
+    DrawComponent<SpriteAnimationComponent>("Sprite Animation (2D)", selected_entity_, [&](auto &component) {
+      ImGui::DragInt("Columns", &component.sheet.columns, 0.1f, 1, 64);
+      ImGui::SameLine();
+      ImGui::DragInt("Rows", &component.sheet.rows, 0.1f, 1, 64);
+      const int sheet_frames = component.sheet.FrameCount();
+      ImGui::DragInt("First Frame", &component.first_frame, 0.2f, 0, std::max(0, sheet_frames - 1));
+      ImGui::DragInt("Frame Count", &component.frame_count, 0.2f, 0, sheet_frames);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Frames in this clip (0 = the whole sheet), so several\n"
+                          "animations can share one texture (row 0 = walk, row 1 = idle, ...).");
+      }
+      ImGui::DragFloat("FPS", &component.fps, 0.1f, 0.0f, 240.0f);
+      ImGui::Checkbox("Loop", &component.loop);
+      ImGui::SameLine();
+      ImGui::Checkbox("Ping-pong", &component.ping_pong);
+      ImGui::SameLine();
+      ImGui::Checkbox("Playing", &component.playing);
+
+      ImGui::Text("Sheet %d x %d = %d frames | clip %d frames | frame %d (sheet %d)", component.sheet.columns,
+                  component.sheet.rows, sheet_frames, component.FrameCount(), component.frame, component.SheetFrame());
+      int frame = component.frame;
+      if (ImGui::SliderInt("Scrub", &frame, 0, component.FrameCount() - 1)) {
+        component.frame = frame;
+        component.time  = (component.fps > 0.0f) ? static_cast<float>(frame) / component.fps : 0.0f;
+      }
+      ImGui::TextDisabled("Play mode advances the clip; Scrub previews frames in Edit mode.");
+
+      // Show the scrubbed frame immediately: Edit mode does not step the
+      // simulation, so the scene-level update never runs here.
+      if (selected_entity_.HasComponent<SpriteComponent>()) {
+        selected_entity_.GetComponent<SpriteComponent>().SetSheetFrame(component.sheet, component.SheetFrame());
+      }
     });
 
     DrawComponent<RigidBodyComponent>("Rigid Body", selected_entity_, [](auto &component) {
@@ -2088,11 +2406,19 @@ void Editor::ShowImGuiInformation() {
   ImGui::Separator();
 
   ImGui::Text("Editor Camera");
-  DrawVec3Control("Target", editor_camera_.target);
-  ImGui::DragFloat("Yaw", &editor_camera_.yaw, 0.5f);
-  ImGui::DragFloat("Pitch", &editor_camera_.pitch, 0.5f, -89.0f, 89.0f);
-  ImGui::DragFloat("Distance", &editor_camera_.distance, 0.1f, 0.1f, 10000.0f);
-  ImGui::DragFloat("FOV", &editor_camera_.fov, 0.5f, 1.0f, 179.0f);
+  if (Is2DView()) {
+    // The 2D workspace camera: an XY center plus a zoom, mirroring the controls
+    // a 2D view offers in other engines.
+    ImGui::DragFloat2("Center (XY)", &editor_camera_.view_center.x, 0.01f);
+    ImGui::DragFloat("Zoom size", &editor_camera_.ortho_size, 0.05f, 0.25f, 500.0f);
+    ImGui::TextDisabled("Half-height of the visible area = %.2f units", editor_camera_.ortho_size);
+  } else {
+    DrawVec3Control("Target", editor_camera_.target);
+    ImGui::DragFloat("Yaw", &editor_camera_.yaw, 0.5f);
+    ImGui::DragFloat("Pitch", &editor_camera_.pitch, 0.5f, -89.0f, 89.0f);
+    ImGui::DragFloat("Distance", &editor_camera_.distance, 0.1f, 0.1f, 10000.0f);
+    ImGui::DragFloat("FOV", &editor_camera_.fov, 0.5f, 1.0f, 179.0f);
+  }
   if (ImGui::Button("Reset Camera")) {
     editor_camera_.Reset();
   }
@@ -2825,6 +3151,50 @@ void Editor::CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh) {
   LOG_DEBUG("Editor") << "Created primitive '" << entity.GetComponent<Tag>().tag << "'";
 }
 
+namespace {
+
+/// @brief Default texture for a freshly created sprite: a procedurally generated
+/// 32x32 checkerboard so a new Sprite is visible before a texture is assigned.
+Ref<Texture> DefaultSpriteTexture() {
+  constexpr int kSize = 32;
+  static Ref<Texture> texture;
+  if (!texture) {
+    std::vector<unsigned char> rgba(static_cast<size_t>(kSize) * kSize * 4u, 255u);
+    for (int y = 0; y < kSize; ++y) {
+      for (int x = 0; x < kSize; ++x) {
+        const bool   light = ((x / 8) + (y / 8)) % 2 == 0;
+        const size_t o     = (static_cast<size_t>(y) * kSize + static_cast<size_t>(x)) * 4u;
+        rgba[o + 0]        = light ? 236 : 150;
+        rgba[o + 1]        = light ? 240 : 170;
+        rgba[o + 2]        = light ? 246 : 200;
+        rgba[o + 3]        = 255;
+      }
+    }
+    texture = CreateRef<Texture>();
+    texture->SetData(rgba.data(), kSize, kSize);
+  }
+  return texture;
+}
+
+}  // namespace
+
+void Editor::CreateSpriteEntity() {
+  const bool has_parent = selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_;
+  Entity     entity     = CreateEntityWithUniqueName("Sprite");
+  auto      &transform  = entity.AddComponent<Transform>();
+  auto      &sprite     = entity.AddComponent<SpriteComponent>(DefaultSpriteTexture());
+  sprite.size           = glm::vec2(1.0f, 1.0f);
+
+  if (has_parent) {
+    // Offset the child a little so it is not hidden behind its parent.
+    transform.translation = glm::vec3(1.0f, 0.0f, 0.0f);
+    active_scene_->SetParent(entity.GetHandle(), selected_entity_.GetHandle());
+  }
+
+  selected_entity_ = entity;
+  LOG_INFO("Editor") << "Created sprite '" << entity.GetComponent<Tag>().tag << "'" << (has_parent ? " (child)" : "");
+}
+
 Entity Editor::CreateChildPrimitive(const std::string &name, const Ref<Mesh> &mesh) {
   const bool     has_parent = selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_;
   Entity         entity     = CreateEntityWithUniqueName(name);
@@ -3029,8 +3399,17 @@ void Editor::LaunchStandalone() {
     }
   }
 
-  const std::filesystem::path scene_path  = build_root / "play_scene.json";
-  const std::filesystem::path sandbox_exe = build_root / "sandbox" / "sandbox.exe";
+  const std::filesystem::path scene_path = build_root / "play_scene.json";
+  // Pick the sandbox that matches the scene: a 2D scene (orthographic primary
+  // camera) runs in sandbox2d, everything else in sandbox3d. Fall back to the
+  // other one when the preferred executable was not built.
+  const bool        scene_2d        = active_scene_->Is2D();
+  const std::string sandbox_name    = scene_2d ? "sandbox2d" : "sandbox3d";
+  const std::string fallback_name   = scene_2d ? "sandbox3d" : "sandbox2d";
+  std::filesystem::path sandbox_exe = build_root / sandbox_name / (sandbox_name + ".exe");
+  if (!std::filesystem::exists(sandbox_exe)) {
+    sandbox_exe = build_root / fallback_name / (fallback_name + ".exe");
+  }
 
   active_scene_->SaveScene(scene_path.string());
 
@@ -3038,7 +3417,7 @@ void Editor::LaunchStandalone() {
   // `cmd /c` strips the outermost quotes; wrap the whole command so the inner
   // quotes around each path survive shell parsing.
   const std::string cmd = "\"" + command + "\"";
-  LOG_INFO("Editor") << "Launching standalone sandbox: " << command;
+  LOG_INFO("Editor") << "Launching standalone " << sandbox_name << ": " << command;
 
   std::thread([cmd]() { std::system(cmd.c_str()); }).detach();
 }
@@ -3088,6 +3467,56 @@ void Editor::NewScene() {
   active_scene_->SetBloomThreshold(1.0f);
   active_scene_->SetBloomStrength(0.5f);
   LOG_INFO("Editor") << "Started a new (empty) scene";
+  SyncViewModeToScene();
+}
+
+void Editor::NewScene2D() {
+  NewScene();  // clears content + resets render settings to the editor defaults
+
+  // Declare the scene 2D before populating it: this switches the render path
+  // (sprites only, no 3D stages), applies the 2D render defaults and opens the
+  // editor's 2D Viewport.
+  active_scene_->SetDimension(SceneDimension::Scene2D);
+
+  Create2DDemo();
+  SyncViewModeToScene();
+  LOG_INFO("Editor") << "Started a new 2D scene (orthographic camera, 2D viewport)";
+}
+
+void Editor::Create2DDemo() {
+  // Orthographic primary camera looking down -Z at the XY plane.
+  active_scene_->EnsurePrimaryCamera2D();
+
+  // A back sprite (own sorting layer) and a hero sprite so the draw order is
+  // visible in the inspector right away.
+  Entity backdrop     = CreateEntityWithUniqueName("Backdrop");
+  auto  &back_transform = backdrop.AddComponent<Transform>();
+  back_transform.scale = glm::vec3(18.0f, 11.0f, 1.0f);
+  auto &back_sprite         = backdrop.AddComponent<SpriteComponent>(DefaultSpriteTexture());
+  back_sprite.color         = glm::vec4(0.35f, 0.55f, 0.85f, 1.0f);
+  back_sprite.sorting_layer = -10;
+
+  Entity hero            = CreateEntityWithUniqueName("Hero");
+  hero.AddComponent<Transform>();
+  auto &hero_sprite         = hero.AddComponent<SpriteComponent>(DefaultSpriteTexture());
+  hero_sprite.size          = glm::vec2(1.5f, 1.5f);
+  hero_sprite.sorting_layer = 0;
+
+  selected_entity_ = hero;
+}
+
+void Editor::SyncViewModeToScene() { ApplyViewMode(); }
+
+void Editor::ApplyViewMode() {
+  const bool is_2d = Is2DView();
+  editor_camera_.Set2D(is_2d);
+
+  // The editor grid is an XZ plane; stand it up in the XY plane for 2D so it
+  // lines up with what the orthographic view shows.
+  if (grid_entity_.GetHandle() != entt::null && grid_entity_.HasComponent<Transform>()) {
+    grid_entity_.GetComponent<Transform>().rotation.x = is_2d ? 90.0f : 0.0f;
+  }
+  LOG_INFO("Editor") << (is_2d ? "Scene dimension: 2D (sprite render path)" : "Scene dimension: 3D");
 }
 
 void Editor::OpenSceneDialog() {
@@ -3107,6 +3536,7 @@ void Editor::OpenScenePath(const std::string &path) {
   current_scene_path_ = path;
   selected_entity_    = Entity();
   SetGridVisible(true);
+  SyncViewModeToScene();
   LOG_INFO("Editor") << "Opened scene: " << path;
 }
 
@@ -3360,8 +3790,11 @@ void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
   // Central area: the Viewport and the Script Editor share ONE dock node, so
   // ImGui shows them as two tabs of a single window (click the tab to switch
   // between the game view and the code editor). Dock the Viewport first so it
-  // is the initially visible tab.
+  // is the initially visible tab. The 2D Viewport lives in that same central
+  // node: a scene is either 2D or 3D, and the matching workspace takes the
+  // central area (the other one stays available as a tab).
   ImGui::DockBuilderDockWindow("Viewport", dockspace_id);
+  ImGui::DockBuilderDockWindow("2D Viewport", dockspace_id);
   ImGui::DockBuilderDockWindow("Script Editor", dockspace_id);
 
   // Right column: Information on top, Lighting + Rendering below.
@@ -3393,6 +3826,7 @@ void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {
 
   ImGuizmo::SetDrawlist();
   ImGuizmo::SetRect(image_pos.x, image_pos.y, image_size.x, image_size.y);
+  ImGuizmo::SetOrthographic(editor_camera_.Is2D());  // correct gizmo picking in the flat view
   ImGuizmo::Manipulate(glm::value_ptr(editor_camera_.GetViewMatrix()),
                        glm::value_ptr(editor_camera_.GetProjectionMatrix()), gizmo_operation_, ImGuizmo::LOCAL,
                        glm::value_ptr(model));

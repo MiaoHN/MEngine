@@ -1,7 +1,14 @@
 #include "render/renderer.hpp"
 
+#include <glad/glad.h>
+
+#include <GLFW/glfw3.h>
+
+#ifdef ERROR
+#undef ERROR  // windows.h (via GLFW) #defines ERROR, which breaks Logger::Level::ERROR
+#endif
+
 #include "core/application.hpp"
-#include "core/command.hpp"
 #include <cstdlib>
 
 #include "render/asset_manager.hpp"
@@ -11,8 +18,6 @@
 #include "render/post_processing.hpp"
 #include "render/rhi/resource_backend.hpp"
 #include "render/rhi/rhi.hpp"
-#include "render/render_pass.hpp"
-#include "render/render_pipeline.hpp"
 #include "render/shader.hpp"
 #include "render/shadow_map.hpp"
 #include "render/skybox.hpp"
@@ -24,40 +29,6 @@
 namespace MEngine {
 
 Renderer::Renderer() {
-  constexpr float vertices[] = {
-      // positions        // texture coords
-      0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  // top right
-      0.5f,  -0.5f, 0.0f, 1.0f, 0.0f,  // bottom right
-      -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,  // bottom left
-      -0.5f, 0.5f,  0.0f, 0.0f, 1.0f   // top left
-  };
-  const unsigned int indices[] = {
-      0, 1, 3,  // first triangle
-      1, 2, 3   // second triangle
-  };
-
-  auto vertex_array = CreateVertexArrayBackend();
-    vertex_array->SetVertexBuffer(vertices, sizeof(vertices),
-                  {
-                    {VertexAttributeType::Float3, "aPos"},
-                    {VertexAttributeType::Float2, "aTexCoord"},
-                  });
-  vertex_array->SetIndexBuffer(indices, 6);
-
-  // TODO: 默认 shader 怎么存放
-  const auto shader = AssetManager::Instance().GetShader("default");
-  shader->Bind();
-  shader->SetUniform("texture1", 0);
-  MEngine::Shader::Unbind();
-
-  pipeline_ = CreateRef<RenderPipeline>();
-
-  pipeline_->SetVertexArray(std::move(vertex_array));
-  pipeline_->SetShader(shader);
-
-  pass_ = CreateRef<RenderPass>();
-  pass_->AddPipeline(pipeline_);
-
   // 1x1 white fallback texture for meshes without a texture.
   default_texture_ = AssetManager::Instance().GetDefaultTexture();
 
@@ -99,70 +70,6 @@ void Renderer::SetEnvironmentHdr(const std::string &hdr_path, bool flip) {
 }
 
 Renderer::~Renderer() = default;
-
-void Renderer::RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) const {
-  PROFILER_FUNCTION();
-
-  static Ref<Texture> plain_texture = CreateRef<Texture>();
-  if (!sprite.texture) {
-    // 根据 sprite 颜色绘制纯色texture
-
-    // 生成纯色纹理
-    unsigned char color[4] = {static_cast<unsigned char>(sprite.color[0]), static_cast<unsigned char>(sprite.color[1]),
-                              static_cast<unsigned char>(sprite.color[2]), static_cast<unsigned char>(sprite.color[3])};
-    plain_texture->SetData(color, 1, 1);
-
-    const auto shader = pipeline_->GetShader();
-
-    shader->Bind();
-    plain_texture->Bind();
-
-    shader->SetUniform("model", sprite.GetModelMatrix());
-    shader->SetUniform("proj_view", proj_view);
-    shader->SetUniform("texture1", 0);
-
-    stats_.draw_calls += 1;
-    stats_.triangles += 2;
-    pipeline_->Execute();
-  } else {
-    const auto shader  = pipeline_->GetShader();
-    const auto texture = sprite.texture;
-
-    shader->Bind();
-    texture->Bind();
-
-    shader->SetUniform("model", sprite.GetModelMatrix());
-    shader->SetUniform("proj_view", proj_view);
-    shader->SetUniform("texture1", 0);
-
-    pipeline_->Execute();
-  }
-}
-
-void Renderer::RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view) const {
-  PROFILER_FUNCTION();
-
-  const auto shader  = pipeline_->GetShader();
-  const auto texture = sprite.texture;
-
-  shader->Bind();
-  texture->SetSubTexture(sprite.current_frame);
-
-  shader->SetUniform("model", sprite.GetModelMatrix());
-  shader->SetUniform("proj_view", proj_view);
-  shader->SetUniform("texture1", 0);
-
-  stats_.draw_calls += 1;
-  stats_.triangles += 2;
-  pipeline_->Execute();
-  // pass_->Begin();
-
-  // pass_->Execute();
-
-  // pass_->End();
-
-  // texture->Unbind();
-}
 
 void Renderer::BeginShadowPass(const glm::mat4 &light_view_proj) const {
   shadow_map_->Bind();
@@ -274,6 +181,89 @@ void Renderer::BindSSAO(unsigned int slot) const { ssao_->BindTexture(slot); }
 void Renderer::BeginScene() const { post_processing_->BeginScene(background_color_); }
 
 void Renderer::EndScene() const { post_processing_->EndScene(); }
+
+void Renderer::Begin2DScene(const glm::vec3 &clear_color, unsigned int target_fbo, int width, int height,
+                            const glm::mat4 &view_proj) {
+  // The 2D pass is intentionally self-contained: bind the target, clear it and
+  // turn off everything 3D (depth test/write, culling) so sprites are drawn in
+  // painter order straight into the target with alpha blending.
+  view_proj_2d_ = view_proj;
+
+  // A zero size means "the whole target". The window's framebuffer size is the
+  // answer for framebuffer 0 (a standalone app renders without ever knowing the
+  // window size); note that the current GL viewport is NOT a usable fallback
+  // here, since an earlier offscreen pass (IBL, shadow map, ...) leaves it at
+  // that pass's resolution.
+  int target_width  = width;
+  int target_height = height;
+  if (target_width <= 0 || target_height <= 0) {
+    int         window_width  = 0;
+    int         window_height = 0;
+    Application *app          = Application::GetInstance();
+    if (app != nullptr && app->GetWindow() != nullptr) {
+      glfwGetFramebufferSize(app->GetWindow(), &window_width, &window_height);
+    }
+    if (window_width <= 0 || window_height <= 0) {
+      int viewport[4];
+      glGetIntegerv(GL_VIEWPORT, viewport);
+      window_width  = viewport[2];
+      window_height = viewport[3];
+    }
+    target_width  = window_width;
+    target_height = window_height;
+  }
+
+  const auto *rhi = GetActiveRHI();
+  if (rhi != nullptr) {
+    rhi->BindFramebuffer(target_fbo);
+  }
+  glViewport(0, 0, std::max(1, target_width), std::max(1, target_height));
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glClearColor(clear_color.r, clear_color.g, clear_color.b, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  if (rhi != nullptr) {
+    rhi->SetDepthWrite(false);
+  }
+}
+
+void Renderer::DrawSprites2D(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 *models,
+                             int count) const {
+  if (!mesh || !material || !material->GetShader() || models == nullptr || count <= 0) {
+    return;
+  }
+
+  const Ref<Shader> &shader = material->GetShader();
+  shader->Bind();
+
+  // Only the sprite shader's uniforms are uploaded here; anything the 3D path
+  // would set (lights, shadow maps, IBL, ...) does not exist in a 2D scene.
+  const Ref<Texture> &texture = material->GetAlbedoMap() ? material->GetAlbedoMap() : default_texture_;
+  texture->Bind(0);
+  shader->SetUniform("albedo_map", 0);
+  shader->SetUniform("has_albedo_map", material->GetAlbedoMap() ? 1 : 0);
+  shader->SetUniform("base_color_factor", material->GetBaseColorFactor());
+  shader->SetUniform("proj_view", view_proj_2d_);
+
+  mesh->SetInstanceData(models, count);
+  stats_.draw_calls += 1;
+  stats_.instanced_draws += 1;
+  stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
+  if (const auto *rhi = GetActiveRHI(); rhi != nullptr) {
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
+  }
+}
+
+void Renderer::End2DScene() const {
+  // Restore the 3D state so the editor / next scene can render normally.
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  if (const auto *rhi = GetActiveRHI(); rhi != nullptr) {
+    rhi->SetDepthWrite(true);
+  }
+}
 
 void Renderer::PostProcess(const glm::mat4 &view, const glm::mat4 &proj, unsigned int target_fbo, int target_width,
                            int target_height) const {
@@ -537,7 +527,5 @@ void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &mat
 
   shader->Unbind();
 }
-
-unsigned int Renderer::GetFramebuffer() const { return pass_->GetFramebuffer(); }
 
 }  // namespace MEngine

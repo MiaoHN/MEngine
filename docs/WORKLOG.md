@@ -5,6 +5,64 @@
 
 ---
 
+## 2026-09-12 — 2D 支持：场景维度 + 独立 2D 渲染路径 + 编辑器 2D 视口（sandbox2d）
+
+- **问题/目标**：引擎此前只有 3D（PBR/阴影/IBL/后处理）主路径，旧的 `Sprite2D`/`AnimatedSprite2D` 与
+  `RenderPipeline`/`RenderPass`/`RenderSprite` 那套 2D 代码在 3D 化时被搁置。目标：**引擎同时支持 2D 和 3D**，
+  拆出 `sandbox2d` / `sandbox3d`，补齐常见 2D 组件（sprite / 贴图 / 精灵动画），编辑器也能编辑 2D 场景。
+- **关键设计（对齐主流引擎，而不是“3D 相机换成正交”）**：第一版实现是把 2D 场景当成「正交相机的 3D 场景」，
+  仍然走 HDR + tone mapping + 深度/SSAO/阴影阶段；实测与用户反馈都指出这**不是真的 2D**（颜色被 toner 改变、
+  多付了整个 3D 阶段的开销、绘制顺序靠距离）。最终改为：
+  - **场景带维度**：`SceneDimension::Scene2D/Scene3D`（`scene.hpp`），随 `.scene` 的 `"dimension"` 字段持久化；
+    旧文件缺字段时按「主相机是否正交」推断（向后兼容）。`SetDimension(Scene2D)` 顺带应用 2D 渲染默认值
+    （关天空盒/SSAO/TAA/Bloom/God Rays/IBL，背景纯黑则换深蓝灰）——因为 2D 路径**根本不执行**这些阶段。
+    `Is2D()` 决定渲染路径 / 编辑器面板 / Launch 目标。
+  - **独立 2D 渲染路径**（`Scene::Render2D` + `Renderer::Begin2DScene/DrawSprites2D/End2DScene`）：
+    绑定目标 FBO → 设 viewport（0×0 = 取窗口 framebuffer 尺寸）→ 清屏 → **关深度测试/写、关剔除、开 alpha 混合**
+    → 收集 `SpriteComponent` 按 `sorting_layer → order_in_layer → 世界 z`（painter）排序 → 相邻且
+    quad/材质内容相同的合并成一次 `DrawIndexedInstanced` → 恢复状态。**没有**阴影/点光阴影/SSAO/HDR FBO/
+    天空盒/后处理；片元着色器只做 `texel * base_color_factor`（不做 tone mapping/gamma），所以 2D 画面像素级等于美术图。
+  - **`RenderFromPrimaryCamera` 是唯一入口**：2D → `Render2D`，3D → `RenderMeshes`（编辑器 Play / sandbox 共用）。
+    3D 场景里的精灵仍然照旧走 3D 主 pass 的半透明通道（HDR + 按层/深度排序），两种模式可以混用。
+  - **组件与资源**：新增 `render/sprite.{hpp,cpp}`（`SpriteSheet` 网格 → `FrameRect`；按 `uv_rect`+翻转缓存
+    单位四边形；按贴图+tint 缓存 unlit 混合材质）、`SpriteComponent`（texture/color/uv_rect/size/flip/
+    sorting_layer/order_in_layer + `SetSheetFrame`/`SetWholeTexture`/`FitPixels`）、`SpriteAnimationComponent`
+    （sheet/first_frame/frame_count/fps/loop/ping_pong/playing/time/frame，`Scene::StepSimulation` 末尾统一
+    `UpdateSpriteAnimations(dt)` 写回 `uv_rect`）；新增 `assets/shaders/sprite_vert.glsl` / `sprite_frag.glsl`
+    （沿用位置/法线/UV + 实例矩阵 location 3..6 的引擎惯例，所以 2D 与 3D 共用 Mesh/实例化路径）。
+  - **序列化**：实体写 `"sprite"`（贴图相对路径 / tint / uv_rect / size / flip / sorting layer / order）与
+    `"sprite_animation"`；顶层写 `"dimension"`。
+  - **编辑器**：不是「3D 视口里加 2D 开关」，而是 **2D 场景配一个独立视口面板 `2D Viewport`**
+    （`ShowImGui2DViewport`）：工具栏 = Play/Stop + **Sprite** 新建 + Frame All + Launch + 操作提示；
+    中键平移 / 滚轮缩放（无轨道/飞行）；从内容浏览器**拖入图片 = 用该贴图新建精灵**；ImGuizmo 走正交模式；
+    Info 面板的 Editor Camera 在 2D 下显示 `Center (X/Y)` + `Zoom size`。View 菜单两个面板都在，
+    中央 dock 区共用，`Is2DView()` 决定显示哪个。File → New 2D Scene 新建（自动建正交主相机 + 示例精灵）。
+    视口/2D 视口工具条的子窗口宽度做了下限钳制（新窗口首帧内容区为 0 会触发 ImGui 断言 —— 实测踩到，
+    `imgui_widgets.cpp:763` 的 `size_arg.x != 0`）。
+  - **sandbox 拆分**：`sandbox/src/sandbox_2d.{hpp,cpp}`（程序化贴图 + 800 块地砖 + 玩家走行走动画 + 7 个
+    不同步宝石 + 正交相机跟随）与改名后的 `sandbox_3d.*`；`sandbox/CMakeLists.txt` 两个目标。`Sandbox2D`
+    在 `BuildDemoScene` 里 `SetDimension(Scene2D)`，所以它跑的就是真 2D 通道；`--scene <path>` 打开的场景
+    由文件里的 `dimension` 决定（自动兼容 3D 场景）。
+- **删除**：`render_pipeline.{hpp,cpp}`、`render_pass.{hpp,cpp}`、`core/command.hpp`（2D 时代的绘制抽象，
+  已无使用者）、`Sprite2D`/`AnimatedSprite2D`/`AABB`/`Circle` 旧组件、`RenderSprite` 系列、纹理的子区域
+  (`SetSubTexture`/`h_frames_`/`v_frames_`) 一并移除。
+- **验证**：
+  - `sandbox2d --frames 120 --hidden --capture-frame 100`：全屏铺满地砖 + 中央角色 + 周围宝石
+    （内容 bbox = 整个 1600×900 帧），日志无 ERROR/WARN；渲染统计为**两次 draw call / 两个实例批次 / 4 个三角形**
+    （地砖 800 张 + 其余 = 只有 2 个批次），无 shadow/point/SSAO/main/post 耗时（2D 不跑）。
+  - 编辑器：`MENGINE_EDITOR_SELFTEST_2D_SAVE=<path>` 新建 2D 场景并保存 → 日志
+    `dimension=2D sprites=2  primary_camera=1 skybox=off 2d_view=yes`；再用 `--scene <该文件>` 打开 →
+    `Opened scene file ... (4 entities, 2D)`，中央区域显示 `2D Viewport` 面板，Render Stats 2 draw call。
+  - 3D 回归：`sandbox3d`（Cyborg 场景）截图正常；把 2D 场景的文件改成 `dimension=3d` + 透视相机后
+    用 `sandbox3d --scene` 打开，精灵仍通过 3D 半透明通道正确绘制（HDR 后处理路径未被破坏）；`voxel`
+    截图正常（区块/水/树）；编辑器默认 3D 演示场景不受影响。
+  - clang debug 全量构建（engine/editor/sandbox2d/sandbox3d/voxel/examples）零警告；MSVC debug 同样零警告
+    （顺手修掉一条 `C4456` 变量遮蔽——3D 半透明批处理里的 `batch` 改名为 `sprite_batch`）。
+- **下一步**：2D 侧可继续做的：tilemap/图集导入与九宫格、2D 物理（Jolt 只有 3D 体，2D 需要平面约束或另接 2D 求解器）、
+  2D 摄像机组件（跟随/边界/缩放）、精灵锚点（pivot）；渲染侧：2D 批处理改为全局按材质分组（现在只在连续区间内合并）。
+
+---
+
 ## 2026-09-12 — voxel 性能：区块加载与渲染解耦（Minecraft 式异步区块流水线 + 已加载区块常驻）
 
 - **问题**：`voxel_app` 把「生成 + 网格化 + GPU 上传 + 建实体」全放在帧循环里同步做，而且玩家每跨过一个 16 格区块边界就**整个重建**半径 5 的 121 个区块（实测该调用耗时 ≈1.0 s，期间渲染完全停住）。此外旧网格器每个方块都走一次 `unordered_map` 查找（每区块约 6.1 万次）。

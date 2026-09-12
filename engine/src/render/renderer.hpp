@@ -16,10 +16,6 @@
 
 namespace MEngine {
 
-struct Sprite2D;
-struct AnimatedSprite2D;
-class RenderPipeline;
-class RenderPass;
 class Mesh;
 class Material;
 class PostProcessing;
@@ -47,11 +43,33 @@ class Renderer {
   Renderer();
   ~Renderer();
 
-  void RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) const;
-  void RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view) const;
-
   /// @brief Begins the directional shadow pass.
   void BeginShadowPass(const glm::mat4 &light_view_proj) const;
+
+  // --- dedicated 2D pass ----------------------------------------------------
+  // A 2D scene is rendered with these three calls only: no lights, shadows,
+  // SSAO, skybox, HDR target or post-processing chain is involved, and depth
+  // testing is off (2D draws in painter order, driven by sorting layers), so a
+  // sprite is drawn straight into the target framebuffer and looks exactly like
+  // its source texture.
+
+  /// @brief Binds `target_fbo` (0 = window), sets its viewport, clears it to
+  /// `clear_color`, disables depth test/write and culling and enables alpha
+  /// blending. `view_proj` is the orthographic camera used by the draws that
+  /// follow. Must be paired with End2DScene().
+  void Begin2DScene(const glm::vec3 &clear_color, unsigned int target_fbo, int width, int height,
+                    const glm::mat4 &view_proj);
+
+  /// @brief Draws `count` instances of one sprite quad with a 2D material (see
+  /// CreateSpriteMaterial). Callers batch by (mesh, material content): a whole
+  /// tilemap sharing a texture + tint is a single instanced draw.
+  void DrawSprites2D(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 *models,
+                     int count) const;
+
+  /// @brief Ends the 2D pass (restores depth test/write and culling for any 3D
+  /// rendering that follows). The target framebuffer stays bound.
+  void End2DScene() const;
+
   /// @brief Renders a mesh into the shadow map.
   void DrawMeshShadow(const Ref<Mesh> &mesh, const glm::mat4 &model, const glm::mat4 &light_view_proj) const;
   /// @brief Renders `count` copies of one mesh into the shadow map (per-instance
@@ -226,11 +244,7 @@ class Renderer {
   [[nodiscard]] float GetIblIntensity() const { return ibl_intensity_; }
   [[nodiscard]] float GetGodRaysStrength() const;
 
-  unsigned int GetFramebuffer() const;
-
  private:
-  Ref<RenderPass>     pass_;
-  Ref<RenderPipeline> pipeline_;
   Ref<Texture>        default_texture_;
   Ref<ShadowMap>      shadow_map_;
   Ref<Shader>         depth_shader_;
@@ -239,6 +253,8 @@ class Renderer {
   Ref<PostProcessing> post_processing_;
   Ref<Skybox>         skybox_;
   Ref<SSAO>           ssao_;
+  /// Orthographic camera of the 2D pass in progress (set by Begin2DScene).
+  mutable glm::mat4   view_proj_2d_{1.0f};
   DirectionalLight    light_;
   std::vector<DirectionalLight> directional_extras_;
   std::vector<PointLight> point_lights_;
@@ -251,8 +267,7 @@ class Renderer {
   bool  lo_lighting_       = false;
   bool  lo_blinn_spec_     = false;
   bool  lo_dir_shadow_     = false;
-  glm::vec3 background_color_{0.0f};
-  RenderMode render_mode_  = RenderMode::Lit;
+  glm::vec3 background_color_{0.0f};  RenderMode render_mode_  = RenderMode::Lit;
 
   mutable RenderStats stats_;
   mutable const Shader *cached_scene_shader_ = nullptr;

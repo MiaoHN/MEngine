@@ -26,6 +26,7 @@
 #include "render/material.hpp"
 #include "render/mesh.hpp"
 #include "render/model_loader.hpp"
+#include "render/sprite.hpp"
 #include "render/texture.hpp"
 #include "scene/camera.hpp"
 
@@ -295,89 +296,151 @@ struct LuaScriptComponent {
   explicit LuaScriptComponent(std::string path) : path(std::move(path)) {}
 };
 
-struct Sprite2D {
-  glm::vec3 position;
-  glm::vec3 scale;
-  glm::vec3 rotation;
-  glm::vec4 color;
+/**
+ * @brief 2D sprite renderer: draws `texture` as a quad on the entity's
+ * Transform (the entity's translation/rotation/scale is applied on top of
+ * `size`, so a child sprite follows its parent like any other renderable).
+ *
+ * The sprite faces +Z and is drawn as an unlit, alpha-blended, double-sided
+ * surface, i.e. it takes part in the translucent pass of `Scene::RenderMeshes`,
+ * where translucent items are ordered by (sorting layer, order in layer) — the
+ * 2D draw order. Sprites and 3D meshes therefore coexist in one scene: use an
+ * orthographic primary camera for a pure 2D scene, or keep a perspective camera
+ * for a 3D scene with billboard-like sprites.
+ *
+ * `uv_rect` is a normalized sub-rectangle of the texture (default: all of it);
+ * `SetSheetFrame` turns a `SpriteSheet` grid cell into that rectangle, and
+ * `SpriteAnimationComponent` drives it frame by frame.
+ */
+struct SpriteComponent {
+  Ref<Texture> texture;                         // albedo (null = plain tinted quad)
+  glm::vec4    color{1.0f, 1.0f, 1.0f, 1.0f};   // tint (rgb) + opacity (a)
+  glm::vec4    uv_rect{0.0f, 0.0f, 1.0f, 1.0f}; // normalized (u0, v0, u1, v1)
+  glm::vec2    size{1.0f, 1.0f};                // world units, before Transform.scale
+  bool         flip_x = false;
+  bool         flip_y = false;
+  int          sorting_layer  = 0;  // higher draws later (on top)
+  int          order_in_layer = 0;  // higher draws later inside the same layer
 
-  float tiling_factor = 1.0f;
+  SpriteComponent() = default;
+  explicit SpriteComponent(Ref<Texture> texture, const glm::vec4 &color = glm::vec4(1.0f))
+      : texture(std::move(texture)), color(color) {}
 
-  Ref<Texture> texture;
+  /// @brief Points the sprite at one frame of a sheet grid.
+  void SetSheetFrame(const SpriteSheet &sheet, int frame) { uv_rect = sheet.FrameRect(frame); }
 
-  Sprite2D(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation, glm::vec4 color, Ref<Texture> texture)
-      : position(position), scale(scale), rotation(rotation), color(color), texture(texture) {}
+  /// @brief Points the sprite at another texture, keeping the tint and the UV
+  /// rectangle (the content-browser drop target of the 2D viewport uses this).
+  void SetTexture(Ref<Texture> new_texture) { texture = std::move(new_texture); }
 
-  Sprite2D() = default;
+  /// @brief Resets the UV rectangle to the whole texture.
+  void SetWholeTexture() { uv_rect = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f); }
 
-  glm::mat4 GetModelMatrix() {
-    glm::mat4 model = glm::mat4(1.0f);
-    model           = glm::translate(model, position);
-    model           = glm::rotate(model, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-    model           = glm::rotate(model, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-    model           = glm::rotate(model, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-    model           = glm::scale(model, scale);
-    return model;
+  /// @brief Sets `size` so one sheet cell measures `pixels_per_unit` pixels per
+  /// world unit (the usual "100 pixels = 1 unit" 2D setup; needs a loaded
+  /// texture). A `1x1` sheet uses the whole texture.
+  void FitPixels(const SpriteSheet &sheet = SpriteSheet{}, float pixels_per_unit = 100.0f) {
+    const float ppu = (pixels_per_unit > 0.0f) ? pixels_per_unit : 100.0f;
+    if (!texture || texture->GetWidth() <= 0 || texture->GetHeight() <= 0) {
+      return;
+    }
+    const int   cols = std::max(1, sheet.columns);
+    const int   rows = std::max(1, sheet.rows);
+    const float w    = static_cast<float>(texture->GetWidth()) / static_cast<float>(cols);
+    const float h    = static_cast<float>(texture->GetHeight()) / static_cast<float>(rows);
+    size             = glm::vec2(w / ppu, h / ppu);
+  }
+
+  /// @brief Shared unit quad matching the current uv_rect / flip flags (cached).
+  [[nodiscard]] const Ref<Mesh> &GetQuad() const {
+    const int flips = (flip_x ? 1 : 0) | (flip_y ? 2 : 0);
+    if (quad_ == nullptr || quad_src_flips_ != flips || quad_src_uv_ != uv_rect) {
+      quad_           = GetSpriteQuad(uv_rect, flip_x, flip_y);
+      quad_src_uv_    = uv_rect;
+      quad_src_flips_ = flips;
+    }
+    return quad_;
+  }
+
+  /// @brief Unlit, alpha-blended material matching texture + tint (cached).
+  [[nodiscard]] const Ref<Material> &GetMaterial() const {
+    if (material_ == nullptr || material_src_texture_ != texture || material_src_color_ != color) {
+      material_             = CreateSpriteMaterial(texture, color);
+      material_src_texture_ = texture;
+      material_src_color_   = color;
+    }
+    return material_;
+  }
+
+ private:
+  // Lazily rebuilt caches: the authored fields above stay plain data (the editor
+  // and the scene serializer write them directly) and the getters only rebuild
+  // when the values they were built from changed.
+  mutable Ref<Mesh>     quad_;
+  mutable Ref<Material> material_;
+  mutable glm::vec4     quad_src_uv_{-1.0f};
+  mutable int           quad_src_flips_ = -1;
+  mutable Ref<Texture>  material_src_texture_;
+  mutable glm::vec4     material_src_color_{-1.0f};
+};
+
+/// @brief Frame-by-frame animation of the `SpriteComponent` on the same entity.
+///
+/// The scene advances it once per frame while simulating
+/// (`Scene::StepSimulation`) and rewrites the sprite's `uv_rect` from `sheet` +
+/// the current frame, so a sheet animation needs no per-entity update code.
+struct SpriteAnimationComponent {
+  SpriteSheet sheet{1, 1};
+  int         first_frame = 0;  // sheet frame the clip starts at
+  int         frame_count = 0;  // frames in the clip (0 = the whole sheet)
+  float       fps         = 8.0f;
+  bool        loop        = true;
+  bool        ping_pong   = false;
+  bool        playing     = true;
+  float       time        = 0.0f;  // playback time (seconds)
+  int         frame       = 0;     // current frame, relative to first_frame
+
+  SpriteAnimationComponent() = default;
+  SpriteAnimationComponent(SpriteSheet sheet, float fps) : sheet(sheet), fps(fps) {}
+
+  /// @brief Frames in the clip (at least 1).
+  [[nodiscard]] int FrameCount() const {
+    const int count = (frame_count > 0) ? frame_count : sheet.FrameCount();
+    return std::max(1, count);
+  }
+  /// @brief Sheet frame the clip's current `frame` maps to.
+  [[nodiscard]] int SheetFrame() const { return first_frame + frame; }
+
+  /// @brief Advances playback by `dt`; true when the frame changed.
+  bool Advance(float dt) {
+    const int count = FrameCount();
+    if (!playing || fps <= 0.0f || count <= 1) {
+      return false;
+    }
+    time += dt;
+    int index = static_cast<int>(time * fps);
+    if (ping_pong) {
+      const int period = 2 * count - 2;  // 0,1,..,n-1,n-2,..,1
+      index            = (period > 0) ? (index % period) : 0;
+      if (index >= count) {
+        index = period - index;
+      }
+    } else if (loop) {
+      index %= count;
+    } else if (index >= count) {
+      index = count - 1;
+      time  = static_cast<float>(count) / fps;  // hold the last frame
+    }
+    if (index == frame) {
+      return false;
+    }
+    frame = index;
+    return true;
+  }
+  /// @brief Restarts the clip at frame 0.
+  void Reset() {
+    time  = 0.0f;
+    frame = 0;
   }
 };
-
-struct AnimatedSprite2D {
-  glm::vec3 position;
-  glm::vec3 scale;
-  glm::vec3 rotation;
-  glm::vec4 color;
-
-  Ref<Texture> texture;
-
-  int h_frames;
-  int v_frames;
-
-  float frame_time;
-  float current_time;
-  int   current_frame;
-
-  AnimatedSprite2D(glm::vec3 position, glm::vec3 scale, glm::vec3 rotation, glm::vec4 color,
-                   Ref<Texture> texture, int h_frames, int v_frames, float frame_time)
-      : position(position),
-        scale(scale),
-        rotation(rotation),
-        color(color),
-        texture(texture),
-        h_frames(h_frames),
-        v_frames(v_frames),
-        frame_time(frame_time),
-        current_time(0.0f),
-        current_frame(0) {}
-
-  AnimatedSprite2D() = default;
-
-  glm::mat4 GetModelMatrix() {
-    glm::mat4 model = glm::mat4(1.0f);
-    model           = glm::translate(model, position);
-    model           = glm::rotate(model, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-    model           = glm::rotate(model, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-    model           = glm::rotate(model, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-    model           = glm::scale(model, scale);
-    return model;
-  }
-};
-
-struct AABB {
-  glm::vec3 position;
-  glm::vec3 scale;
-
-  AABB(glm::vec3 position, glm::vec3 scale) : position(position), scale(scale) {}
-
-  AABB() = default;
-};
-
-struct Circle {
-  glm::vec3 position;
-  float     radius;
-
-  Circle(glm::vec3 position, float radius) : position(position), radius(radius) {}
-
-  Circle() = default;
-};
-
 }  // namespace MEngine

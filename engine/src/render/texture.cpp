@@ -89,8 +89,6 @@ void Texture::Bind(unsigned int slot) const { backend_->Bind(slot); }
 
 void Texture::Unbind() const { backend_->Unbind(); }
 
-void Texture::SetSubTexture(int frame) { backend_->SetSubTexture(frame, h_frames_, v_frames_, width_, height_); }
-
 unsigned int Texture::GetID() const { return backend_ ? backend_->GetID() : 0; }
 
 Ref<Texture> Texture::Create(const std::string &path) { return CreateRef<Texture>(path); }

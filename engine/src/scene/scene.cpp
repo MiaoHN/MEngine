@@ -31,6 +31,11 @@ bool IsRenderable(Entity &entity) {
     const auto &model = entity.GetComponent<ModelComponent>();
     return model.model != nullptr && !model.model->parts.empty();
   }
+  if (entity.HasComponent<SpriteComponent>()) {
+    // A sprite is always renderable: without a texture it draws as a plain
+    // tinted quad.
+    return true;
+  }
   return false;
 }
 
@@ -45,6 +50,13 @@ struct RenderItem {
   glm::vec3    world_min{0.0f};
   glm::vec3    world_max{0.0f};
   bool         has_bounds = false;
+  // 2D draw order (translucent pass): sprites are ordered by
+  // (sort_layer, sort_order) instead of by distance to the camera, so a sprite
+  // game controls which sprite overlaps which. 3D translucent surfaces keep
+  // layer/order 0 and therefore stay depth-sorted (far to near).
+  int  sort_layer = 0;
+  int  sort_order = 0;
+  bool is_sprite  = false;
 };
 
 /// @brief Transforms an object-space AABB into world space (8 corners).
@@ -739,6 +751,24 @@ void Scene::StepSimulation(float delta_time) {
   if (anim_playing_) {
     AdvanceAnimation(delta_time);
   }
+
+  // 2D sprite sheet animations advance on the same per-frame cadence.
+  UpdateSpriteAnimations(delta_time);
+}
+
+void Scene::UpdateSpriteAnimations(float delta_time) {
+  for (auto &entity : GetAllEntitiesWith<SpriteAnimationComponent>()) {
+    if (entity.HasComponent<Tag>() && entity.GetComponent<Tag>().editor_only) {
+      continue;
+    }
+    auto &animation = entity.GetComponent<SpriteAnimationComponent>();
+    animation.Advance(delta_time);
+    // Keep the sprite's UV rectangle in sync (also covers the first update after
+    // a scene load and any paused / scrubbed frame).
+    if (entity.HasComponent<SpriteComponent>()) {
+      entity.GetComponent<SpriteComponent>().SetSheetFrame(animation.sheet, animation.SheetFrame());
+    }
+  }
 }
 
 void Scene::WriteBackTransforms() {
@@ -927,41 +957,208 @@ void Scene::UpdateCameraControllers(float delta_time, const glm::vec2 &mouse_del
   }
 }
 
-void Scene::OnUpdateEditor(const Camera &camera) { Render(camera); }
-
-void Scene::OnUpdateSimulation(float dt, const Camera &camera) {
-  (void)dt;
-  // TODO: Update scene status
-  Render(camera);
-}
-
-void Scene::OnUpdateRuntime(float dt, int vw, int vh) {
-  (void)dt;
-  // TODO: Implement
-  bool has_primary_camera = false;
+CameraComponent *Scene::GetPrimaryCameraComponent() {
   for (auto &entity : GetAllEntitiesWith<CameraComponent>()) {
     auto &component = entity.GetComponent<CameraComponent>();
     if (component.primary) {
-      has_primary_camera = true;
-      component.camera.SetAspect(static_cast<float>(vw) / static_cast<float>(vh));
-      Render(component.camera);
+      return &component;
     }
   }
-  if (!has_primary_camera) {
-    Render(*GetDefaultCameraInfo());
+  return nullptr;
+}
+
+void Scene::SetDimension(SceneDimension dimension) {
+  dimension_ = dimension;
+
+  if (dimension_ != SceneDimension::Scene2D) {
+    return;
+  }
+
+  // The 2D path never runs the 3D stages, so disable them when the scene is
+  // declared 2D: this keeps the settings panels honest and also prevents the
+  // editor's own preview from paying for passes whose output is unused.
+  renderer_->SetSkyboxEnabled(false);
+  renderer_->SetSSAOEnabled(false);
+  renderer_->SetTAAEnabled(false);
+  renderer_->SetBloomEnabled(false);
+  renderer_->SetGodRaysStrength(0.0f);
+  renderer_->SetIblIntensity(0.0f);
+  if (renderer_->GetBackgroundColor() == glm::vec3(0.0f)) {
+    renderer_->SetBackgroundColor(glm::vec3(0.07f, 0.09f, 0.14f));
   }
 }
 
-void Scene::Render(const Camera &camera) {
-  const glm::mat4 proj_view = camera.GetProjectionView();
-  for (auto &entity : GetAllEntitiesWith<Sprite2D>()) {
-    auto &sprite = entity.GetComponent<Sprite2D>();
-    renderer_->RenderSprite(sprite, proj_view);
+Entity Scene::EnsurePrimaryCamera2D(float ortho_size, float z) {
+  const auto configure = [&](CameraComponent &component) {
+    component.camera.projection_type = ProjectionType::Orthographic;
+    component.camera.ortho_size      = ortho_size;
+    component.camera.near_plane      = 0.01f;
+    component.camera.far_plane       = 1000.0f;
+    component.camera.position        = glm::vec3(0.0f, 0.0f, z);
+    component.camera.rotation        = glm::vec3(0.0f, 0.0f, 0.0f);
+  };
+
+  for (auto &entity : GetAllEntitiesWith<CameraComponent>()) {
+    auto &component = entity.GetComponent<CameraComponent>();
+    if (component.primary) {
+      configure(component);
+      return entity;
+    }
   }
-  for (auto &entity : GetAllEntitiesWith<AnimatedSprite2D>()) {
-    auto &sprite = entity.GetComponent<AnimatedSprite2D>();
-    renderer_->RenderSprite(sprite, proj_view);
+
+  Entity camera_entity = CreateEntity("Main Camera");
+  auto  &camera        = camera_entity.AddComponent<CameraComponent>();
+  camera.primary       = true;
+  camera.camera.SetAspect(16.0f / 9.0f);
+  configure(camera);
+  camera_entity.AddComponent<Transform>();
+  return camera_entity;
+}
+
+void Scene::Render2D(const glm::mat4 &view, const glm::mat4 &proj, unsigned int target_fbo, int target_width,
+                     int target_height) {
+  using clock = std::chrono::steady_clock;
+  const auto time_ms = [](clock::time_point start) {
+    return static_cast<float>(std::chrono::duration<double, std::milli>(clock::now() - start).count());
+  };
+
+  renderer_->ResetFrameStats();
+  for (float &t : pass_times_ms_) {
+    t = 0.0f;
   }
+
+  // Collect the sprites with their explicit painter order. The camera's 2D view
+  // looks down -Z, so entities closer to the camera (higher world z) are drawn
+  // on top when the sorting layer and order in layer are equal.
+  struct SpriteItem {
+    const SpriteComponent *sprite = nullptr;
+    glm::mat4              model{1.0f};
+    float                  depth = 0.0f;
+  };
+  std::vector<SpriteItem> sprites;
+  sprites.reserve(64);
+  for (auto &entity : GetAllEntitiesWith<SpriteComponent>()) {
+    if (!IsRenderable(entity)) {
+      continue;
+    }
+    const auto &sprite         = entity.GetComponent<SpriteComponent>();
+    const glm::mat4 world      = entity.HasComponent<Transform>() ? GetWorldTransform(entity.GetHandle())
+                                                                 : glm::mat4(1.0f);
+    SpriteItem      item;
+    item.sprite = &sprite;
+    item.model  = world * glm::scale(glm::mat4(1.0f), glm::vec3(sprite.size, 1.0f));
+    item.depth  = world[3].z;
+    sprites.push_back(item);
+  }
+
+  if (sprites.empty()) {
+    // Still clear: an empty 2D scene shows its background, not stale pixels.
+    renderer_->Begin2DScene(renderer_->GetBackgroundColor(), target_fbo, target_width, target_height, proj * view);
+    renderer_->End2DScene();
+    return;
+  }
+
+  // Painter's algorithm: sorting layer, then order in layer, then the entity
+  // closer to the camera last (drawn on top).
+  std::stable_sort(sprites.begin(), sprites.end(), [](const SpriteItem &a, const SpriteItem &b) {
+    if (a.sprite->sorting_layer != b.sprite->sorting_layer) {
+      return a.sprite->sorting_layer < b.sprite->sorting_layer;
+    }
+    if (a.sprite->order_in_layer != b.sprite->order_in_layer) {
+      return a.sprite->order_in_layer < b.sprite->order_in_layer;
+    }
+    return a.depth < b.depth;
+  });
+
+  const auto start = clock::now();
+  renderer_->Begin2DScene(renderer_->GetBackgroundColor(), target_fbo, target_width, target_height, proj * view);
+
+  // Batch consecutive sprites that share the same quad and the same material
+  // content into one instanced draw - a tiled 2D level becomes a handful of
+  // draw calls.
+  std::vector<glm::mat4> batch_models;
+  batch_models.reserve(sprites.size());
+  Ref<Mesh>     batch_mesh;
+  Ref<Material> batch_material;
+  const auto flush_batch = [&]() {
+    if (!batch_models.empty() && batch_mesh != nullptr && batch_material != nullptr) {
+      renderer_->DrawSprites2D(batch_mesh, batch_material, batch_models.data(),
+                               static_cast<int>(batch_models.size()));
+      batch_models.clear();
+    }
+  };
+
+  for (const SpriteItem &item : sprites) {
+    const Ref<Mesh>     &mesh     = item.sprite->GetQuad();
+    const Ref<Material> &material = item.sprite->GetMaterial();
+    if (mesh == nullptr || material == nullptr) {
+      continue;
+    }
+    if (batch_mesh != nullptr && (batch_mesh != mesh || !SameMaterialForBatching(batch_material, material))) {
+      flush_batch();
+    }
+    if (batch_models.empty()) {
+      batch_mesh     = mesh;
+      batch_material = material;
+    }
+    batch_models.push_back(item.model);
+  }
+  flush_batch();
+
+  renderer_->End2DScene();
+  pass_times_ms_[3] += time_ms(start);  // "main" pass column of the stats panel
+}
+
+bool Scene::GetContentBounds(glm::vec3 &out_min, glm::vec3 &out_max) {
+  glm::vec3 min(std::numeric_limits<float>::max());
+  glm::vec3 max(std::numeric_limits<float>::lowest());
+  bool      any = false;
+
+  const auto include = [&](const glm::mat4 &model, const Ref<Mesh> &mesh) {
+    if (!mesh) {
+      return;
+    }
+    glm::vec3 local_min;
+    glm::vec3 local_max;
+    if (!mesh->GetLocalBounds(local_min, local_max)) {
+      return;
+    }
+    glm::vec3 world_min;
+    glm::vec3 world_max;
+    TransformAABB(model, local_min, local_max, world_min, world_max);
+    min = glm::min(min, world_min);
+    max = glm::max(max, world_max);
+    any = true;
+  };
+
+  for (auto &entity : GetAllEntitiesWith<MeshComponent>()) {
+    const auto &mesh = entity.GetComponent<MeshComponent>().mesh;
+    include(entity.HasComponent<Transform>() ? GetWorldTransform(entity.GetHandle()) : glm::mat4(1.0f), mesh);
+  }
+  for (auto &entity : GetAllEntitiesWith<ModelComponent>()) {
+    const auto &model     = entity.GetComponent<ModelComponent>();
+    const glm::mat4 world = entity.HasComponent<Transform>() ? GetWorldTransform(entity.GetHandle())
+                                                             : glm::mat4(1.0f);
+    if (model.model != nullptr) {
+      for (const auto &part : model.model->parts) {
+        include(world, part.mesh);
+      }
+    }
+  }
+  for (auto &entity : GetAllEntitiesWith<SpriteComponent>()) {
+    const auto &sprite = entity.GetComponent<SpriteComponent>();
+    const glm::mat4 world = entity.HasComponent<Transform>() ? GetWorldTransform(entity.GetHandle())
+                                                             : glm::mat4(1.0f);
+    const glm::mat4 model = world * glm::scale(glm::mat4(1.0f), glm::vec3(sprite.size, 1.0f));
+    include(model, sprite.GetQuad());
+  }
+
+  if (!any) {
+    return false;
+  }
+  out_min = min;
+  out_max = max;
+  return true;
 }
 
 void Scene::RenderFromPrimaryCamera(unsigned int target_fbo, int target_width, int target_height) {
@@ -969,19 +1166,26 @@ void Scene::RenderFromPrimaryCamera(unsigned int target_fbo, int target_width, i
                            ? static_cast<float>(target_width) / static_cast<float>(target_height)
                            : 16.0f / 9.0f;
 
+  // Orthographic 2D cameras keep the authored aspect-independent size, so only
+  // perspective cameras get the viewport aspect (an ortho camera matches
+  // whatever aspect the window has).
   const Camera *active = nullptr;
-  for (auto &entity : GetAllEntitiesWith<CameraComponent>()) {
-    auto &component = entity.GetComponent<CameraComponent>();
-    if (component.primary) {
-      component.camera.SetAspect(aspect);
-      active = &component.camera;
-      break;
+  if (CameraComponent *primary = GetPrimaryCameraComponent()) {
+    if (primary->camera.projection_type == ProjectionType::Perspective) {
+      primary->camera.SetAspect(aspect);
     }
+    active = &primary->camera;
   }
 
   if (!active) {
     default_camera_info_->SetAspect(aspect);
     active = default_camera_info_.get();
+  }
+
+  // Two dimensions, two entirely separate render paths.
+  if (Is2D()) {
+    Render2D(active->GetViewMatrix(), active->GetProjectionMatrix(), target_fbo, target_width, target_height);
+    return;
   }
 
   RenderMeshes(active->GetViewMatrix(), active->GetProjectionMatrix(), active->GetPosition(), target_fbo, target_width,
@@ -1064,7 +1268,36 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     }
   }
 
-  if (items.empty()) {
+  // 2D sprites: same RenderItem shape (culling / batching / instancing are the
+  // engine's normal path), but they are translucent and carry an explicit draw
+  // order, so they go into their own list which is excluded from the shadow
+  // volume fit and the depth/SSAO passes.
+  std::vector<RenderItem> sprite_items;
+  for (auto &entity : GetAllEntitiesWith<SpriteComponent>()) {
+    if (!IsRenderable(entity)) {
+      continue;
+    }
+    const auto &sprite = entity.GetComponent<SpriteComponent>();
+    const glm::mat4 world = entity.HasComponent<Transform>() ? GetWorldTransform(entity.GetHandle())
+                                                             : glm::mat4(1.0f);
+    RenderItem      item;
+    item.handle    = entity.GetHandle();
+    item.mesh      = sprite.GetQuad();
+    item.material  = sprite.GetMaterial();
+    item.model     = world * glm::scale(glm::mat4(1.0f), glm::vec3(sprite.size, 1.0f));
+    item.sort_layer = sprite.sorting_layer;
+    item.sort_order = sprite.order_in_layer;
+    item.is_sprite  = true;
+    glm::vec3 local_min;
+    glm::vec3 local_max;
+    if (item.mesh && item.mesh->GetLocalBounds(local_min, local_max)) {
+      TransformAABB(item.model, local_min, local_max, item.world_min, item.world_max);
+      item.has_bounds = true;
+    }
+    sprite_items.push_back(std::move(item));
+  }
+
+  if (items.empty() && sprite_items.empty()) {
     return;
   }
 
@@ -1222,18 +1455,24 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
     const auto t_start = clock::now();
     std::vector<const RenderItem *> opaque;
     std::vector<const RenderItem *> translucent;
-    opaque.reserve(items.size());
-    for (const auto &item : items) {
+    opaque.reserve(items.size() + sprite_items.size());
+    const auto classify = [&](const RenderItem &item) {
       if (!item.material || !item.material->GetShader()) {
         ++culled_main;  // counted as not drawn by the main pass
-        continue;
+        return;
       }
       if (item.has_bounds && !AABBInsideFrustum(frustum, item.world_min, item.world_max)) {
         ++culled_main;
-        continue;
+        return;
       }
       ++visible_main;
       (item.material->IsTranslucent() ? translucent : opaque).push_back(&item);
+    };
+    for (const auto &item : items) {
+      classify(item);
+    }
+    for (const auto &item : sprite_items) {
+      classify(item);
     }
     // Batch by (mesh, material content): same mesh + interchangeable material
     // drawn as one instanced draw; material uniforms are uploaded once per
@@ -1261,18 +1500,46 @@ void Scene::RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm
                                    static_cast<int>(batch.size()), proj_view, camera_pos, light_view_proj);
       k = j;
     }
-    // Translucent pass: draw each surface back-to-front. Per-draw depth write
-    // is disabled inside DrawMeshInstanced for translucent materials.
+    // Translucent pass: ordered by (sorting layer, order in layer) first — the
+    // 2D draw order — and far-to-near for everything sharing a layer/order (3D
+    // translucent surfaces like glass and water stay depth sorted). Per-draw
+    // depth write is disabled inside DrawMeshInstanced for translucent
+    // materials, and consecutive items with the same mesh + material content
+    // (the same sprite sheet frame with the same tint) go out as one instanced
+    // draw.
     if (!translucent.empty()) {
-      std::stable_sort(translucent.begin(), translucent.end(), [&camera_pos](const RenderItem *a,
-                                                                             const RenderItem *b) {
-        const glm::vec3 ac = (a->world_min + a->world_max) * 0.5f;
-        const glm::vec3 bc = (b->world_min + b->world_max) * 0.5f;
-        return glm::length2(ac - camera_pos) > glm::length2(bc - camera_pos);
-      });
-      for (const RenderItem *item : translucent) {
-        renderer_->DrawMeshInstanced(item->mesh, item->material, &item->model, 1, proj_view, camera_pos,
-                                     light_view_proj);
+      std::stable_sort(translucent.begin(), translucent.end(),
+                       [&camera_pos](const RenderItem *a, const RenderItem *b) {
+                         if (a->sort_layer != b->sort_layer) {
+                           return a->sort_layer < b->sort_layer;
+                         }
+                         if (a->sort_order != b->sort_order) {
+                           return a->sort_order < b->sort_order;
+                         }
+                         const glm::vec3 ac = (a->world_min + a->world_max) * 0.5f;
+                         const glm::vec3 bc = (b->world_min + b->world_max) * 0.5f;
+                         return glm::length2(ac - camera_pos) > glm::length2(bc - camera_pos);
+                       });
+      // A separate buffer from the opaque pass's: the two blocks are disjoint
+      // scopes and naming it the same would shadow (MSVC C4456).
+      std::vector<glm::mat4> sprite_batch;
+      for (size_t k = 0; k < translucent.size();) {
+        size_t j = k + 1;
+        const auto same_batch = [&](const RenderItem *lhs, const RenderItem *rhs) {
+          return lhs->mesh == rhs->mesh && lhs->sort_layer == rhs->sort_layer &&
+                 lhs->sort_order == rhs->sort_order && SameMaterialForBatching(lhs->material, rhs->material);
+        };
+        while (j < translucent.size() && same_batch(translucent[k], translucent[j])) {
+          ++j;
+        }
+        sprite_batch.clear();
+        sprite_batch.reserve(j - k);
+        for (size_t m = k; m < j; ++m) {
+          sprite_batch.push_back(translucent[m]->model);
+        }
+        renderer_->DrawMeshInstanced(translucent[k]->mesh, translucent[k]->material, sprite_batch.data(),
+                                     static_cast<int>(sprite_batch.size()), proj_view, camera_pos, light_view_proj);
+        k = j;
       }
     }
     pass_times_ms_[3] = time_ms(t_start);

@@ -295,7 +295,6 @@
 - `sample` 为 GLSL 保留字导致的 god_rays 着色器编译失败。
 
 ### M6 — LearnOpenGL 移植期（渲染/后期扩展 + examples 复刻）✅
-
 **日期**：2026-09-06
 
 **背景**：把 LearnOpenGL `src/` 的示例逐个用 MEngine 公共 API 复刻成独立可执行
@@ -335,7 +334,41 @@
 - 用户资产：`ex_6_2_cerberus`、`ex_model_viewer`（含 `PbrSidecarTextured`：GLB 只嵌 albedo 时从
   A/M/R/N/AO sidecar 文件组装完整 PBR 材质）。
 
-## 待办（后续里程碑）
+### M7 — 2D 支持（场景维度 + 独立 2D 渲染路径 + 编辑器 2D 视口）✅
+
+**日期**：2026-09-12
+
+**背景**：引擎长期只有 3D 主路径，旧 `Sprite2D` 那套 2D 代码在 3D 化时被搁置。目标是引擎**同时支持 2D 与 3D**，
+`sandbox` 拆成 `sandbox2d` / `sandbox3d`，补齐 sprite / 贴图 / 精灵动画组件，编辑器也能编辑 2D 场景。
+
+**新增能力：**
+- **场景维度**：`SceneDimension { Scene2D, Scene3D }`，随 `.scene` 的 `"dimension"` 持久化；
+  旧文件缺字段时按主相机投影推断。`SetDimension(Scene2D)` 一并应用 2D 渲染默认值（关天空盒/SSAO/TAA/
+  Bloom/God Rays/IBL）；`Is2D()` 决定渲染路径、编辑器视口面板与 Launch 目标。
+- **独立 2D 渲染路径**：`Scene::Render2D` + `Renderer::Begin2DScene/DrawSprites2D/End2DScene`——
+  一次清屏 + 精灵实例化批次，关深度测试/写与剔除、开 alpha 混合，painter 排序
+  （`sorting_layer → order_in_layer → 世界 z`），同 quad/同材质内容合并实例化；
+  **不执行**阴影/点光阴影/SSAO/HDR FBO/天空盒/后处理，片元只做 `texel * base_color_factor`
+  （2D 画面像素级等于美术图）。`Scene::RenderFromPrimaryCamera` 是唯一入口，按维度分派。
+- **2D 组件**：`SpriteComponent`（texture/tint/`uv_rect`/size/flip/sorting layer/order，
+  `GetQuad()`/`GetMaterial()` 带缓存）、`SpriteAnimationComponent`（`SpriteSheet` 网格逐帧写回 `uv_rect`）；
+  `render/sprite.{hpp,cpp}`（sheet 取帧、单位四边形与材质缓存）+ `assets/shaders/sprite_{vert,frag}.glsl`
+  （沿用实例矩阵 location 3..6 的引擎惯例，2D/3D 共用 Mesh 与实例化路径）。
+- **编辑器 2D 视口**：`ShowImGui2DViewport()` —— **独立面板**（不是 3D 视口里的模式开关）：Play/Stop、
+  Sprite 新建、Frame All、Launch；中键平移 + 滚轮缩放；拖入图片 = 用该贴图新建精灵；ImGuizmo 走正交；
+  Info 面板在 2D 下显示 `Center (X/Y)` + `Zoom size`；File → New 2D Scene；Sprite / Sprite Animation 组件检查器。
+- **sandbox 拆分**：`sandbox2d`（程序化贴图 + 800 地砖 + 玩家走行走动画 + 7 个不同步宝石 + 正交相机跟随）
+  与 `sandbox3d`，各自构建；`--scene` 打开的场景由文件里的维度决定。
+- **删除**：`RenderPipeline` / `RenderPass` / `RenderContext` / `core/command.hpp`、`Sprite2D`/`AnimatedSprite2D`/
+  `AABB`/`Circle`、`RenderSprite` 系列、纹理子区域（`SetSubTexture`/`h_frames_`/`v_frames_`）。
+
+**验证：**`sandbox2d` headless 抓帧（全屏地砖 + 角色 + 宝石，2 次 draw call；无 3D 阶段耗时）；
+编辑器 `New 2D Scene` 保存 → `--scene` 重新打开（`(4 entities, 2D)`）并在 `2D Viewport` 中编辑；
+3D 回归（`sandbox3d` / `voxel` / 编辑器默认场景截图正常，3D 场景里的精灵仍走 3D 半透明通道）；
+clang debug + MSVC debug 全量构建零警告。
+
+**下一步：**tilemap/图集与九宫格、2D 物理、2D 相机组件（跟随/边界/缩放）、精灵锚点；2D 合批改为全局按材质分组。
+
 
 - [x] M2a：OBJ 模型导入（`ModelLoader::LoadObj`）
 - [x] M2b：glTF 2.0 导入（tinygltf）
@@ -352,12 +385,18 @@
 - [x] M4f：TAA（时间抗锯齿）
 - [x] M5：编辑器 3D 视口 + 轨道相机 + Gizmo（ImGuizmo）+ 资产导入 UI
 - [x] M6：LO 移植期（三管线/后期 tone 模式/BRDF LUT/镜面 IBL 开关/环境覆盖/examples）
+- [x] M7：2D 支持（场景维度 + 独立 2D 渲染路径 + 编辑器 2D 视口 + sandbox2d）
+- [ ] 2D 深化：tilemap/图集与九宫格、2D 物理、2D 相机组件（跟随/边界）、精灵锚点（pivot）
 - [x] 场景序列化（`LoadScene/SaveScene`，JSON：实体+材质+灯光+渲染参数；editor File→Open/Save）
 - [ ] 补全 Vulkan 资源后端
 - [ ] 深度整理：Light 组件化、Model 多网格/多材质 + `.mtl`、Renderer uniform 批量/去重、Editor 渲染选项接入
 
 ## 已知问题 / 技术债
 
+- 2D：场景带维度（`SceneDimension`，随场景文件保存），2D 场景走**独立渲染路径**（`Scene::Render2D`，
+  只有一次清屏 + 精灵实例化批次，不经阴影/SSAO/HDR/后处理；详见 [rendering.md](./rendering.md)）。
+  遗留：2D 合批只在**连续区间**内合并（跨 layer 的相同精灵不合并）；精灵无 pivot/锚点概念；
+  无 tilemap/图集工具；2D 没有专用物理（Jolt 为 3D 体）；2D 相机（跟随/边界/缩放）需用户自己写脚本或代码。
 - 背面剔除已按材质启用（renderer 每 draw 设 `rhi->SetCullMode(material->GetCullMode())`，默认 Back；2D/UI 前恢复 None）——旧的"全局无剔除"已解决；后续仅需确认新网格绕序符合。
 - 光照：点/聚/方向光已支持 ECS 组件（`Point/Spot/DirectionalLightComponent`；位置=实体 Transform，
   有组件时每帧驱动 renderer；旧列表 API 兼容保留；灯光组件已按实体级序列化）。遗留：renderer 仍只支持

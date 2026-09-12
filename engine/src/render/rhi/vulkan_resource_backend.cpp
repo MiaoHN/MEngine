@@ -40,14 +40,6 @@ void VulkanTextureBackend::Unbind() const {
   }
 }
 
-void VulkanTextureBackend::SetSubTexture(int frame, int h_frames, int v_frames, int width, int height) {
-  (void)frame;
-  (void)h_frames;
-  (void)v_frames;
-  (void)width;
-  (void)height;
-}
-
 VulkanShaderBackend::VulkanShaderBackend(const std::string &vert_path, const std::string &frag_path) {
   (void)vert_path;
   (void)frag_path;

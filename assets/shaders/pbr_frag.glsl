@@ -305,7 +305,9 @@ void main() {
     }
   }
 
-  vec3 albedo = has_albedo_map == 1 ? texture(albedo_map, uv).rgb : vec3(1.0);
+  // Albedo texture (rgb = colour, a = optional cutout/opacity used by sprites).
+  vec4 albedo_tex = has_albedo_map == 1 ? texture(albedo_map, uv) : vec4(1.0);
+  vec3 albedo     = albedo_tex.rgb;
   albedo *= base_color_factor.rgb;
   // LearnOpenGL decodes albedo maps sRGB->linear (pow 2.2) in its PBR shaders;
   // do the same when the material opts in (SetAlbedoSRGB).
@@ -314,7 +316,10 @@ void main() {
   }
 
   if (u_render_mode == 1 || u_material_unlit == 1) {  // Unlit / emissive
-    FragColor = vec4(albedo, base_color_factor.a);
+    // Unlit surfaces are 2D sprites / light cubes: the albedo map's alpha is
+    // the sprite's opacity (transparent PNGs), multiplied by the material tint
+    // alpha. Lit paths below keep using base_color_factor.a alone.
+    FragColor = vec4(albedo, base_color_factor.a * albedo_tex.a);
     return;
   }
 

@@ -42,11 +42,6 @@ class Texture {
 
   int GetHeight() const { return height_; }
 
-  void SetVFrames(int v_frames) { v_frames_ = v_frames; }
-  void SetHFrames(int h_frames) { h_frames_ = h_frames; }
-
-  void SetSubTexture(int frame = 0);
-
   const std::string &GetName() const { return name_; }
 
   std::string GetPath() const { return path_; }
@@ -62,9 +57,6 @@ class Texture {
   int width_    = 0;
   int height_   = 0;
   int channels_ = 0;
-
-  int v_frames_ = 1;
-  int h_frames_ = 1;
 
   std::string path_;
 

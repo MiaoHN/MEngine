@@ -19,8 +19,7 @@ set(SOURCE_RENDER
   src/render/post_processing.cpp
   src/render/skybox.cpp
   src/render/ssao.cpp
-  src/render/render_pipeline.cpp
-  src/render/render_pass.cpp
+  src/render/sprite.cpp
   src/render/frame_buffer.cpp
   src/render/rhi/rhi.cpp
   src/render/rhi/opengl_rhi.cpp

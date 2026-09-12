@@ -47,6 +47,13 @@ glm::vec4 Vec4FromJson(const json &j, const glm::vec4 &fallback = glm::vec4(1.0f
   return glm::vec4(j[0].get<float>(), j[1].get<float>(), j[2].get<float>(), j[3].get<float>());
 }
 
+json Vec2ToJson(const glm::vec2 &v) { return json::array({v.x, v.y}); }
+
+glm::vec2 Vec2FromJson(const json &j, const glm::vec2 &fallback = glm::vec2(1.0f)) {
+  if (!j.is_array() || j.size() < 2) return fallback;
+  return glm::vec2(j[0].get<float>(), j[1].get<float>());
+}
+
 // --- asset path helpers ---------------------------------------------------
 
 /// @brief Converts an absolute asset path to one relative to the asset root,
@@ -377,6 +384,39 @@ json EntityToJson(Entity &entity, int parent_index = -1) {
     e["model"] = std::move(j);
   }
 
+  // 2D sprite renderer: texture (asset-relative path) + tint, UV rect, size and
+  // draw order.
+  if (entity.HasComponent<SpriteComponent>()) {
+    const auto &sprite = entity.GetComponent<SpriteComponent>();
+    json        j;
+    j["texture"] = (sprite.texture && !sprite.texture->GetPath().empty()) ? ToAssetRelative(sprite.texture->GetPath())
+                                                                          : std::string();
+    j["color"]          = Vec4ToJson(sprite.color);
+    j["uv_rect"]        = Vec4ToJson(sprite.uv_rect);
+    j["size"]           = Vec2ToJson(sprite.size);
+    j["flip_x"]         = sprite.flip_x;
+    j["flip_y"]         = sprite.flip_y;
+    j["sorting_layer"]  = sprite.sorting_layer;
+    j["order_in_layer"] = sprite.order_in_layer;
+    e["sprite"]         = std::move(j);
+  }
+
+  if (entity.HasComponent<SpriteAnimationComponent>()) {
+    const auto &a = entity.GetComponent<SpriteAnimationComponent>();
+    json        j;
+    j["columns"]     = a.sheet.columns;
+    j["rows"]        = a.sheet.rows;
+    j["first_frame"] = a.first_frame;
+    j["frame_count"] = a.frame_count;
+    j["fps"]         = a.fps;
+    j["loop"]        = a.loop;
+    j["ping_pong"]   = a.ping_pong;
+    j["playing"]     = a.playing;
+    j["time"]        = a.time;
+    j["frame"]       = a.frame;
+    e["sprite_animation"] = std::move(j);
+  }
+
   if (entity.HasComponent<CameraComponent>()) {
     const auto &component = entity.GetComponent<CameraComponent>();
     json        j         = CameraToJson(component.camera);
@@ -555,6 +595,47 @@ Entity LoadEntityFromJson(Scene &scene, const json &e) {
     }
   }
 
+  if (e.contains("sprite")) {
+    const auto &j = e["sprite"];
+    SpriteComponent sprite;
+    const std::string texture = j.value("texture", std::string());
+    if (!texture.empty()) {
+      sprite.texture = AssetManager::Instance().GetTexture(ResolveAsset(texture));
+    }
+    sprite.color          = Vec4FromJson(j.value("color", json()), glm::vec4(1.0f));
+    sprite.uv_rect        = Vec4FromJson(j.value("uv_rect", json()), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
+    sprite.size           = Vec2FromJson(j.value("size", json()), glm::vec2(1.0f));
+    sprite.flip_x         = j.value("flip_x", false);
+    sprite.flip_y         = j.value("flip_y", false);
+    sprite.sorting_layer  = j.value("sorting_layer", 0);
+    sprite.order_in_layer = j.value("order_in_layer", 0);
+    entity.AddComponent<SpriteComponent>(std::move(sprite));
+  }
+
+  if (e.contains("sprite_animation")) {
+    const auto &j = e["sprite_animation"];
+    SpriteAnimationComponent animation;
+    animation.sheet.columns = std::max(1, j.value("columns", 1));
+    animation.sheet.rows    = std::max(1, j.value("rows", 1));
+    animation.first_frame   = j.value("first_frame", 0);
+    animation.frame_count   = j.value("frame_count", 0);
+    animation.fps           = j.value("fps", 8.0f);
+    animation.loop          = j.value("loop", true);
+    animation.ping_pong     = j.value("ping_pong", false);
+    animation.playing       = j.value("playing", true);
+    animation.time          = j.value("time", 0.0f);
+    animation.frame         = j.value("frame", 0);
+    entity.AddComponent<SpriteAnimationComponent>(std::move(animation));
+
+    // Apply the loaded frame right away so the sprite looks correct before the
+    // simulation (or an editor preview) advances it for the first time.
+    if (entity.HasComponent<SpriteComponent>()) {
+      auto &sprite = entity.GetComponent<SpriteComponent>();
+      const auto &anim = entity.GetComponent<SpriteAnimationComponent>();
+      sprite.SetSheetFrame(anim.sheet, anim.SheetFrame());
+    }
+  }
+
   if (e.contains("camera")) {
     const auto &j         = e["camera"];
     CameraComponent component;
@@ -716,6 +797,10 @@ void LoadEntitiesFromJson(Scene &scene, const json &array) {
 void Scene::SaveScene(const std::string &path) {
   json root;
   root["version"] = 1;
+
+  // Scene dimension: "2d" selects the sprite-only render path and the editor's
+  // 2D workspace, "3d" is the classic pipeline.
+  root["dimension"] = Is2D() ? "2d" : "3d";
 
   // Directional light (only as a legacy block when no entity carries it).
   if (registry_.view<DirectionalLightComponent>().empty()) {
@@ -997,6 +1082,7 @@ void Scene::ClearContent() {
   renderer_->ClearSpotLights();
   anim_time_    = 0.0f;
   anim_playing_ = false;
+  dimension_    = SceneDimension::Scene3D;
   RemoveContentEntities();
   LOG_INFO("Scene") << "New (empty) scene created — content cleared, editor helpers kept";
 }
@@ -1094,8 +1180,28 @@ bool Scene::OpenSceneFile(const std::string &path) {
   }
 
   main_script_ = root.value("main_script", "");
-  LOG_INFO("Scene") << "Opened scene file " << path << " (" << entities_.size() << " entities)";
+
+  // Scene dimension. Files written before the field existed (or by hand) are
+  // inferred from their primary camera: an orthographic one means a 2D scene.
+  // Applied last so the 2D defaults (no skybox/SSAO/TAA/bloom/IBL) win over the
+  // stored render settings.
+  SceneDimension dimension = SceneDimension::Scene3D;
+  if (root.contains("dimension")) {
+    dimension = root.value("dimension", std::string("3d")) == "2d" ? SceneDimension::Scene2D
+                                                                   : SceneDimension::Scene3D;
+  } else {
+    for (auto &entity : entities_) {
+      const auto *camera = entity.HasComponent<CameraComponent>() ? &entity.GetComponent<CameraComponent>() : nullptr;
+      if (camera != nullptr && camera->primary && camera->camera.projection_type == ProjectionType::Orthographic) {
+        dimension = SceneDimension::Scene2D;
+        break;
+      }
+    }
+  }
+  SetDimension(dimension);
+
+  LOG_INFO("Scene") << "Opened scene file " << path << " (" << entities_.size() << " entities, "
+                    << (Is2D() ? "2D" : "3D") << ")";
   return true;
 }
-
 }  // namespace MEngine

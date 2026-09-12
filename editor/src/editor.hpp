@@ -34,6 +34,12 @@ class Editor : public Application {
   void ShowImGuiContentBrowser();
   void ShowImGuiScene();
   void ShowImGuiViewport();
+  /// @brief The 2D workspace: shown instead of the 3D "Viewport" panel whenever
+  /// the open scene is a 2D scene. It is the only place a 2D scene is rendered
+  /// (always through Scene::Render2D) and it has its own toolbar / controls:
+  /// sprites are created here, the orthographic camera pans with the middle
+  /// mouse button and zooms with the wheel, and there is no fly/orbit mode.
+  void ShowImGui2DViewport();
   void ShowImGuiProperties();
   void ShowImGuiLighting();
   void ShowImGuiRendering();
@@ -78,6 +84,7 @@ class Editor : public Application {
   bool show_content_browser_ = true;
   bool show_scene_           = true;
   bool show_viewport_        = true;
+  bool show_viewport_2d_     = true;
   bool show_properties_      = true;
   bool show_lighting_        = true;
   bool show_rendering_       = true;
@@ -134,7 +141,13 @@ class Editor : public Application {
   void CreateSpotLightEntity();
   void CreateDirectionalLightEntity();
   void CreateModelEntity(const std::filesystem::path &path);
+  /// @brief Creates a 2D sprite entity (Transform + SpriteComponent) under the
+  /// current selection (or at the origin), with a default texture.
+  void CreateSpriteEntity();
   void CreateEngineDemo();
+  /// @brief Builds the default 2D showcase scene (orthographic primary camera,
+  /// tile background, an animated sprite and a static sprite).
+  void Create2DDemo();
   void DuplicateSelectedEntity();
   /// @brief Deep-copies `source` and its whole child subtree. The copy is
   /// parented under `parent_copy` (entt::null = root) when `source` had one.
@@ -152,6 +165,19 @@ class Editor : public Application {
   void SetGridVisible(bool visible);
   void LaunchStandalone();
 
+  // --- 2D scene support ------------------------------------------------------
+  /// @brief True when the open scene is a 2D scene (the 2D Viewport panel is
+  /// shown instead of the 3D one and every draw goes through Scene::Render2D).
+  [[nodiscard]] bool Is2DView() const { return active_scene_ != nullptr && active_scene_->Is2D(); }
+
+  /// @brief Lays out the editor-only helpers for the current scene's dimension
+  /// (the XY grid plane for 2D, the XZ one for 3D) and points the editor camera
+  /// at the matching view. Called whenever the open scene changes.
+  void ApplyViewMode();
+
+  /// @brief Adopts the current scene's dimension (2D or 3D) and applies it.
+  void SyncViewModeToScene();
+
   // --- Scene file management (File menu) ------------------------------------
   std::string current_scene_path_;  ///< absolute path of the open `.scene` file, empty for an unsaved new scene
 
@@ -162,6 +188,10 @@ class Editor : public Application {
 
   /// @brief Starts a brand-new, empty scene.
   void NewScene();
+
+  /// @brief Starts a brand-new 2D scene: an orthographic primary camera, a
+  /// solid background (no skybox) and the 2D view enabled.
+  void NewScene2D();
 
   /// @brief Shows the native "Open Scene" dialog and loads the chosen file.
   void OpenSceneDialog();
