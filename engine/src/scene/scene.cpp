@@ -762,6 +762,22 @@ void Scene::UpdateSpriteAnimations(float delta_time) {
       continue;
     }
     auto &animation = entity.GetComponent<SpriteAnimationComponent>();
+
+    // "Walk cycle" mode: run the clip only while the entity is actually moving,
+    // and park it on the first frame when it stops. Keeping this here (instead
+    // of in every controller) means moving an entity is enough to animate it.
+    if (animation.play_while_moving) {
+      const glm::vec3 position = entity.HasComponent<Transform>() ? GetWorldPosition(entity.GetHandle())
+                                                                  : glm::vec3(0.0f);
+      const bool moved = animation.has_last_position && glm::length2(position - animation.last_position) > 1e-10f;
+      animation.last_position     = position;
+      animation.has_last_position = true;
+      animation.playing            = moved;
+      if (!moved) {
+        animation.Reset();
+      }
+    }
+
     animation.Advance(delta_time);
     // Keep the sprite's UV rectangle in sync (also covers the first update after
     // a scene load and any paused / scrubbed frame).

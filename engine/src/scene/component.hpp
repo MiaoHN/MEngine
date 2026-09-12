@@ -422,8 +422,18 @@ struct SpriteAnimationComponent {
   bool        loop        = true;
   bool        ping_pong   = false;
   bool        playing     = true;
+  /// @brief "Walk cycle" mode: the clip only runs while the entity actually
+  /// moves, and snaps back to the first frame when it stops (the idle pose).
+  /// `Scene::UpdateSpriteAnimations` compares the entity's world position from
+  /// frame to frame, so the movement code (a script, a physics body, an
+  /// animation) only has to move the entity - nothing has to toggle `playing`.
+  bool        play_while_moving = false;
   float       time        = 0.0f;  // playback time (seconds)
   int         frame       = 0;     // current frame, relative to first_frame
+
+  /// @brief Book-keeping for play_while_moving (last world position seen).
+  glm::vec3 last_position{0.0f};
+  bool      has_last_position = false;
 
   SpriteAnimationComponent() = default;
   SpriteAnimationComponent(SpriteSheet sheet, float fps) : sheet(sheet), fps(fps) {}

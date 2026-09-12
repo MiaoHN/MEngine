@@ -5,6 +5,48 @@
 
 ---
 
+## 2026-09-12 — 修 2D Play/Stop 后画面全毁（贴图路径二次解析）+ fox 可控走路动画
+
+- **问题（用户报告）**：2D 场景按 Play 再按 Stop 之后，“除了黑紫方块其他啥都看不到”。那些黑紫方块正是引擎的
+  **贴图加载失败兜底纹理**（`Texture` 加载失败时用 2×2 品红/黑棋盘，见 `texture.cpp`），所以现象 = 所有精灵的
+  贴图都丢了。
+  - **根因**：`StopSimulation` 走 `RestorePlaySnapshot` → `LoadEntitiesFromJson`，精灵贴图那一行是
+    `GetTexture(ResolveAsset(path))` —— **解析了两次**：`ResolveAsset` 先拼上资源根（`assets/…`），
+    `AssetManager::GetTexture` 内部又 `Resolve` 一次（`assets\assets\…`），于是 `stbi_load` 找不到文件，
+    静默回退到品红棋盘。日志里是 `Failed to load texture: assets\assets\textures/checkerboard.png`。
+    这个 bug 只影响精灵（网格/材质走的是 `Texture::Create(ResolveAsset(…))`，只解析一次），所以是新增 2D
+    功能后才暴露出来的。
+  - **修法（两处）**：
+    1. `AssetManager::GetTexture` 现在同时接受两种写法——资源根相对路径（`textures/x.png`）和**已经指向真实
+       文件**的路径（绝对路径，或已经带上资源根）。`Resolve` 也不再给绝对路径重复加根。
+    2. `scene_serializer` 读精灵贴图时直接用文件里存的资源根相对路径（`GetTexture(texture)`），不再多一次
+       `ResolveAsset`。
+  - **验证**：同一场景做 A/B——A 不按 Play，B 在 Play 3 帧后 Stop，同帧截图对比
+    `tools/ppm_diff.py`：**mean 0.03/255，仅 396/1440000 像素不同（0.028%）**（差异来自面板 FPS 文本、
+    狐狸的动画帧与选中框）；日志不再出现 `Failed to load texture`；`[selftest]` 报告 Play/Stop 前后
+    `dimension=2D sprites=3 … sprites_without_texture=0`。
+- **新增：可控的走路动画（“只有移动时才播，停下就停”）**
+  - **引擎**：`SpriteAnimationComponent::play_while_moving`（+ 序列化 `"play_while_moving"`、检查器勾选项）。
+    `Scene::UpdateSpriteAnimations` 每帧比较实体的世界坐标：动过 → 播；没动 → `playing=false` 并 `Reset()`
+    回到第一帧（走路循环的待机姿势）。这样**移动实体的代码（脚本/物理/动画）不需要管动画**，
+    也就不会出现“忘了切 playing”的常见错。
+  - **脚本 API**：补了 `entity:set_sprite_flip_x(bool)` / `get_sprite_flip_x()`，并让 `get_color`/`set_color`
+    对精灵也生效（之前只认 MeshComponent）——2D 角色“朝行进方向转身”不再需要用负缩放糊出来。
+  - **编辑器 2D 示例场景**：Fox 现在带 `play_while_moving` + `LuaScriptComponent →
+    scripts/fox_controller.lua`（`assets/scripts/fox_controller.lua`：WASD/方向键移动、按 dx 转身）。
+    Edit 模式没有按键 → 站着播待机帧；**Play 模式按 WASD 就能控制狐狸走路**，松手立刻停在第 0 帧。
+  - **sandbox2d**：狐狸改成方向键控制（WASD 留给玩家精灵），同样 `play_while_moving`。为可无头验证加了
+    `MENGINE_SANDBOX2D_AUTOMOVE=<秒>`（与 voxel 的 `MENGINE_VOXEL_AUTOWALK` 同类）：按住“右”N 秒后松手，
+    定期打印位置/playing/frame。
+  - **验证（无头，`MENGINE_SANDBOX2D_AUTOMOVE=1.5`）**：
+    `t=0.51 x=-1.51 moving=yes playing=yes frame=1` → `t=1.01 moving=yes playing=yes frame=5` →
+    `t=2.00 moving=no playing=no frame=0` → `t=2.50 moving=no playing=no frame=0`（x 冻结在 1.51965）。
+    即：移动时逐帧推进，松手后立刻停在 frame 0 并不再前进。
+- **下一步**：`play_while_moving` 也可以支持“仅水平移动才播”（横版/俯视），以及按速度缩放播放速率
+  （`fps *= |v| / max_speed`）；其余同前。
+
+---
+
 ## 2026-09-12 — 2D 收尾：精灵平铺（方形格）+ 精灵动画示例（qoguldsd.png）+ 修编辑器断言
 
 - **问题 1：2D 视口里的“背景方块网格不是方的”**。原因不是网格几何，而是 `New 2D Scene` 的示例背景

@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -160,6 +161,27 @@ Ref<Texture> MakeCharacterSheet() {
   return texture;
 }
 
+/// @brief Reads a float from an environment variable (0 when unset / not a
+/// number). Uses the MSVC-safe `_dupenv_s` on Windows, where std::getenv is
+/// marked deprecated (same helper the voxel app uses).
+float EnvFloat(const char *name) {
+#if defined(_WIN32)
+  char  *buffer = nullptr;
+  size_t length = 0;
+  float  value  = 0.0f;
+  if (_dupenv_s(&buffer, &length, name) == 0 && buffer != nullptr) {
+    if (buffer[0] != '\0') {
+      value = static_cast<float>(std::atof(buffer));
+    }
+    free(buffer);
+  }
+  return value;
+#else
+  const char *env = std::getenv(name);
+  return (env != nullptr && env[0] != '\0') ? static_cast<float>(std::atof(env)) : 0.0f;
+#endif
+}
+
 }  // namespace
 
 Sandbox2D::Sandbox2D() : Application(Application::GetStartupApi()) {
@@ -259,10 +281,38 @@ void Sandbox2D::BuildDemoScene() {
     animation.loop        = true;
   }
 
+  // A real sprite sheet from the asset tree: assets/textures/qoguldsd.png is a
+  // 6 frame horizontal walk cycle (198x32, 33x32 px per frame), so the same
+  // 6x1 sheet + animation component used above drives it - this is what an
+  // artist-authored 2D asset looks like in the engine.
+  //
+  // The fox is the "controllable animation" showcase: the arrow keys move it and
+  // `play_while_moving` keeps the walk cycle running only while it moves (it
+  // parks on frame 0 the moment you let go), with the facing following the
+  // direction of travel.
+  {
+    const SpriteSheet fox_sheet{6, 1};
+    Entity            fox  = active_scene_->CreateEntity("Fox");
+    auto             &tr   = fox.AddComponent<Transform>();
+    tr.translation         = glm::vec3(-3.0f, 2.5f, 0.0f);
+    auto &sprite = fox.AddComponent<SpriteComponent>(AssetManager::Instance().GetTexture("textures/qoguldsd.png"));
+    sprite.FitPixels(fox_sheet, 32.0f);  // frame pixel aspect: nothing stretched
+    sprite.sorting_layer = 3;
+    sprite.SetSheetFrame(fox_sheet, 0);
+    auto &animation             = fox.AddComponent<SpriteAnimationComponent>();
+    animation.sheet             = fox_sheet;
+    animation.fps               = 8.0f;
+    animation.loop              = true;
+    animation.ping_pong         = false;
+    animation.playing           = false;  // idle until the fox actually moves
+    animation.play_while_moving = true;   // ... which the engine tracks for us
+    fox_                        = fox;
+  }
+
   // Sun is irrelevant for unlit sprites but keeps the scene graph sane for
   // tools that expect a light (no shadows/IBL in this scene).
-  LOG_INFO("Sandbox2D") << "Demo scene: " << kTilesX * kTilesY << " ground sprites + player + 7 animated gems "
-                        << "(orthographic camera, no skybox)";
+  LOG_INFO("Sandbox2D") << "Demo scene: " << kTilesX * kTilesY << " ground sprites + player + 7 animated gems + "
+                        << "a 6 frame sheet animation (qoguldsd.png) (orthographic camera, no skybox)";
 
   // Start the (physics-free) simulation so the per-frame systems run: the
   // sprite sheet animations advance in StepSimulation, exactly like they do for
@@ -271,7 +321,14 @@ void Sandbox2D::BuildDemoScene() {
 }
 
 void Sandbox2D::Initialize() {
-  LOG_INFO("Sandbox2D") << "Controls: WASD/arrows move the player (the camera follows), Esc quits";
+  LOG_INFO("Sandbox2D") << "Controls: WASD/arrows move the player (the camera follows), arrows also move the "
+                           "fox (the walk cycle only runs while it moves), Esc quits";
+
+  // Optional unattended check of the fox walk cycle: MENGINE_SANDBOX2D_AUTOMOVE=<seconds>.
+  auto_move_seconds_ = std::max(0.0f, EnvFloat("MENGINE_SANDBOX2D_AUTOMOVE"));
+  if (auto_move_seconds_ > 0.0f) {
+    LOG_INFO("Sandbox2D") << "[fox] auto-move for " << auto_move_seconds_ << "s, then stop";
+  }
 }
 
 void Sandbox2D::UpdatePlayer(float dt) {
@@ -314,6 +371,58 @@ void Sandbox2D::UpdatePlayer(float dt) {
   }
 }
 
+void Sandbox2D::UpdateFox(float dt) {
+  if (fox_.GetHandle() == entt::null || !fox_.HasComponent<Transform>()) {
+    return;
+  }
+
+  // Arrow keys only: WASD already drives the player sprite.
+  float dx = 0.0f;
+  float dy = 0.0f;
+  if (Input::IsKeyPressed(GLFW_KEY_LEFT)) dx -= 1.0f;
+  if (Input::IsKeyPressed(GLFW_KEY_RIGHT)) dx += 1.0f;
+  if (Input::IsKeyPressed(GLFW_KEY_DOWN)) dy -= 1.0f;
+  if (Input::IsKeyPressed(GLFW_KEY_UP)) dy += 1.0f;
+
+  // Headless verification: hold "right" for the configured number of seconds,
+  // then release it, and report what the animation does on both sides.
+  if (auto_move_seconds_ > 0.0f) {
+    if (auto_move_elapsed_ < auto_move_seconds_) {
+      dx = 1.0f;
+    }
+    auto_move_elapsed_ += dt;
+    if (auto_move_elapsed_ >= auto_move_log_at_) {
+      const auto &animation = fox_.GetComponent<SpriteAnimationComponent>();
+      LOG_INFO("Sandbox2D") << "[fox] t=" << auto_move_elapsed_ << "s  x=" << fox_.GetComponent<Transform>().translation.x
+                            << "  moving=" << (auto_move_elapsed_ < auto_move_seconds_ ? "yes" : "no")
+                            << "  playing=" << (animation.playing ? "yes" : "no") << "  frame=" << animation.frame;
+      auto_move_log_at_ += 0.5f;
+    }
+  }
+
+  const float length = std::sqrt(dx * dx + dy * dy);
+  if (length > 1e-4f) {
+    dx /= length;
+    dy /= length;
+  }
+
+  auto &transform = fox_.GetComponent<Transform>();
+  transform.translation += glm::vec3(dx * kFoxSpeed * dt, dy * kFoxSpeed * dt, 0.0f);
+
+  if (fox_.HasComponent<SpriteComponent>()) {
+    if (dx < -1e-4f) {
+      fox_flip_x_ = true;
+    } else if (dx > 1e-4f) {
+      fox_flip_x_ = false;
+    }
+    fox_.GetComponent<SpriteComponent>().flip_x = fox_flip_x_;
+  }
+
+  // Deliberately NO animation book-keeping here: the component's
+  // `play_while_moving` tracks the entity's position and runs / parks the walk
+  // cycle, so moving the fox is all this controller has to do.
+}
+
 void Sandbox2D::OnUpdate(float dt) {
   PROFILER_FUNCTION();
 
@@ -329,6 +438,7 @@ void Sandbox2D::OnUpdate(float dt) {
   }
 
   UpdatePlayer(dt);
+  UpdateFox(dt);
   active_scene_->StepSimulation(dt);  // advances the sprite sheet animations
   active_scene_->RenderFromPrimaryCamera();
 }

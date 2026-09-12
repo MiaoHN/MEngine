@@ -623,6 +623,48 @@ void Editor::OnUpdate(float dt) {
     }
   }
 
+  // Unattended verification of Play -> Stop round-trip:
+  // MENGINE_EDITOR_SELFTEST_PLAY_STOP=<frame> presses Play at that frame, Stop
+  // three frames later and reports the scene content on both sides. Play/Stop
+  // goes through the snapshot restore, so this is what catches a broken
+  // authoring scene (missing sprites, lost textures, wrong dimension).
+  static int         selftest_frame    = 0;
+  static bool        play_stop_done    = false;
+  const std::string  selftest_play_stop = GetEnvVar("MENGINE_EDITOR_SELFTEST_PLAY_STOP");
+  if (!selftest_play_stop.empty() && !play_stop_done) {
+    ++selftest_frame;
+    const int    at      = std::atoi(selftest_play_stop.c_str());
+    const auto   describe = [this]() {
+      const auto &registry = active_scene_->GetRegistry();
+      std::string text     = "dimension=" + std::string(active_scene_->Is2D() ? "2D" : "3D") +
+                         " sprites=" + std::to_string(registry.view<SpriteComponent>().size()) +
+                         " meshes=" + std::to_string(registry.view<MeshComponent>().size()) +
+                         " 2d_view=" + (Is2DView() ? "yes" : "no");
+      int missing = 0;
+      for (auto &entity : active_scene_->GetAllEntitiesWith<SpriteComponent>()) {
+        if (entity.GetComponent<SpriteComponent>().texture == nullptr) {
+          ++missing;
+        }
+      }
+      return text + " sprites_without_texture=" + std::to_string(missing);
+    };
+    if (selftest_frame == at) {
+      LOG_INFO("Editor") << "[selftest] Play  (before: " << describe() << ")";
+      game_mode_ = GameMode::Play;
+      active_scene_->StartSimulation();
+      active_scene_->GetScriptEngine().LoadMainScript(active_scene_->GetMainScript());
+      active_scene_->GetScriptEngine().StartAll();
+      SetGridVisible(false);
+    } else if (selftest_frame == at + 3) {
+      game_mode_ = GameMode::Edit;
+      active_scene_->GetScriptEngine().Clear();
+      active_scene_->StopSimulation();
+      SetGridVisible(true);
+      LOG_INFO("Editor") << "[selftest] Stop  (after:  " << describe() << ")";
+      play_stop_done = true;
+    }
+  }
+
   if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
     glfwSetWindowShouldClose(window_, true);
   }
@@ -1932,6 +1974,12 @@ void Editor::ShowImGuiProperties() {
       ImGui::Checkbox("Ping-pong", &component.ping_pong);
       ImGui::SameLine();
       ImGui::Checkbox("Playing", &component.playing);
+      ImGui::Checkbox("Play While Moving", &component.play_while_moving);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Walk-cycle mode: the clip runs only while the entity moves and\n"
+                          "returns to the first frame when it stops - move the entity with a\n"
+                          "script / physics / animation and the walk cycle follows.");
+      }
 
       ImGui::Text("Sheet %d x %d = %d frames | clip %d frames | frame %d (sheet %d)", component.sheet.columns,
                   component.sheet.rows, sheet_frames, component.FrameCount(), component.frame, component.SheetFrame());
@@ -3553,6 +3601,16 @@ void Editor::Create2DDemo() {
   fox_animation.sheet = fox_sheet;
   fox_animation.fps   = 8.0f;
   fox_animation.loop  = true;
+  // Walk-cycle mode: only run the clip while the fox moves, and stand on the
+  // first frame when it stops. The controller script below only moves the
+  // entity, so it drives animation and movement stay in sync by construction.
+  fox_animation.play_while_moving = true;
+
+  // Controllable character: WASD / arrow keys move the fox in Play mode (see
+  // assets/scripts/fox_controller.lua). No key is held while authoring, so the
+  // editor preview shows the idle frame.
+  auto &fox_script = fox.AddComponent<LuaScriptComponent>();
+  fox_script.path  = "scripts/fox_controller.lua";
 
   // A second, static sprite in front of the background (own sorting layer) so
   // the draw order is visible in the inspector right away.

@@ -288,6 +288,11 @@ graph LR
   这是“重复背景”能力：`SetTiledSize(world_size, ppu)` 按贴图自身尺寸换算重复次数，**纹素永远是方的**，
   不会被拉伸（只用 `size` 贴一张 32×32 模板去铺 30×18 单位的地面就会变成 1.64:1 的长方格）。
   注意 `uv_rect` + 平铺 = 重复“选中的那一帧”，图集无缝平铺需要 shader 端按子矩形取模。
+- **走路循环模式**：`SpriteAnimationComponent::play_while_moving` 让 `Scene::UpdateSpriteAnimations`
+  每帧比较实体世界坐标：动过才播，停下就 `playing=false` + 回第 0 帧（待机姿势）。移动实体的代码
+  （Lua/物理/动画）不需要管动画开关。
+- **贴图路径**：`AssetManager::GetTexture` 同时接受资源根相对路径与“已指向真实文件”的路径（绝对路径/
+  已带资源根）——解析两次会把 `assets/` 拼两遍并静默回退成品红棋盘底图（2D Play/Stop 后“黑紫方块”的成因）。
 - **排序**：`sorting_layer` → `order_in_layer` → 世界 z（越大越靠前/后画），与 Unity 的 Sorting Layer /
   Order in Layer 一致；不再按到相机距离排序。
 - **合批**：连续且 `mesh` 相同、材质内容相同（`SameMaterialForBatching`）的精灵合成一次

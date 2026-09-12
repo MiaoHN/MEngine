@@ -42,6 +42,12 @@ std::string AssetManager::Resolve(const std::string &relative) const {
   if (asset_root_.empty()) {
     return relative;
   }
+  // Already absolute: resolving must not prefix the asset root again.
+  std::error_code ec;
+  if (std::filesystem::path(relative).is_absolute()) {
+    return relative;
+  }
+  (void)ec;
   return (std::filesystem::path(asset_root_) / relative).string();
 }
 
@@ -106,7 +112,14 @@ Ref<Texture> AssetManager::GetTexture(const std::string &name_or_path, bool srgb
     relative = it->second;
   }
 
-  return texture_library_->Load(cache_key, Resolve(relative), srgb);
+  // Accept both spellings of a path: "textures/x.png" (relative to the asset
+  // root) and one that already points at an existing file (absolute, or already
+  // carrying the asset root). Resolving a resolved path would look for
+  // "<root>/<root>/textures/x.png", which silently loads the magenta fallback
+  // texture instead (e.g. every sprite after a play / stop round-trip).
+  std::error_code ec;
+  const std::string resolved = std::filesystem::exists(relative, ec) ? relative : Resolve(relative);
+  return texture_library_->Load(cache_key, resolved, srgb);
 }
 
 Ref<Shader> AssetManager::GetDefaultShader() {

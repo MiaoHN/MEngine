@@ -40,6 +40,12 @@ class Sandbox2D : public MEngine::Application {
   /// the camera.
   void UpdatePlayer(float dt);
 
+  /// @brief Moves the fox with the arrow keys. Its walk cycle is driven by
+  /// `SpriteAnimationComponent::play_while_moving`, so this only has to move the
+  /// entity: the animation runs while the fox moves and stops (frame 0) when it
+  /// does not.
+  void UpdateFox(float dt);
+
   std::shared_ptr<Scene> active_scene_;
 
   /// True when a scene file was loaded (`--scene`): the demo is not built and
@@ -48,6 +54,7 @@ class Sandbox2D : public MEngine::Application {
 
   // --- demo content ---------------------------------------------------------
   Entity player_;
+  Entity fox_;
   Entity camera_entity_;
 
   Ref<Texture> ground_texture_;
@@ -56,8 +63,19 @@ class Sandbox2D : public MEngine::Application {
 
   glm::vec2 player_velocity_{0.0f};
   bool      player_flip_x_ = false;
+  bool      fox_flip_x_    = false;
+
+  // --- unattended verification ---------------------------------------------
+  /// `MENGINE_SANDBOX2D_AUTOMOVE=<seconds>`: walk the fox to the right for that
+  /// long and then let go, logging its position / animation frame on the way.
+  /// Exists so the "animates only while moving" behaviour can be asserted from a
+  /// headless run (`--hidden --frames N` + grep the log).
+  float auto_move_seconds_ = 0.0f;
+  float auto_move_elapsed_ = 0.0f;
+  float auto_move_log_at_  = 0.0f;
 
   static constexpr float kPlayerSpeed   = 4.0f;
+  static constexpr float kFoxSpeed      = 3.0f;
   static constexpr float kPlayerSize    = 64.0f;  // texture pixels
   static constexpr float kPixelsPerUnit = 32.0f;  // 32 px == 1 world unit
 };

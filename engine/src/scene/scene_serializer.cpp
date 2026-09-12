@@ -413,6 +413,7 @@ json EntityToJson(Entity &entity, int parent_index = -1) {
     j["loop"]        = a.loop;
     j["ping_pong"]   = a.ping_pong;
     j["playing"]     = a.playing;
+    j["play_while_moving"] = a.play_while_moving;
     j["time"]        = a.time;
     j["frame"]       = a.frame;
     e["sprite_animation"] = std::move(j);
@@ -599,9 +600,12 @@ Entity LoadEntityFromJson(Scene &scene, const json &e) {
   if (e.contains("sprite")) {
     const auto &j = e["sprite"];
     SpriteComponent sprite;
+    // The stored path is asset-relative, which is exactly what GetTexture wants
+    // (it also maps manifest names); resolving here would prefix the asset root
+    // twice and load the magenta fallback instead.
     const std::string texture = j.value("texture", std::string());
     if (!texture.empty()) {
-      sprite.texture = AssetManager::Instance().GetTexture(ResolveAsset(texture));
+      sprite.texture = AssetManager::Instance().GetTexture(texture);
     }
     sprite.color          = Vec4FromJson(j.value("color", json()), glm::vec4(1.0f));
     sprite.uv_rect        = Vec4FromJson(j.value("uv_rect", json()), glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
@@ -625,6 +629,7 @@ Entity LoadEntityFromJson(Scene &scene, const json &e) {
     animation.loop          = j.value("loop", true);
     animation.ping_pong     = j.value("ping_pong", false);
     animation.playing       = j.value("playing", true);
+    animation.play_while_moving = j.value("play_while_moving", false);
     animation.time          = j.value("time", 0.0f);
     animation.frame         = j.value("frame", 0);
     entity.AddComponent<SpriteAnimationComponent>(std::move(animation));

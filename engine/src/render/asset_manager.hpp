@@ -38,13 +38,20 @@ class AssetManager {
 
   [[nodiscard]] const std::string &GetAssetRoot() const { return asset_root_; }
 
-  /// @brief Resolves a path relative to the asset root.
+  /// @brief Resolves a path relative to the asset root. A path that is already
+  /// absolute is returned unchanged (resolving twice must never happen: the
+  /// asset root would be prefixed again and the file would not be found).
   [[nodiscard]] std::string Resolve(const std::string &relative) const;
 
   /// @brief Loads (and caches) a shader by logical name ("pbr", "taa", ...).
   Ref<Shader> GetShader(const std::string &name);
 
-  /// @brief Loads (and caches) a texture by name or path relative to the root.
+  /// @brief Loads (and caches) a texture. `name_or_path` is a manifest name or
+  /// a path that is understood both ways: relative to the asset root
+  /// ("textures/checker.png") or already resolved/absolute. The latter keeps
+  /// callers that pass a resolved path (or a path read back from a scene file)
+  /// from prefixing the root twice - the usual cause of sprites suddenly showing
+  /// the magenta "missing texture" fallback after a play / stop round-trip.
   /// @brief Loads (and caches) a texture. When `srgb` is true the bytes are
   /// uploaded as an sRGB texture so the GPU decodes sRGB->linear on sample
   /// (LearnOpenGL loads its albedo maps this way for gamma-correct pipelines).

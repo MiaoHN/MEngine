@@ -452,6 +452,8 @@ int Entity_GetColor(lua_State *L) {
   glm::vec4       c(1.0f);
   if (auto *mc = ud->scene->GetRegistry().try_get<MeshComponent>(ud->id)) {
     if (mc->material) c = mc->material->GetBaseColorFactor();
+  } else if (auto *sc = ud->scene->GetRegistry().try_get<SpriteComponent>(ud->id)) {
+    c = sc->color;  // 2D entities tint through their sprite
   }
   lua_pushnumber(L, c.r);
   lua_pushnumber(L, c.g);
@@ -467,8 +469,28 @@ int Entity_SetColor(lua_State *L) {
                     static_cast<float>(luaL_optnumber(L, 5, 1.0)));
   if (auto *mc = ud->scene->GetRegistry().try_get<MeshComponent>(ud->id)) {
     if (mc->material) mc->material->SetBaseColorFactor(c);
+  } else if (auto *sc = ud->scene->GetRegistry().try_get<SpriteComponent>(ud->id)) {
+    sc->color = c;
   }
   return 0;
+}
+
+/// @brief Sprite facing: `self:set_sprite_flip_x(true)` mirrors a 2D sprite
+/// horizontally (the usual "face the direction of travel" for a walk cycle).
+int Entity_SetSpriteFlipX(lua_State *L) {
+  EntityUserdata *ud = CheckEntity(L, 1);
+  const bool      flip = lua_toboolean(L, 2) != 0;
+  if (auto *sc = ud->scene->GetRegistry().try_get<SpriteComponent>(ud->id)) {
+    sc->flip_x = flip;
+  }
+  return 0;
+}
+
+int Entity_GetSpriteFlipX(lua_State *L) {
+  EntityUserdata *ud = CheckEntity(L, 1);
+  const auto     *sc = ud->scene->GetRegistry().try_get<SpriteComponent>(ud->id);
+  lua_pushboolean(L, sc != nullptr && sc->flip_x);
+  return 1;
 }
 
 }  // namespace
@@ -645,6 +667,10 @@ void ScriptEngine::RegisterApi() {
   lua_setfield(L_, -2, "get_color");
   lua_pushcfunction(L_, Entity_SetColor);
   lua_setfield(L_, -2, "set_color");
+  lua_pushcfunction(L_, Entity_SetSpriteFlipX);
+  lua_setfield(L_, -2, "set_sprite_flip_x");
+  lua_pushcfunction(L_, Entity_GetSpriteFlipX);
+  lua_setfield(L_, -2, "get_sprite_flip_x");
   lua_pop(L_, 1);
 
   // Global `MEngine` table.
