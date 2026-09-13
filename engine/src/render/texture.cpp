@@ -1,165 +1,124 @@
 #include "render/texture.hpp"
 
-#include <glad/glad.h>
+#include "render/rhi/resource_backend.hpp"
 
-#include <glm/glm.hpp>
-#include <vector>
+#include "core/logger.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
 namespace MEngine {
 
-Texture::Texture(const std::string &path) : path_(path) {
-  logger_ = Logger::Get("Texture");
+Texture::Texture(const std::string &path) : Texture(path, false) {}
 
-  glGenTextures(1, &id_);
-  glBindTexture(GL_TEXTURE_2D, id_);
+Texture::Texture(const std::string &path, bool srgb) : path_(path), srgb_(srgb) {
+  backend_ = CreateTextureBackend();
 
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  stbi_set_flip_vertically_on_load(true);
 
-  unsigned char *data = stbi_load(path.c_str(), &width_, &height_, &channels_, 0);
-  if (data) {
-    GLenum format;
-    if (channels_ == 1) {
-      format = GL_RED;
-    } else if (channels_ == 3) {
-      format = GL_RGB;
-    } else if (channels_ == 4) {
-      format = GL_RGBA;
-    }
-
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width_, height_, 0, format, GL_UNSIGNED_BYTE, data);
-    glGenerateMipmap(GL_TEXTURE_2D);
+  unsigned char *loaded_data = stbi_load(path.c_str(), &width_, &height_, &channels_, 0);
+  if (loaded_data) {
+    backend_->SetData(loaded_data, width_, height_, channels_, srgb_);
   } else {
-    logger_->error("Failed to load texture: {0}", path);
+    LOG_WARN("Texture") << "Failed to load texture: " << path << ", using fallback checkerboard.";
+    static unsigned char fallback_data[] = {
+        255, 0,   255, 255, 0,   0,   0,   255,
+        0,   0,   0,   255, 255, 0,   255, 255,
+    };
+    width_    = 2;
+    height_   = 2;
+    channels_ = 4;
+    backend_->SetData(fallback_data, width_, height_, channels_, false);
   }
 
-  stbi_image_free(data);
+  stbi_image_free(loaded_data);
 
   size_t last_slash = path.find_last_of("/\\");
   size_t last_dot   = path.find_last_of(".");
   name_             = path.substr(last_slash + 1, last_dot - last_slash - 1);
 }
 
-Texture::Texture(const std::string &name, const std::string &path) {
-  logger_ = Logger::Get("Texture");
+Texture::Texture(const std::string &name, const std::string &path) : Texture(name, path, false) {}
 
-  glGenTextures(1, &id_);
-  glBindTexture(GL_TEXTURE_2D, id_);
-
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+Texture::Texture(const std::string &name, const std::string &path, bool srgb)
+    : path_(path), name_(name), srgb_(srgb) {
+  backend_ = CreateTextureBackend();
 
   stbi_set_flip_vertically_on_load(true);
 
   data_ = stbi_load(path.c_str(), &width_, &height_, &channels_, 0);
   if (data_) {
-    GLenum format;
-    if (channels_ == 1) {
-      format = GL_RED;
-    } else if (channels_ == 3) {
-      format = GL_RGB;
-    } else if (channels_ == 4) {
-      format = GL_RGBA;
-    }
-
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width_, height_, 0, format, GL_UNSIGNED_BYTE, data_);
-    glGenerateMipmap(GL_TEXTURE_2D);
+    owns_data_ = true;
+    backend_->SetData(data_, width_, height_, channels_, srgb_);
   } else {
-    logger_->error("Failed to load texture: {0}", path);
+    LOG_WARN("Texture") << "Failed to load texture: " << path << ", using fallback checkerboard.";
+    static unsigned char fallback_data[] = {
+        255, 0,   255, 255, 0,   0,   0,   255,
+        0,   0,   0,   255, 255, 0,   255, 255,
+    };
+    width_    = 2;
+    height_   = 2;
+    channels_ = 4;
+    backend_->SetData(fallback_data, width_, height_, channels_, false);
   }
-
-  name_ = name;
 }
 
-Texture::Texture() {
-  glGenTextures(1, &id_);
-  glBindTexture(GL_TEXTURE_2D, id_);
-
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-}
+Texture::Texture() { backend_ = CreateTextureBackend(); }
 
 Texture::~Texture() {
-  glDeleteTextures(1, &id_);
-  stbi_image_free(data_);
+  if (owns_data_ && data_) {
+    stbi_image_free(data_);
+  }
 }
 
 void Texture::SetData(unsigned char *data, int width, int height) {
+  if (owns_data_ && data_) {
+    stbi_image_free(data_);
+  }
+
   data_     = data;
+  owns_data_ = false;
   width_    = width;
   height_   = height;
   channels_ = 4;
 
-  glBindTexture(GL_TEXTURE_2D, id_);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width_, height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, data_);
-  glGenerateMipmap(GL_TEXTURE_2D);
+  backend_->SetData(data_, width_, height_, channels_, srgb_);
 }
 
-void Texture::Bind(unsigned int slot) const {
-  glActiveTexture(GL_TEXTURE0 + slot);
-  glBindTexture(GL_TEXTURE_2D, id_);
-}
+void Texture::Bind(unsigned int slot) const { backend_->Bind(slot); }
 
-void Texture::Unbind() const { glBindTexture(GL_TEXTURE_2D, 0); }
+void Texture::Unbind() const { backend_->Unbind(); }
 
-void Texture::SetSubTexture(int frame) {
-  int w = width_ / h_frames_;
-  int h = height_ / v_frames_;
-  int x = frame % h_frames_;
-  int y = (frame / h_frames_) % v_frames_;
+unsigned int Texture::GetID() const { return backend_ ? backend_->GetID() : 0; }
 
-  std::vector<glm::vec2> uv = {
-      {x * w, y * h + h},
-      {x * w + w, y * h + h},
-      {x * w + w, y * h},
-      {x * w, y * h},
-  };
+Ref<Texture> Texture::Create(const std::string &path) { return CreateRef<Texture>(path); }
 
-  glBindTexture(GL_TEXTURE_2D, id_);
-  void *gpu_buffer = nullptr;
-  gpu_buffer       = glMapBufferRange(GL_ARRAY_BUFFER, 0, sizeof(uv), GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
-  memcpy(gpu_buffer, uv.data(), sizeof(uv));
-  glUnmapBuffer(GL_ARRAY_BUFFER);
-  // glTexSubImage2D(GL_TEXTURE_2D, 0, x * w, y * h, w, h, GL_RGBA,
-  //                 GL_UNSIGNED_BYTE, data_);
-  // glTextureSubImage2D(id_, 0, x * w, y * h, w, h, GL_RGBA, GL_UNSIGNED_BYTE,
-  //                     data_);
-}
+Ref<Texture> Texture::Create(const std::string &path, bool srgb) { return CreateRef<Texture>(path, srgb); }
 
-std::shared_ptr<Texture> Texture::Create(const std::string &path) { return std::make_shared<Texture>(path); }
-
-TextureLibrary::TextureLibrary() { logger_ = Logger::Get("TextureLibrary"); }
+TextureLibrary::TextureLibrary() {}
 
 TextureLibrary::~TextureLibrary() {}
 
-void TextureLibrary::Add(const std::string &name, const std::shared_ptr<Texture> &texture) {
+void TextureLibrary::Add(const std::string &name, const Ref<Texture> &texture) {
   if (Exists(name)) {
-    logger_->warn("Texture already exists!");
+    LOG_WARN("TextureLibrary") << "Texture already exists!";
   }
   textures_[name] = texture;
 }
 
-void TextureLibrary::Add(const std::shared_ptr<Texture> &texture) {
+void TextureLibrary::Add(const Ref<Texture> &texture) {
   auto &name = texture->GetName();
   Add(name, texture);
 }
 
-std::shared_ptr<Texture> TextureLibrary::Load(const std::string &name, const std::string &path) {
-  auto texture = std::make_shared<Texture>(name, path);
+Ref<Texture> TextureLibrary::Load(const std::string &name, const std::string &path, bool srgb) {
+  auto texture = CreateRef<Texture>(name, path, srgb);
   Add(texture);
+  LOG_DEBUG("TextureLibrary") << "Loaded texture '" << name << "'";
   return texture;
 }
 
-std::shared_ptr<Texture> TextureLibrary::Get(const std::string &name) { return textures_[name]; }
+Ref<Texture> TextureLibrary::Get(const std::string &name) { return textures_[name]; }
 
 bool TextureLibrary::Exists(const std::string &name) const { return textures_.find(name) != textures_.end(); }
 

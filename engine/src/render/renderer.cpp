@@ -2,117 +2,530 @@
 
 #include <glad/glad.h>
 
-#include "core/command.hpp"
-#include "render/gl.hpp"
-#include "render/render_pass.hpp"
-#include "render/render_pipeline.hpp"
+#include <GLFW/glfw3.h>
+
+#ifdef ERROR
+#undef ERROR  // windows.h (via GLFW) #defines ERROR, which breaks Logger::Level::ERROR
+#endif
+
+#include "core/application.hpp"
+#include <cstdlib>
+
+#include "render/asset_manager.hpp"
+#include "render/material.hpp"
+#include "render/mesh.hpp"
+#include "render/cube_shadow_map.hpp"
+#include "render/post_processing.hpp"
+#include "render/rhi/resource_backend.hpp"
+#include "render/rhi/rhi.hpp"
 #include "render/shader.hpp"
+#include "render/shadow_map.hpp"
+#include "render/skybox.hpp"
+#include "render/ssao.hpp"
+#include "render/texture.hpp"
 #include "scene/component.hpp"
+#include "utils/profiler.h"
 
 namespace MEngine {
 
 Renderer::Renderer() {
-  logger_ = Logger::Get("Renderer");
+  // 1x1 white fallback texture for meshes without a texture.
+  default_texture_ = AssetManager::Instance().GetDefaultTexture();
 
-  float vertices[] = {
-      // positions        // texture coords
-      0.5f,  0.5f,  0.0f, 1.0f, 1.0f,  // top right
-      0.5f,  -0.5f, 0.0f, 1.0f, 0.0f,  // bottom right
-      -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,  // bottom left
-      -0.5f, 0.5f,  0.0f, 0.0f, 1.0f   // top left
-  };
-  unsigned int indices[] = {
-      0, 1, 3,  // first triangle
-      1, 2, 3   // second triangle
-  };
+  // Directional shadow map + depth-only shader.
+  shadow_map_   = CreateRef<ShadowMap>(2048, 2048);
+  depth_shader_ = AssetManager::Instance().GetShader("shadow_depth");
 
-  auto vertex_buffer = std::make_shared<GL::VertexBuffer>();
-  vertex_buffer->SetData(vertices, sizeof(vertices));
-  vertex_buffer->AddLayout({
-      {GL::ShaderDataType::Float3, "aPos"},
-      {GL::ShaderDataType::Float2, "aTexCoord"},
-  });
+  // Omnidirectional (point light) shadow maps + depth shader.
+  point_light_shadow_maps_.reserve(kMaxPointShadows);
+  for (int i = 0; i < kMaxPointShadows; ++i) {
+    point_light_shadow_maps_.push_back(CreateRef<CubeShadowMap>(512));
+  }
+  point_light_depth_shader_ = AssetManager::Instance().GetShader("point_shadow_depth");
 
-  auto index_buffer = std::make_shared<GL::IndexBuffer>();
-  index_buffer->SetData(indices, 6);
+  // HDR + bloom post-processing (auto-sizes to the window).
+  post_processing_ = CreateRef<PostProcessing>(0, 0);
 
-  auto vertex_array = std::make_shared<GL::VertexArray>();
-  vertex_array->SetVertexBuffer(vertex_buffer);
-  vertex_array->SetIndexBuffer(index_buffer);
+  // Screen-space ambient occlusion.
+  ssao_ = CreateRef<SSAO>(0, 0);
 
-  // TODO: 默认 shader 怎么存放
-  auto shader = std::make_shared<Shader>("res/shaders/default_vert.glsl", "res/shaders/default_frag.glsl");
-  shader->Bind();
-  shader->SetUniform("texture1", 0);
-  shader->Unbind();
+  // Skybox + IBL environment (equirectangular HDR). LO 6.pbr 2.x demos override
+  // the path (e.g. newport_loft) and flip via Application statics.
+  skybox_ = CreateRef<Skybox>(AssetManager::Instance().Resolve(Application::GetEnvironmentHdrPath()), 512, 32, 128,
+                              Application::GetEnvironmentHdrFlip());
 
-  pipeline_ = std::make_shared<RenderPipeline>();
-
-  pipeline_->SetVertexArray(vertex_array);
-  pipeline_->SetShader(shader);
-
-  pass_ = std::make_shared<RenderPass>();
-  pass_->AddPipeline(pipeline_);
+  LOG_DEBUG("Renderer") << "Renderer initialized (directional shadow map " << shadow_map_->GetWidth() << "x"
+                        << shadow_map_->GetHeight() << ", " << kMaxPointShadows
+                        << " point-light shadow maps, SSAO + skybox + post-processing)";
 }
 
-Renderer::~Renderer() {}
+void Renderer::SetEnvironmentHdr(const std::string &hdr_path, bool flip) {
+  // Recreate the whole Skybox (env cubemap + irradiance + prefiltered + BRDF)
+  // from the new HDR. This runs under the active GL context in the editor; a
+  // one-off cost on drag-and-drop. The Application statics track the current
+  // environment so a later full rebuild (e.g. new Renderer) matches.
+  Application::SetEnvironmentHdrPath(hdr_path);
+  Application::SetEnvironmentHdrFlip(flip);
+  skybox_ = CreateRef<Skybox>(AssetManager::Instance().Resolve(hdr_path), 512, 32, 128, flip);
+}
 
-void Renderer::RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view) {
-  static std::shared_ptr<Texture> plain_texture = std::make_shared<Texture>();
-  if (!sprite.texture) {
-    // 根据 sprite 颜色绘制纯色texture
+Renderer::~Renderer() = default;
 
-    // 生成纯色纹理
-    unsigned char color[4] = {static_cast<unsigned char>(sprite.color[0]), static_cast<unsigned char>(sprite.color[1]),
-                              static_cast<unsigned char>(sprite.color[2]), static_cast<unsigned char>(sprite.color[3])};
-    plain_texture->SetData(color, 1, 1);
+void Renderer::BeginShadowPass(const glm::mat4 &light_view_proj) const {
+  shadow_map_->Bind();
+  depth_shader_->Bind();
+  depth_shader_->SetUniform("light_view_proj", light_view_proj);
+}
 
-    auto shader = pipeline_->GetShader();
+void Renderer::DrawMeshShadow(const Ref<Mesh> &mesh, const glm::mat4 &model, const glm::mat4 &light_view_proj) const {
+  DrawMeshShadowInstanced(mesh, &model, 1, light_view_proj);
+}
 
-    shader->Bind();
-    plain_texture->Bind();
-
-    shader->SetUniform("model", sprite.GetModelMatrix());
-    shader->SetUniform("proj_view", proj_view);
-    shader->SetUniform("texture1", 0);
-
-    pipeline_->Execute();
-  } else {
-    auto shader  = pipeline_->GetShader();
-    auto texture = sprite.texture;
-
-    shader->Bind();
-    texture->Bind();
-
-    shader->SetUniform("model", sprite.GetModelMatrix());
-    shader->SetUniform("proj_view", proj_view);
-    shader->SetUniform("texture1", 0);
-
-    pipeline_->Execute();
+void Renderer::DrawMeshShadowInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count,
+                                       const glm::mat4 &light_view_proj) const {
+  if (!mesh || count <= 0) {
+    return;
+  }
+  (void)light_view_proj;
+  mesh->SetInstanceData(models, count);
+  stats_.draw_calls += 1;
+  stats_.instanced_draws += 1;
+  stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
+  if (const auto *rhi = GetActiveRHI(); rhi) {
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
   }
 }
 
-void Renderer::RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view) {
-  auto shader  = pipeline_->GetShader();
-  auto texture = sprite.texture;
-
-  shader->Bind();
-  texture->SetSubTexture(sprite.current_frame);
-
-  shader->SetUniform("model", sprite.GetModelMatrix());
-  shader->SetUniform("proj_view", proj_view);
-  shader->SetUniform("texture1", 0);
-
-  pipeline_->Execute();
-  // pass_->Begin();
-
-  // pass_->Execute();
-
-  // pass_->End();
-
-  // texture->Unbind();
+void Renderer::EndShadowPass() const {
+  depth_shader_->Unbind();
+  shadow_map_->Unbind();
 }
 
-GLuint Renderer::GetFramebuffer() { return pass_->GetFramebuffer(); }
+int Renderer::GetPointShadowIndex(int light_index) const {
+  if (light_index < 0 || light_index >= static_cast<int>(point_lights_.size())) {
+    return -1;
+  }
+  if (!point_lights_[static_cast<size_t>(light_index)].casts_shadow) {
+    return -1;
+  }
+  int shadow_index = 0;
+  for (int i = 0; i < light_index; ++i) {
+    if (point_lights_[static_cast<size_t>(i)].casts_shadow) {
+      ++shadow_index;
+    }
+  }
+  return shadow_index < kMaxPointShadows ? shadow_index : -1;
+}
+
+void Renderer::BeginPointShadowPass(int light_index, const glm::vec3 &light_pos, float far_plane) const {
+  point_light_shadow_maps_[static_cast<size_t>(light_index)]->Bind();
+  point_light_depth_shader_->Bind();
+  point_light_depth_shader_->SetUniform("light_pos", light_pos);
+  point_light_depth_shader_->SetUniform("far_plane", far_plane);
+}
+
+void Renderer::BindPointShadowFace(int light_index, int face, const glm::mat4 &light_space_matrix) const {
+  point_light_shadow_maps_[static_cast<size_t>(light_index)]->BindFace(face);
+  point_light_depth_shader_->SetUniform("light_space_matrix", light_space_matrix);
+}
+
+void Renderer::DrawMeshPointShadow(const Ref<Mesh> &mesh, const glm::mat4 &model) const {
+  DrawMeshPointShadowInstanced(mesh, &model, 1);
+}
+
+void Renderer::DrawMeshPointShadowInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count) const {
+  if (!mesh || count <= 0) {
+    return;
+  }
+  mesh->SetInstanceData(models, count);
+  stats_.draw_calls += 1;
+  stats_.instanced_draws += 1;
+  stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
+  if (const auto *rhi = GetActiveRHI(); rhi) {
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
+  }
+}
+
+void Renderer::EndPointShadowPass(int light_index) const {
+  point_light_depth_shader_->Unbind();
+  point_light_shadow_maps_[static_cast<size_t>(light_index)]->Unbind();
+}
+
+void Renderer::BeginSSAOPass(const glm::mat4 &proj, const glm::mat4 &view) const {
+  ssao_->BeginGeometryPass(proj, view);
+}
+
+void Renderer::DrawMeshSSAO(const Ref<Mesh> &mesh, const glm::mat4 &model) const {
+  DrawMeshSSAOInstanced(mesh, &model, 1);
+}
+
+void Renderer::DrawMeshSSAOInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count) const {
+  if (!mesh || count <= 0) {
+    return;
+  }
+  mesh->SetInstanceData(models, count);
+  stats_.draw_calls += 1;
+  stats_.instanced_draws += 1;
+  stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
+  if (const auto *rhi = GetActiveRHI(); rhi) {
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
+  }
+}
+
+void Renderer::EndSSAOPass() const { ssao_->EndGeometryPass(); }
+
+void Renderer::GenerateSSAO(const glm::mat4 &proj, const glm::mat4 &view) const { ssao_->Generate(proj, view); }
+
+void Renderer::BindSSAO(unsigned int slot) const { ssao_->BindTexture(slot); }
+
+void Renderer::BeginScene() const { post_processing_->BeginScene(background_color_); }
+
+void Renderer::EndScene() const { post_processing_->EndScene(); }
+
+void Renderer::Begin2DScene(const glm::vec3 &clear_color, unsigned int target_fbo, int width, int height,
+                            const glm::mat4 &view_proj) {
+  // The 2D pass is intentionally self-contained: bind the target, clear it and
+  // turn off everything 3D (depth test/write, culling) so sprites are drawn in
+  // painter order straight into the target with alpha blending.
+  view_proj_2d_ = view_proj;
+
+  // A zero size means "the whole target". The window's framebuffer size is the
+  // answer for framebuffer 0 (a standalone app renders without ever knowing the
+  // window size); note that the current GL viewport is NOT a usable fallback
+  // here, since an earlier offscreen pass (IBL, shadow map, ...) leaves it at
+  // that pass's resolution.
+  int target_width  = width;
+  int target_height = height;
+  if (target_width <= 0 || target_height <= 0) {
+    int         window_width  = 0;
+    int         window_height = 0;
+    Application *app          = Application::GetInstance();
+    if (app != nullptr && app->GetWindow() != nullptr) {
+      glfwGetFramebufferSize(app->GetWindow(), &window_width, &window_height);
+    }
+    if (window_width <= 0 || window_height <= 0) {
+      int viewport[4];
+      glGetIntegerv(GL_VIEWPORT, viewport);
+      window_width  = viewport[2];
+      window_height = viewport[3];
+    }
+    target_width  = window_width;
+    target_height = window_height;
+  }
+
+  const auto *rhi = GetActiveRHI();
+  if (rhi != nullptr) {
+    rhi->BindFramebuffer(target_fbo);
+  }
+  glViewport(0, 0, std::max(1, target_width), std::max(1, target_height));
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glClearColor(clear_color.r, clear_color.g, clear_color.b, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  if (rhi != nullptr) {
+    rhi->SetDepthWrite(false);
+  }
+}
+
+void Renderer::DrawSprites2D(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 *models,
+                             int count) const {
+  if (!mesh || !material || !material->GetShader() || models == nullptr || count <= 0) {
+    return;
+  }
+
+  const Ref<Shader> &shader = material->GetShader();
+  shader->Bind();
+
+  // Only the sprite shader's uniforms are uploaded here; anything the 3D path
+  // would set (lights, shadow maps, IBL, ...) does not exist in a 2D scene.
+  const Ref<Texture> &texture = material->GetAlbedoMap() ? material->GetAlbedoMap() : default_texture_;
+  texture->Bind(0);
+  shader->SetUniform("albedo_map", 0);
+  shader->SetUniform("has_albedo_map", material->GetAlbedoMap() ? 1 : 0);
+  shader->SetUniform("base_color_factor", material->GetBaseColorFactor());
+  shader->SetUniform("proj_view", view_proj_2d_);
+
+  mesh->SetInstanceData(models, count);
+  stats_.draw_calls += 1;
+  stats_.instanced_draws += 1;
+  stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
+  if (const auto *rhi = GetActiveRHI(); rhi != nullptr) {
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
+  }
+}
+
+void Renderer::End2DScene() const {
+  // Restore the 3D state so the editor / next scene can render normally.
+  glEnable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  if (const auto *rhi = GetActiveRHI(); rhi != nullptr) {
+    rhi->SetDepthWrite(true);
+  }
+}
+
+void Renderer::PostProcess(const glm::mat4 &view, const glm::mat4 &proj, unsigned int target_fbo, int target_width,
+                           int target_height) const {
+  // The directional light travels along `direction`, so the sun is opposite.
+  // Project it to screen space as the god-rays light source. God rays are only
+  // meaningful when the sun is actually on screen; otherwise they would smear
+  // the scene from a fallback position.
+  const glm::vec4 sun_clip = proj * view * glm::vec4(-light_.direction, 0.0f);
+  glm::vec2       light_pos(0.5f, 0.5f);
+  float           god_rays_scale = 0.0f;
+  if (sun_clip.w > 0.0f) {
+    const glm::vec2 ndc = glm::vec2(sun_clip.x, sun_clip.y) / sun_clip.w;
+    if (ndc.x >= -1.0f && ndc.x <= 1.0f && ndc.y >= -1.0f && ndc.y <= 1.0f) {
+      light_pos      = ndc * 0.5f + 0.5f;
+      god_rays_scale = 1.0f;
+    }
+  }
+  post_processing_->Render(light_pos, target_fbo, target_width, target_height, god_rays_scale);
+}
+
+void Renderer::RenderSkybox(const glm::mat4 &view, const glm::mat4 &proj) const { skybox_->Render(view, proj); }
+
+void Renderer::ResolveTAA() const { post_processing_->ResolveTAA(); }
+
+glm::mat4 Renderer::GetJitteredProjection(const glm::mat4 &proj) const {
+  glm::mat4       jittered = proj;
+  const glm::vec2 jitter   = post_processing_->GetJitter();
+  jittered[2][0]           = jitter.x;
+  jittered[2][1]           = jitter.y;
+  return jittered;
+}
+
+void Renderer::SetTAAEnabled(bool enabled) { post_processing_->SetTAAEnabled(enabled); }
+
+bool Renderer::IsTAAEnabled() const { return post_processing_->IsTAAEnabled(); }
+
+void Renderer::SetExposure(float exposure) { post_processing_->SetExposure(exposure); }
+
+void Renderer::SetBloomStrength(float strength) { post_processing_->SetBloomStrength(strength); }
+
+void Renderer::SetBloomThreshold(float threshold) { post_processing_->SetBloomThreshold(threshold); }
+
+void Renderer::SetShadowPcfRadius(float radius) { shadow_pcf_radius_ = radius; }
+
+void Renderer::SetIblIntensity(float intensity) { ibl_intensity_ = intensity; }
+
+void Renderer::SetLinearOutput(bool enabled) { post_processing_->SetLinearOutput(enabled); }
+bool Renderer::IsLinearOutput() const { return post_processing_->IsLinearOutput(); }
+
+void Renderer::SetLoHdrTone(bool enabled) { post_processing_->SetLoHdrTone(enabled); }
+void Renderer::SetReinhardTone(bool enabled) { post_processing_->SetReinhardTone(enabled); }
+bool Renderer::IsLoHdrTone() const { return post_processing_->IsLoHdrTone(); }
+bool Renderer::IsReinhardTone() const { return post_processing_->IsReinhardTone(); }
+
+void Renderer::SetGodRaysStrength(float strength) { post_processing_->SetGodRaysStrength(strength); }
+
+void Renderer::SetBloomEnabled(bool enabled) { post_processing_->SetBloomEnabled(enabled); }
+
+bool Renderer::IsBloomEnabled() const { return post_processing_->IsBloomEnabled(); }
+
+float Renderer::GetExposure() const { return post_processing_->GetExposure(); }
+
+float Renderer::GetBloomStrength() const { return post_processing_->GetBloomStrength(); }
+
+float Renderer::GetBloomThreshold() const { return post_processing_->GetBloomThreshold(); }
+
+float Renderer::GetGodRaysStrength() const { return post_processing_->GetGodRaysStrength(); }
+
+void Renderer::DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
+                        const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const {
+  DrawMeshInstanced(mesh, material, &model, 1, proj_view, view_pos, light_view_proj);
+}
+
+void Renderer::DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 *models,
+                                 int count, const glm::mat4 &proj_view, const glm::vec3 &view_pos,
+                                 const glm::mat4 &light_view_proj) const {
+  PROFILER_FUNCTION();
+
+  if (!mesh || !material || !material->GetShader() || count <= 0) {
+    return;
+  }
+
+  const Ref<Shader> &shader = material->GetShader();
+  shader->Bind();
+
+  const auto bind_texture = [&](const Ref<Texture> &texture, int slot, const char *map_uniform, const char *has_uniform) {
+    const Ref<Texture> &tex = texture ? texture : default_texture_;
+    tex->Bind(slot);
+    shader->SetUniform(map_uniform, slot);
+    shader->SetUniform(has_uniform, texture ? 1 : 0);
+  };
+
+  bind_texture(material->GetAlbedoMap(), 0, "albedo_map", "has_albedo_map");
+  bind_texture(material->GetNormalMap(), 1, "normal_map", "has_normal_map");
+  bind_texture(material->GetMetallicRoughnessMap(), 2, "metallic_roughness_map", "has_metallic_roughness_map");
+  bind_texture(material->GetAOMap(), 3, "ao_map", "has_ao_map");
+  // Specular map (slot 12) feeds the pbr shader's F0 and the blinn LO-exact
+  // specular term; an optional equirect reflection map (OBJ map_Ka) lives on
+  // slot 14 and the parallax height map on slot 15 (both kept clear of the
+  // shadow maps on 4 / IBL on 5,6,13 / SSAO on 7 / point shadows on 8..11).
+  bind_texture(material->GetSpecularMap(), 12, "specular_map", "has_specular_map");
+  bind_texture(material->GetReflectionMap(), 14, "reflection_map", "has_reflection_map");
+  bind_texture(material->GetHeightMap(), 15, "height_map", "has_height_map");
+
+  shader->SetUniform("base_color_factor", material->GetBaseColorFactor());
+  shader->SetUniform("metallic_factor", material->GetMetallicFactor());
+  shader->SetUniform("roughness_factor", material->GetRoughnessFactor());
+  shader->SetUniform("specular_intensity", material->GetSpecularFactor());
+  shader->SetUniform("u_material_specular_color", material->GetSpecularColor());
+  shader->SetUniform("u_material_has_specular_color", material->HasSpecularColor() ? 1 : 0);
+  shader->SetUniform("u_albedo_srgb", material->IsAlbedoSRGB() ? 1 : 0);
+  shader->SetUniform("material_shininess", material->GetShininess());
+  shader->SetUniform("u_material_unlit", material->IsUnlit() ? 1 : 0);
+  shader->SetUniform("height_scale", material->GetHeightScale());  // parallax strength
+  // Scene / view constants (lights, shadow, IBL, SSAO, point & spot arrays) are
+  // identical for every draw in one main pass: upload them once per shader
+  // program (cached until the next ResetFrameUniformCache) instead of once per
+  // draw. Material uniforms / textures above stay per draw.
+  if (shader.get() != cached_scene_shader_) {
+    cached_scene_shader_ = shader.get();
+  shader->SetUniform("u_render_mode", render_mode_ == RenderMode::Unlit ? 1 : 0);
+  shader->SetUniform("u_lo_exact", lo_lighting_ ? 1 : 0);
+  shader->SetUniform("u_lo_blinn_spec", lo_blinn_spec_ ? 1 : 0);
+  shader->SetUniform("u_lo_dir_shadow", lo_dir_shadow_ ? 1 : 0);
+
+  shader->SetUniform("proj_view", proj_view);
+  shader->SetUniform("view_pos", view_pos);
+
+  // Directional light + shadow map.
+  shader->SetUniform("light_dir", light_.direction);
+  shader->SetUniform("light_color", light_.color);
+  shader->SetUniform("light_ambient", light_.ambient);
+  shader->SetUniform("light_diffuse", light_.diffuse);
+  shader->SetUniform("light_specular", light_.specular);
+
+  // Additional (unshadowed) directional lights - the engine multi-directional
+  // path. Capped to the shader's MAX_DIR_EXTRA.
+  constexpr int kMaxDirExtra = 4;
+  const int     dir_extra_count =
+      static_cast<int>(directional_extras_.size()) < kMaxDirExtra ? static_cast<int>(directional_extras_.size())
+                                                                  : kMaxDirExtra;
+  shader->SetUniform("dir_extra_count", dir_extra_count);
+  for (int i = 0; i < dir_extra_count; ++i) {
+    const DirectionalLight &light = directional_extras_[static_cast<size_t>(i)];
+    const std::string       index = std::to_string(i);
+    shader->SetUniform("dir_extra_dir[" + index + "]", light.direction);
+    shader->SetUniform("dir_extra_color[" + index + "]", light.color);
+  }
+  shadow_map_->BindTexture(4);
+  shader->SetUniform("shadow_map", 4);
+  shader->SetUniform("light_view_proj", light_view_proj);
+  shader->SetUniform("shadow_map_size", static_cast<float>(shadow_map_->GetWidth()));
+  shader->SetUniform("shadow_pcf_radius", shadow_pcf_radius_);
+
+  // IBL environment (irradiance + prefiltered specular cubemaps) + BRDF LUT.
+  skybox_->BindIrradiance(5);
+  skybox_->BindPrefilter(6);
+  skybox_->BindBRDF(13);
+  shader->SetUniform("irradiance_map", 5);
+  shader->SetUniform("prefiltered_map", 6);
+  shader->SetUniform("brdf_lut", 13);
+  shader->SetUniform("max_prefilter_mip", skybox_->GetMaxPrefilterMip());
+  // The skybox IS the environment light source: with it disabled there is no
+  // IBL at all, so metals / reflections go dark and only direct lights remain
+  // (otherwise toggling the skybox only changed the background, not the look).
+  const float ibl_intensity = skybox_enabled_ ? ibl_intensity_ : 0.0f;
+  shader->SetUniform("ibl_intensity", ibl_intensity);
+  shader->SetUniform("u_ibl_specular", ibl_specular_);
+
+  // Screen-space ambient occlusion.
+  ssao_->BindTexture(7);
+  shader->SetUniform("ssao_map", 7);
+  shader->SetUniform("ssao_enabled", ssao_enabled_ ? 1 : 0);
+  shader->SetUniform("viewport_size",
+                     glm::vec2(static_cast<float>(ssao_->GetWidth()), static_cast<float>(ssao_->GetHeight())));
+
+  // Point lights (indexed uniform arrays). The blinn_lo shader declares 32
+  // (it has no shadow-sampler arrays, so it stays cheap on weak drivers); the
+  // classic blinn/pbr shaders only declare 8 and uploading past their arrays
+  // is a silent no-op, so a single cap serves both.
+  constexpr int kMaxPointLights = 32;
+  const int     point_light_count = static_cast<int>(point_lights_.size()) < kMaxPointLights
+                                         ? static_cast<int>(point_lights_.size())
+                                         : kMaxPointLights;
+  shader->SetUniform("point_light_count", point_light_count);
+  shader->SetUniform("point_shadow_size", static_cast<float>(point_light_shadow_maps_[0]->GetSize()));
+  for (int i = 0; i < point_light_count; ++i) {
+    const PointLight  &light = point_lights_[static_cast<size_t>(i)];
+    const std::string  index = std::to_string(i);
+    shader->SetUniform("point_light_positions[" + index + "]", light.position);
+    shader->SetUniform("point_light_colors[" + index + "]", light.color);
+    shader->SetUniform("point_light_intensities[" + index + "]", light.intensity);
+    shader->SetUniform("point_light_ambients[" + index + "]", light.ambient);
+    shader->SetUniform("point_light_diffuses[" + index + "]", light.diffuse);
+    shader->SetUniform("point_light_speculars[" + index + "]", light.specular);
+    shader->SetUniform("point_light_radii[" + index + "]", light.radius);
+    shader->SetUniform("point_light_constants[" + index + "]", light.constant);
+    shader->SetUniform("point_light_linears[" + index + "]", light.linear);
+    shader->SetUniform("point_light_quadratics[" + index + "]", light.quadratic);
+    shader->SetUniform("point_light_lo_attenuation[" + index + "]", light.lo_attenuation ? 1 : 0);
+
+    const int shadow_index = GetPointShadowIndex(i);
+    const int has_shadow   = shadow_index >= 0 ? 1 : 0;
+    shader->SetUniform("point_light_has_shadow[" + index + "]", has_shadow);
+    if (has_shadow) {
+      const int slot = 8 + shadow_index;
+      point_light_shadow_maps_[static_cast<size_t>(shadow_index)]->BindTexture(slot);
+      shader->SetUniform("point_light_shadow_maps[" + index + "]", slot);
+    }
+    shader->SetUniform("point_light_far_planes[" + index + "]", light.radius);
+  }
+
+  // Spot lights (indexed uniform arrays, capped to the shader's MAX).
+  constexpr int kMaxSpotLights = 4;
+  const int     spot_light_count = static_cast<int>(spot_lights_.size()) < kMaxSpotLights
+                                        ? static_cast<int>(spot_lights_.size())
+                                        : kMaxSpotLights;
+  shader->SetUniform("spot_light_count", spot_light_count);
+  for (int i = 0; i < spot_light_count; ++i) {
+    const SpotLight  &light = spot_lights_[static_cast<size_t>(i)];
+    const std::string index = std::to_string(i);
+    shader->SetUniform("spot_light_positions[" + index + "]", light.position);
+    shader->SetUniform("spot_light_directions[" + index + "]", light.direction);
+    shader->SetUniform("spot_light_colors[" + index + "]", light.color);
+    shader->SetUniform("spot_light_intensities[" + index + "]", light.intensity);
+    shader->SetUniform("spot_light_ambients[" + index + "]", light.ambient);
+    shader->SetUniform("spot_light_diffuses[" + index + "]", light.diffuse);
+    shader->SetUniform("spot_light_speculars[" + index + "]", light.specular);
+    shader->SetUniform("spot_light_lo_flashlight[" + index + "]", light.lo_flashlight ? 1 : 0);
+    shader->SetUniform("spot_light_ranges[" + index + "]", light.range);
+    shader->SetUniform("spot_light_cutoffs[" + index + "]", light.cutoff);
+    shader->SetUniform("spot_light_outer_cutoffs[" + index + "]", light.outer_cutoff);
+    shader->SetUniform("spot_light_constants[" + index + "]", light.constant);
+    shader->SetUniform("spot_light_linears[" + index + "]", light.linear);
+    shader->SetUniform("spot_light_quadratics[" + index + "]", light.quadratic);
+    shader->SetUniform("spot_light_lo_attenuation[" + index + "]", light.lo_attenuation ? 1 : 0);
+  }
+  }
+
+  // Per-instance model matrices (locations 3..6, divisor 1) + instanced draw.
+  mesh->SetInstanceData(models, count);
+  if (const auto *rhi = GetActiveRHI(); rhi) {
+    const bool translucent = material->IsTranslucent();
+    stats_.draw_calls += 1;
+    stats_.instanced_draws += 1;
+    stats_.triangles += static_cast<uint64_t>(mesh->GetIndexCount() / 3) * static_cast<uint64_t>(count);
+    if (translucent) {
+      // Translucent surfaces read depth but never write it, so later opaque /
+      // translucent geometry is never hidden behind a transparent layer.
+      rhi->SetDepthWrite(false);
+    }
+    rhi->SetCullMode(material->GetCullMode());
+    rhi->SetWireframe(render_mode_ == RenderMode::Wireframe);
+    rhi->DrawIndexedInstanced(mesh->GetIndexCount(), count);
+    rhi->SetWireframe(false);
+    rhi->SetCullMode(CullMode::None);  // restore so UI/2D draws are unaffected
+    if (translucent) {
+      rhi->SetDepthWrite(true);
+    }
+  }
+
+  shader->Unbind();
+}
 
 }  // namespace MEngine

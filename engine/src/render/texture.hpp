@@ -13,16 +13,21 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 
-#include "core/logger.hpp"
+#include "core/common.hpp"
 
 namespace MEngine {
+
+class ITextureBackend;
 
 class Texture {
  public:
   Texture(const std::string &path);
+  Texture(const std::string &path, bool srgb);
 
   Texture(const std::string &name, const std::string &path);
+  Texture(const std::string &name, const std::string &path, bool srgb);
 
   void SetData(unsigned char *data, int width, int height);
 
@@ -37,35 +42,29 @@ class Texture {
 
   int GetHeight() const { return height_; }
 
-  void SetVFrames(int v_frames) { v_frames_ = v_frames; }
-  void SetHFrames(int h_frames) { h_frames_ = h_frames; }
-
-  void SetSubTexture(int frame = 0);
-
   const std::string &GetName() const { return name_; }
 
   std::string GetPath() const { return path_; }
 
-  const unsigned int GetID() const { return id_; }
+  unsigned int GetID() const;
 
-  static std::shared_ptr<Texture> Create(const std::string &path);
+  static Ref<Texture> Create(const std::string &path);
+  static Ref<Texture> Create(const std::string &path, bool srgb);
 
  private:
-  unsigned int id_;
-  int          width_;
-  int          height_;
-  int          channels_;
+  std::unique_ptr<ITextureBackend> backend_;
 
-  int v_frames_ = 1;
-  int h_frames_ = 1;
-
-  std::shared_ptr<spdlog::logger> logger_;
+  int width_    = 0;
+  int height_   = 0;
+  int channels_ = 0;
 
   std::string path_;
 
-  unsigned char *data_;
+  unsigned char *data_ = nullptr;
+  bool           owns_data_ = false;
 
   std::string name_;
+  bool        srgb_ = false;
 };
 
 class TextureLibrary {
@@ -73,20 +72,18 @@ class TextureLibrary {
   TextureLibrary();
   ~TextureLibrary();
 
-  void Add(const std::string &name, const std::shared_ptr<Texture> &texture);
+  void Add(const std::string &name, const Ref<Texture> &texture);
 
-  void Add(const std::shared_ptr<Texture> &texture);
+  void Add(const Ref<Texture> &texture);
 
-  std::shared_ptr<Texture> Load(const std::string &name, const std::string &path);
+  Ref<Texture> Load(const std::string &name, const std::string &path, bool srgb = false);
 
-  std::shared_ptr<Texture> Get(const std::string &name);
+  Ref<Texture> Get(const std::string &name);
 
   bool Exists(const std::string &name) const;
 
  private:
-  std::unordered_map<std::string, std::shared_ptr<Texture>> textures_;
-
-  std::shared_ptr<spdlog::logger> logger_;
+  std::unordered_map<std::string, Ref<Texture>> textures_;
 };
 
 }  // namespace MEngine

@@ -6,6 +6,27 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 
+option(MENGINE_ENABLE_VULKAN "Enable Vulkan backend" ON)
+option(MENGINE_BUILD_SANDBOX "Build the sandbox example" ON)
+option(MENGINE_BUILD_EDITOR "Build the editor" ON)
+option(MENGINE_BUILD_VOXEL "Build the voxel (Minecraft-like) example" ON)
+option(MENGINE_BUILD_EXAMPLES "Build the LearnOpenGL-style lighting examples" ON)
+
+if(MENGINE_ENABLE_VULKAN)
+  find_package(Vulkan QUIET)
+  if(Vulkan_FOUND)
+    message(STATUS "Vulkan SDK found. Vulkan backend enabled.")
+  else()
+    message(STATUS "Vulkan SDK not found. Vulkan backend will compile in fallback mode.")
+  endif()
+endif()
+
+# std::thread / std::mutex are used by the profiler on every platform.
+find_package(Threads REQUIRED)
+
+# Shared per-compiler warning flags.
+include(cmake/CompilerWarnings.cmake)
+
 add_subdirectory(deps/glfw)
 
 # setup lua
@@ -13,28 +34,83 @@ set(LUA_BUILD_AS_DLL OFF CACHE BOOL "Build Lua as a DLL")
 file(GLOB LUA_SOURCE_FILES deps/lua/*.c)
 list(REMOVE_ITEM LUA_SOURCE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/deps/lua/onelua.c")
 add_library(lua STATIC ${LUA_SOURCE_FILES})
-target_include_directories(lua PUBLIC deps/lua)
+target_include_directories(lua SYSTEM PUBLIC deps/lua)
 
 # setup imgui
 file(GLOB IMGUI_SOURCE_FILES deps/imgui/*.cpp
   deps/imgui/backends/imgui_impl_glfw.cpp
   deps/imgui/backends/imgui_impl_opengl3.cpp
 )
+if(Vulkan_FOUND)
+  list(APPEND IMGUI_SOURCE_FILES deps/imgui/backends/imgui_impl_vulkan.cpp)
+endif()
 add_library(imgui STATIC ${IMGUI_SOURCE_FILES})
-target_include_directories(imgui PUBLIC deps/imgui)
-target_include_directories(imgui PUBLIC deps/imgui/backends)
-target_link_libraries(imgui glfw)
+# SYSTEM: suppress warnings from third-party headers when they are included
+# by our own translation units (GCC/Clang -isystem, MSVC /external:I).
+target_include_directories(imgui SYSTEM PUBLIC deps/imgui)
+target_include_directories(imgui SYSTEM PUBLIC deps/imgui/backends)
+target_link_libraries(imgui PRIVATE glfw)
+mengine_quiet_third_party(imgui)
+if(Vulkan_FOUND)
+  target_link_libraries(imgui PUBLIC Vulkan::Vulkan)
+endif()
 
 # setup ImGuiZmo
 file(GLOB IMGUIZMO_SOURCE_FILES deps/ImGuizmo/*.cpp)
 add_library(ImGuizmo STATIC ${IMGUIZMO_SOURCE_FILES})
-target_include_directories(ImGuizmo PUBLIC
+target_include_directories(ImGuizmo SYSTEM PUBLIC
   deps/ImGuizmo
   deps/imgui
 )
+mengine_quiet_third_party(ImGuizmo)
+
+# setup miniaudio (single-header audio library; implementation compiled exactly
+# once into its own static lib so the engine stays free of third-party noise)
+add_library(miniaudio STATIC deps/miniaudio/ma.c)
+target_include_directories(miniaudio SYSTEM PUBLIC deps/miniaudio)
+mengine_quiet_third_party(miniaudio)
+if(WIN32)
+  # WASAPI / DirectSound / WinMM backends need the Windows COM + multimedia libs.
+  target_link_libraries(miniaudio PRIVATE ole32 winmm)
+endif()
+
+# setup JoltPhysics (CPU-only; options tuned to not clobber MEngine flags)
+set(ENABLE_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)
+set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(FLOATING_POINT_EXCEPTIONS_ENABLED OFF CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+set(JPH_USE_DX12 OFF CACHE BOOL "" FORCE)
+set(JPH_USE_VK OFF CACHE BOOL "" FORCE)
+set(JPH_USE_MTL OFF CACHE BOOL "" FORCE)
+add_subdirectory(deps/jolt/Build)
 
 add_subdirectory(engine)
 
-add_subdirectory(editor)
+if(MENGINE_BUILD_SANDBOX)
+  add_subdirectory(sandbox)
+endif()
 
-add_subdirectory(examples)
+if(MENGINE_BUILD_EDITOR)
+  add_subdirectory(editor)
+endif()
+
+if(MENGINE_BUILD_VOXEL)
+  add_subdirectory(voxel)
+endif()
+
+if(MENGINE_BUILD_EXAMPLES)
+  add_subdirectory(examples)
+endif()
+
+# Sync compile_commands.json into the top-level build directory so VS Code
+# (clangd / the C++ extension) can discover it for symbol lookup.
+add_custom_target(sync_compile_commands ALL
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/build
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${CMAKE_BINARY_DIR}/compile_commands.json
+    ${PROJECT_SOURCE_DIR}/build/compile_commands.json
+  COMMENT "Syncing compile_commands.json to build/"
+  VERBATIM
+)

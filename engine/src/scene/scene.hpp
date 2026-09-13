@@ -13,15 +13,34 @@
 
 #include <entt/entt.hpp>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
+#include <Jolt/Jolt.h>
+#include <Jolt/Physics/Body/BodyID.h>
+
+#include "core/common.hpp"
 #include "core/logger.hpp"
+#include "core/script_engine.hpp"
+#include "physics/physics_world.hpp"
+#include "render/light.hpp"
+#include "render/renderer.hpp"
 #include "scene/camera.hpp"
+#include "scene/component.hpp"
 #include "scene/entity.hpp"
 
 namespace MEngine {
 
 class Renderer;
+enum class RenderMode;
+
+/// @brief How a scene is authored and rendered. Chosen per scene (like the
+/// "2D"/"3D" templates of other engines) and stored in the scene file; it
+/// selects the render path and the editor workspace, nothing else.
+enum class SceneDimension {
+  Scene3D,  ///< Perspective camera, lights / shadows / skybox / post-processing.
+  Scene2D,  ///< Orthographic camera, sprites only, one clear + instanced batches.
+};
 
 class Scene {
  public:
@@ -32,20 +51,86 @@ class Scene {
     Entity entity = Entity(registry_.create(), &registry_);
     entity.AddComponent<Tag>(name);
     entities_.push_back(entity);
+    LOG_DEBUG("Scene") << "Created entity '" << name << "'";
     return entity;
   }
 
-  void DestroyEntity(Entity entity) {
-    // TODO
-    registry_.destroy(entity.GetHandle());
+  /// @brief Destroys an entity and, recursively, its whole child subtree
+  /// (children first, so no dangling RelationshipComponent is left behind).
+  void DestroyEntity(Entity entity);
 
-    for (auto it = entities_.begin(); it != entities_.end(); ++it) {
-      if (*it == entity) {
-        entities_.erase(it);
-        break;
-      }
-    }
-  }
+  /// @brief Parents `child` under `parent`. Passing `entt::null` detaches the
+  /// child to the root. Rejects making an entity a child of itself or of one
+  /// of its own descendants (would form a cycle). Returns false when invalid.
+  bool SetParent(entt::entity child, entt::entity parent);
+
+  /// @brief Parent handle of `entity` (`entt::null` when root-level).
+  [[nodiscard]] entt::entity GetParent(entt::entity entity) const;
+
+  /// @brief True when `entity` has at least one direct child.
+  [[nodiscard]] bool HasChildren(entt::entity entity) const;
+
+  /// @brief Direct children of `entity`, in creation order (empty when none).
+  [[nodiscard]] std::vector<entt::entity> GetChildren(entt::entity entity) const;
+
+  /// @brief True when `entity` is `ancestor` or lies somewhere below it.
+  [[nodiscard]] bool IsDescendantOf(entt::entity entity, entt::entity ancestor) const;
+
+  /// @brief World (hierarchy-composed) transform of `entity`. Equals the
+  /// entity's local Transform when it is root-level or has no Transform.
+  [[nodiscard]] glm::mat4 GetWorldTransform(entt::entity entity) const;
+
+  /// @brief World-space position of the entity's Transform (origin when the
+  /// entity has no Transform).
+  [[nodiscard]] glm::vec3 GetWorldPosition(entt::entity entity) const;
+
+  /// @brief Rewrites the entity's local TRS so that it lands at the given
+  /// world transform (used by the editor gizmo on children and by reparenting
+  /// that must keep a world pose stable). No-op without a Transform.
+  void SetLocalTransformFromWorld(entt::entity entity, const glm::mat4 &world);
+
+  // --- Keyframe animation timeline (scene-wide) -----------------------------
+  // The scene has one shared clock. `SetAnimationTime` scrubs/previews a pose
+  // by sampling every entity's AnimationComponent into its local Transform.
+  // Play mode auto-plays any animated scene from t = 0 (see StartSimulation).
+
+  /// @brief Sets the shared timeline cursor to `time` seconds (clamped to the
+  /// scene's animation duration) and applies the sampled pose to every
+  /// animated entity. This is how the editor previews / scrubs poses.
+  void SetAnimationTime(float time);
+
+  /// @brief Current scene animation time in seconds.
+  [[nodiscard]] float GetAnimationTime() const { return anim_time_; }
+
+  /// @brief Longest animation duration across all animated entities (0 when
+  /// the scene has no animation).
+  [[nodiscard]] float GetAnimationDuration() const;
+
+  /// @brief True when at least one entity has a non-empty AnimationComponent.
+  [[nodiscard]] bool HasAnyAnimation() const;
+
+  /// @brief Advances the shared clock by `dt` and applies the new pose.
+  /// Respects the loop setting (wraps) or stops at the end when not looping.
+  void AdvanceAnimation(float dt);
+
+  /// @brief Starts/stops Edit-mode timeline playback. Play mode automatically
+  /// plays any animated scene regardless of this flag.
+  void SetAnimationPlaying(bool playing) { anim_playing_ = playing; }
+  [[nodiscard]] bool IsAnimationPlaying() const { return anim_playing_; }
+
+  /// @brief Whether the clock wraps (true) or clamps-and-stops at the end.
+  void SetAnimationLoop(bool loop) { anim_loop_ = loop; }
+  [[nodiscard]] bool GetAnimationLoop() const { return anim_loop_; }
+
+  /// @brief Rewinds the clock to 0 and applies the t = 0 pose.
+  void ResetAnimation();
+
+  /// @brief Timeline / clip length in seconds. The playhead range and loop wrap
+  /// use this (it is independent of where the last keyframe happens to be, so
+  /// the playhead stays movable before any key exists). Grows are optional;
+  /// keys beyond this length are clamped out of playback.
+  void SetAnimationLength(float seconds);
+  [[nodiscard]] float GetAnimationLength() const { return anim_length_; }
 
   template <typename... Components>
   auto GetAllEntitiesWith() {
@@ -59,29 +144,305 @@ class Scene {
 
   std::vector<Entity> &GetAllEntities() { return entities_; }
 
+  /// @brief Standalone-player scene load: wipes the registry completely (no
+  /// editor-only helpers survive) and then loads the file through the same
+  /// loader the editor uses (`OpenSceneFile`), so the editor and a launched
+  /// standalone always agree on a scene - including its dimension.
   void LoadScene(const std::string &path);
   void SaveScene(const std::string &path);
 
-  std::shared_ptr<Camera2D> GetDefaultCameraInfo() { return default_camera_info_; }
+  /// @brief Starts a brand-new scene: stops any running simulation, clears the
+  /// content entities (editor-only helpers such as the grid are kept), resets
+  /// the script engine and the main-script path.
+  void ClearContent();
 
-  void OnUpdateEditor(Camera2D &camera);
+  /// @brief Replaces the scene content with the entities / settings of a
+  /// `.scene` file, keeping editor-only helpers intact. Returns false when the
+  /// file could not be read or parsed. Does not start scripts (the caller runs
+  /// them on Play).
+  bool OpenSceneFile(const std::string &path);
 
-  void OnUpdateSimulation(float dt, Camera2D &camera);
+  Ref<Camera> GetDefaultCameraInfo() { return default_camera_info_; }
 
-  void OnUpdateRuntime(float dt, int vw, int vh);
+  // --- scene dimension (2D / 3D) --------------------------------------------
+  // A scene is authored EITHER as 2D or as 3D, like a scene template in Unity or
+  // a 2D/3D viewport in Godot. The dimension is part of the scene file and picks
+  // the render path (see Render2D / RenderMeshes) and the editor workspace; it
+  // never restricts which components exist.
 
-  void Render(Camera2D &camera);
+  [[nodiscard]] SceneDimension GetDimension() const { return dimension_; }
+  [[nodiscard]] bool Is2D() const { return dimension_ == SceneDimension::Scene2D; }
+
+  /// @brief Switches the scene between 2D and 3D. Switching to 2D also applies
+  /// the 2D render defaults (no skybox / SSAO / TAA / bloom / god rays / IBL and
+  /// a solid background) because those 3D stages are never executed by the 2D
+  /// render path; switching back to 3D leaves the settings alone.
+  void SetDimension(SceneDimension dimension);
+
+  /// @brief Makes sure the scene has an orthographic primary camera (creating
+  /// "Main Camera" when needed) - the camera a 2D scene is rendered with.
+  Entity EnsurePrimaryCamera2D(float ortho_size = 6.0f, float z = 10.0f);
+
+  /// @brief The 2D render path: draws every `SpriteComponent` (sorted by
+  /// sorting layer / order in layer, batched per texture + tint) with an
+  /// orthographic `view`/`proj` directly into `target_fbo`. No lights, shadows,
+  /// SSAO, skybox, HDR buffer or post-processing chain is involved, and depth
+  /// testing is off, so a 2D scene costs exactly one clear plus its sprite
+  /// batches and looks exactly like the source art.
+  void Render2D(const glm::mat4 &view, const glm::mat4 &proj, unsigned int target_fbo = 0, int target_width = 0,
+                int target_height = 0);
+
+  /// @brief Draw all renderable entities (MeshComponent, ModelComponent and
+  /// SpriteComponent) with the given camera — the 3D path. `target_fbo` selects
+  /// the framebuffer the final composite is drawn into (0 = default
+  /// framebuffer); `target_width`/`target_height` override the composite
+  /// viewport when rendering into a custom framebuffer.
+  void RenderMeshes(const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &camera_pos,
+                    unsigned int target_fbo = 0, int target_width = 0, int target_height = 0);
+
+  /// @brief Renders the scene from its primary camera into `target_fbo`, through
+  /// the path of the scene's dimension (2D scenes use Render2D, 3D scenes
+  /// RenderMeshes) and falling back to the default camera when no camera is
+  /// marked primary. Used by Play mode and by the standalone sandboxes.
+  void RenderFromPrimaryCamera(unsigned int target_fbo = 0, int target_width = 0, int target_height = 0);
+
+  /// @brief Returns true when at least one entity has a primary camera.
+  [[nodiscard]] bool HasPrimaryCamera();
+
+  /// @brief The primary camera's component, or nullptr when none is marked.
+  [[nodiscard]] CameraComponent *GetPrimaryCameraComponent();
+
+  /// @brief World-space AABB of everything renderable in the scene: mesh /
+  /// model part bounds plus sprite quads. Returns false (leaving the outputs
+  /// untouched) when the scene has nothing renderable — the editor's "Frame All"
+  /// and the 2D viewport's fit use it.
+  bool GetContentBounds(glm::vec3 &out_min, glm::vec3 &out_max);
+
+  /// @brief Advances every `SpriteAnimationComponent` by `delta_time` and writes
+  /// the resulting sheet frame into the entity's `SpriteComponent` UV rectangle.
+  /// Called once per frame from StepSimulation (the editor also calls it to
+  /// preview a sheet animation without simulating).
+  void UpdateSpriteAnimations(float delta_time);
+
+  void AddPointLight(const PointLight &light);
+  void ClearPointLights();
+
+  void AddSpotLight(const SpotLight &light);
+  void ClearSpotLights();
+
+  [[nodiscard]] const DirectionalLight &GetLight() const;
+  DirectionalLight &GetLight();
+  void SetLight(const DirectionalLight &light);
+
+  void SetExposure(float exposure);
+  void SetBloomStrength(float strength);
+  void SetBloomThreshold(float threshold);
+  void SetShadowPcfRadius(float radius);
+  void SetIblIntensity(float intensity);
+  /// @brief Toggles the specular part of IBL (off = diffuse-only, LO 2.1.2).
+  void SetIblSpecular(bool enabled);
+  void SetGodRaysStrength(float strength);
+  /// @brief Enables/disables the skybox background (IBL lighting unchanged).
+  void SetSkyboxEnabled(bool enabled);
+  [[nodiscard]] bool IsSkyboxEnabled() const;
+  /// @brief Rebuilds the skybox/IBL environment from a new equirectangular HDR
+  /// file at runtime (editor drag-and-drop). See Renderer::SetEnvironmentHdr.
+  void SetEnvironmentHdr(const std::string &hdr_path, bool flip);
+  /// @brief Solid scene background used when the skybox is disabled.
+  void SetBackgroundColor(const glm::vec3 &color);
+  [[nodiscard]] const glm::vec3 &GetBackgroundColor() const;
+  void SetSSAOEnabled(bool enabled);
+  void SetTAAEnabled(bool enabled);
+  void SetBloomEnabled(bool enabled);
+  /// @brief Raw/linear composite (no ACES/gamma) for LearnOpenGL-style scenes.
+  void SetLinearOutput(bool enabled);
+  [[nodiscard]] bool IsLinearOutput() const;
+  /// @brief LearnOpenGL HDR/bloom tone mapping (1-exp(-x) + gamma).
+  void SetLoHdrTone(bool enabled);
+  void SetReinhardTone(bool enabled);
+  [[nodiscard]] bool IsLoHdrTone() const;
+  /// @brief LearnOpenGL-exact per-light ambient/diffuse/specular lighting.
+  void SetLoLighting(bool enabled);
+  [[nodiscard]] bool IsLoLighting() const;
+  /// @brief Use Blinn halfway specular in LO-exact mode (LO 4.normal_mapping).
+  void SetLoBlinnSpec(bool enabled);
+  [[nodiscard]] bool IsLoBlinnSpec() const;
+  /// @brief Apply the engine directional shadow to the LO-exact directional
+  /// light (LO 3.1.3.shadow_mapping).
+  void SetLoDirShadow(bool enabled);
+  [[nodiscard]] bool IsLoDirShadow() const;
+
+  [[nodiscard]] bool       IsSSAOEnabled() const;
+  [[nodiscard]] bool       IsTAAEnabled() const;
+  [[nodiscard]] bool       IsBloomEnabled() const;
+  [[nodiscard]] bool       IsReinhardTone() const;
+  [[nodiscard]] bool       IsIblSpecular() const;
+  [[nodiscard]] float      GetExposure() const;
+  [[nodiscard]] float      GetBloomStrength() const;
+  [[nodiscard]] float      GetBloomThreshold() const;
+  [[nodiscard]] float      GetShadowPcfRadius() const;
+  [[nodiscard]] float      GetIblIntensity() const;
+  [[nodiscard]] float      GetGodRaysStrength() const;
+
+  void SetRenderMode(RenderMode mode);
+  [[nodiscard]] RenderMode GetRenderMode() const;
+
+  /// @brief Builds Jolt bodies from RigidBody/Collider components and
+  /// snapshots their transforms so StopSimulation can restore them.
+  void StartSimulation();
+
+  /// @brief Steps the physics world and writes body transforms back to the
+  /// matching Transform components.
+  void StepSimulation(float delta_time);
+
+  /// @brief Destroys all physics bodies and restores the initial transforms.
+  void StopSimulation();
+
+  [[nodiscard]] bool IsSimulating() const { return simulating_; }
+
+  [[nodiscard]] PhysicsWorld &GetPhysicsWorld() { return *physics_world_; }
+
+  /// @brief Moves/rotates every entity with a CameraController + CameraComponent
+  /// using WASD/QE keys and the given mouse delta. `look_active` enables
+  /// right-drag look; the pitch is clamped to avoid flipping. Call during Play
+  /// mode only.
+  void UpdateCameraControllers(float delta_time, const glm::vec2 &mouse_delta, bool look_active);
+
+  /// @brief The scene's Lua scripting engine (per-entity scripts + main script).
+  [[nodiscard]] ScriptEngine &GetScriptEngine() { return *script_engine_; }
+
+  /// @brief Optional scene-level Lua main script path (e.g. "scripts/main.lua").
+  void SetMainScript(const std::string &path) { main_script_ = path; }
+  [[nodiscard]] const std::string &GetMainScript() const { return main_script_; }
+
+  /// @brief Fills `out` with the per-pass timings of the last frame
+  /// (shadow / point shadows / ssao / main / skybox / post), in milliseconds.
+  void GetLastPassTimes(float out_times[6]) const;
+
+  /// @brief Per-frame render counters of the last rendered frame.
+  [[nodiscard]] const RenderStats &GetRenderStats() const;
+
+  /// @brief Finds an entity by tag name (returns a null entity when absent).
+  [[nodiscard]] Entity FindEntityByName(const std::string &name);
+
+  /// @brief Raw registry access (used by the Lua bindings).
+  [[nodiscard]] entt::registry &GetRegistry() { return registry_; }
+
+  // --- Physics helpers for the Lua bindings --------------------------------
+  // All are no-ops unless the scene is simulating and the entity owns a body.
+
+  /// @brief Creates a Jolt body for `handle` if it is eligible (Transform +
+  /// Collider + RigidBody) and does not have one yet; destroys its body when
+  /// it is no longer eligible. Public so scripts can add components and spawn
+  /// colliding entities while a simulation is running.
+  void RefreshEntityBody(entt::entity handle);
+
+  /// @brief True while the entity has a live physics body.
+  [[nodiscard]] bool HasPhysicsBody(entt::entity handle);
+
+  /// @brief Casts a ray against the physics world and returns the handle of the
+  /// entity owning the closest hit body (entt::null when nothing is hit).
+  /// `out_distance` (optional) receives the hit distance from `origin`.
+  [[nodiscard]] entt::entity Raycast(const glm::vec3 &origin, const glm::vec3 &direction, float max_distance,
+                                     float *out_distance = nullptr) const;
+
+  /// @brief Linear velocity of the entity's body (zero when it has none).
+  glm::vec3 GetBodyVelocity(entt::entity handle);
+
+  /// @brief Sets the linear velocity of a dynamic body (wakes it up).
+  void SetBodyVelocity(entt::entity handle, const glm::vec3 &velocity);
+
+  /// @brief Applies an impulse at the body's center of mass (wakes it up).
+  void ApplyBodyImpulse(entt::entity handle, const glm::vec3 &impulse);
 
  private:
   entt::registry registry_;
 
   std::vector<Entity> entities_;
 
-  std::shared_ptr<spdlog::logger> logger_;
+  Ref<Camera> default_camera_info_;
 
-  std::shared_ptr<Camera2D> default_camera_info_;
+  Ref<Renderer> renderer_;
 
-  std::shared_ptr<Renderer> renderer_;
+  /// @brief The scene's authored directional "sun" (what the legacy
+  /// Scene::SetLight / Lighting panel configure). A DirectionalLightComponent
+  /// entity overrides it per frame while it exists; when no such entity is
+  /// present the renderer always uses this value - so deleting a directional
+  /// light entity reverts to the scene's own sun instead of leaving the last
+  /// entity's light active.
+  DirectionalLight authored_directional_light_;
+
+  Ref<PhysicsWorld> physics_world_;
+  bool              simulating_ = false;
+
+  /// @brief Authored dimension of this scene; Scene3D unless set otherwise (or
+  /// inferred from an orthographic primary camera when loading old files).
+  SceneDimension dimension_ = SceneDimension::Scene3D;
+
+  /// @brief Shared keyframe-animation timeline clock and playback state.
+  float anim_time_    = 0.0f;
+  float anim_length_  = 1.0f;  // timeline/clip length in seconds (scrub range)
+  bool  anim_playing_ = false;
+  bool  anim_loop_    = true;
+
+  /// @brief Samples every entity's AnimationComponent at anim_time_ into its
+  /// local Transform.
+  void ApplyAnimations();
+
+  /// @brief When any entity carries a PointLightComponent / SpotLightComponent,
+  /// rebuilds the renderer's point/spot light lists from those entities each
+  /// frame (position from the entity's world Transform). No-op when the scene
+  /// only uses the legacy Scene::AddPointLight / AddSpotLight list API.
+  void SyncLightComponents();
+
+  /// @brief Accumulator for the fixed-step simulation (physics + OnFixedUpdate
+  /// + collision dispatch all advance at kFixedTimeStep).
+  float sim_accumulator_ = 0.0f;
+
+  std::unordered_map<entt::entity, JPH::BodyID> body_ids_;
+  std::unordered_map<uint32_t, entt::entity>    body_id_to_entity_;
+
+  /// @brief JSON snapshot of the authoring (content, non-editor) entities,
+  /// taken when a simulation starts. StopSimulation restores the scene from it
+  /// so script-side changes (moves, colors, spawned/destroyed entities) never
+  /// leak back into Edit mode.
+  std::string play_snapshot_;
+
+  /// @brief Serializes the current content entities into play_snapshot_.
+  void CapturePlaySnapshot();
+
+  /// @brief Replaces every content entity with the captured snapshot, leaving
+  /// editor-only entities (e.g. the grid) untouched.
+  void RestorePlaySnapshot();
+
+  /// @brief Appends `handle` and every descendant to `out` in post-order
+  /// (children before their parent).
+  void CollectSubtree(entt::entity handle, std::vector<entt::entity> &out) const;
+
+  /// @brief Stops the simulation (destroys bodies) if running.
+  void StopSimulationIfRunning();
+
+  /// @brief Destroys every content (non-editor-only) entity, keeping
+  /// editor-only helpers (e.g. the grid).
+  void RemoveContentEntities();
+
+  /// @brief Synchronizes Jolt bodies with the RigidBody/Collider components
+  /// (used to pick up entities spawned or re-configured at runtime).
+  void SyncSimulationBodies();
+
+  /// @brief Writes simulated body transforms back to the Transform components.
+  void WriteBackTransforms();
+
+  /// @brief Drains contact events and forwards them to the script engine.
+  void DispatchContactEvents();
+
+  Ref<ScriptEngine> script_engine_;
+  std::string       main_script_;
+
+  /// @brief Per-pass timings of the last rendered frame (ms).
+  float pass_times_ms_[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  /// @brief Rendered-frame counter for the periodic render-stats log.
+  int stats_log_frames_ = 0;
 };
 
 }  // namespace MEngine

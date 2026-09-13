@@ -1,0 +1,7 @@
+# Documentation site toolchain (MkDocs Material).
+#
+# Used by .github/workflows/docs.yml and for local previews:
+#   python -m pip install -r requirements-docs.txt
+#   python -m mkdocs serve
+mkdocs-material>=9.5,<10
+pymdown-extensions>=10.7

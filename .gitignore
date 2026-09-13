@@ -15,3 +15,14 @@ cmake-build-*/
 .idea/
 
 .cache/
+# Documentation site output (mkdocs build, see mkdocs.yml)
+site/
+
+# Unattended render-test / capture byproducts
+*.ppm
+*.tmp
+capture_*
+.workbuddy/
+
+LearnOpenGL/
+

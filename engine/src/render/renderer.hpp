@@ -11,36 +11,266 @@
 
 #pragma once
 
-#include <glad/glad.h>
-
-#include <glm/glm.hpp>
-#include <memory>
-
-#include "core/logger.hpp"
-#include "render/gl.hpp"
+#include "core/common.hpp"
+#include "render/light.hpp"
 
 namespace MEngine {
 
-struct Sprite2D;
-struct AnimatedSprite2D;
-class RenderPipeline;
-class RenderPass;
+class Mesh;
+class Material;
+class PostProcessing;
+class Shader;
+class ShadowMap;
+class CubeShadowMap;
+class Skybox;
+class SSAO;
+class Texture;
+
+/// @brief High-level shading mode selectable from the editor.
+enum class RenderMode { Lit, Unlit, Wireframe };
+
+/// @brief Per-frame render counters. Reset at the start of each scene render
+/// (`ResetFrameStats`) and read back by Scene (logging) and the editor (UI).
+struct RenderStats {
+  uint64_t draw_calls      = 0;  ///< API-level indexed draws issued this frame
+  uint64_t triangles       = 0;  ///< triangles submitted (instancing multiplies)
+  uint64_t instanced_draws = 0;  ///< draw calls issued through instancing
+  uint64_t culled_entities = 0;  ///< mesh entities rejected by frustum culling
+};
 
 class Renderer {
  public:
   Renderer();
   ~Renderer();
 
-  void RenderSprite(Sprite2D &sprite, const glm::mat4 &proj_view);
-  void RenderSprite(AnimatedSprite2D &sprite, const glm::mat4 &proj_view);
+  /// @brief Begins the directional shadow pass.
+  void BeginShadowPass(const glm::mat4 &light_view_proj) const;
 
-  GLuint GetFramebuffer();
+  // --- dedicated 2D pass ----------------------------------------------------
+  // A 2D scene is rendered with these three calls only: no lights, shadows,
+  // SSAO, skybox, HDR target or post-processing chain is involved, and depth
+  // testing is off (2D draws in painter order, driven by sorting layers), so a
+  // sprite is drawn straight into the target framebuffer and looks exactly like
+  // its source texture.
+
+  /// @brief Binds `target_fbo` (0 = window), sets its viewport, clears it to
+  /// `clear_color`, disables depth test/write and culling and enables alpha
+  /// blending. `view_proj` is the orthographic camera used by the draws that
+  /// follow. Must be paired with End2DScene().
+  void Begin2DScene(const glm::vec3 &clear_color, unsigned int target_fbo, int width, int height,
+                    const glm::mat4 &view_proj);
+
+  /// @brief Draws `count` instances of one sprite quad with a 2D material (see
+  /// CreateSpriteMaterial). Callers batch by (mesh, material content): a whole
+  /// tilemap sharing a texture + tint is a single instanced draw.
+  void DrawSprites2D(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 *models,
+                     int count) const;
+
+  /// @brief Ends the 2D pass (restores depth test/write and culling for any 3D
+  /// rendering that follows). The target framebuffer stays bound.
+  void End2DScene() const;
+
+  /// @brief Renders a mesh into the shadow map.
+  void DrawMeshShadow(const Ref<Mesh> &mesh, const glm::mat4 &model, const glm::mat4 &light_view_proj) const;
+  /// @brief Renders `count` copies of one mesh into the shadow map (per-instance
+  /// model matrices; models must stay alive for the call).
+  void DrawMeshShadowInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count,
+                               const glm::mat4 &light_view_proj) const;
+  /// @brief Ends the shadow pass and restores the default framebuffer.
+  void EndShadowPass() const;
+
+  /// @brief Begins the cube shadow pass for a shadow-casting point light.
+  void BeginPointShadowPass(int light_index, const glm::vec3 &light_pos, float far_plane) const;
+  /// @brief Attaches + clears one cube face and sets its light-space matrix.
+  void BindPointShadowFace(int light_index, int face, const glm::mat4 &light_space_matrix) const;
+  /// @brief Renders a mesh into the current point shadow face.
+  void DrawMeshPointShadow(const Ref<Mesh> &mesh, const glm::mat4 &model) const;
+  /// @brief Instanced variant of DrawMeshPointShadow.
+  void DrawMeshPointShadowInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count) const;
+  /// @brief Ends the point shadow pass.
+  void EndPointShadowPass(int light_index) const;
+
+  /// @brief Begins the SSAO geometry pass (view-space position + normal).
+  void BeginSSAOPass(const glm::mat4 &proj, const glm::mat4 &view) const;
+  /// @brief Renders a mesh into the SSAO G-buffer.
+  void DrawMeshSSAO(const Ref<Mesh> &mesh, const glm::mat4 &model) const;
+  /// @brief Instanced variant of DrawMeshSSAO.
+  void DrawMeshSSAOInstanced(const Ref<Mesh> &mesh, const glm::mat4 *models, int count) const;
+  /// @brief Ends the SSAO geometry pass.
+  void EndSSAOPass() const;
+  /// @brief Runs the SSAO sampling + blur passes.
+  void GenerateSSAO(const glm::mat4 &proj, const glm::mat4 &view) const;
+  /// @brief Binds the blurred SSAO texture to the given texture unit.
+  void BindSSAO(unsigned int slot) const;
+
+  void SetSSAOEnabled(bool enabled) { ssao_enabled_ = enabled; }
+  [[nodiscard]] bool IsSSAOEnabled() const { return ssao_enabled_; }
+
+  /// @brief Draw a 3D mesh with the given PBR material (shadowed by the light).
+  void DrawMesh(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 &model,
+                const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const;
+
+  /// @brief Draws `count` copies of one mesh+material pair with per-instance
+  /// model matrices (models must stay alive for the call). Material uniforms
+  /// are uploaded once per call — Scene batches same-material meshes together.
+  void DrawMeshInstanced(const Ref<Mesh> &mesh, const Ref<Material> &material, const glm::mat4 *models, int count,
+                         const glm::mat4 &proj_view, const glm::vec3 &view_pos, const glm::mat4 &light_view_proj) const;
+
+  [[nodiscard]] const DirectionalLight &GetLight() const { return light_; }
+  DirectionalLight &GetLight() { return light_; }
+  void SetLight(const DirectionalLight &light) { light_ = light; }
+
+  /// @brief Extra (unshadowed) directional lights shown on top of the primary
+  /// shadow-casting sun. Multi-directional path used by pbr/blinn shaders.
+  void SetDirectionalExtras(const std::vector<DirectionalLight> &extras) { directional_extras_ = extras; }
+  void ClearDirectionalExtras() { directional_extras_.clear(); }
+  [[nodiscard]] const std::vector<DirectionalLight> &GetDirectionalExtras() const { return directional_extras_; }
+
+  void AddPointLight(const PointLight &light) { point_lights_.push_back(light); }
+  void ClearPointLights() { point_lights_.clear(); }
+  [[nodiscard]] const std::vector<PointLight> &GetPointLights() const { return point_lights_; }
+
+  void AddSpotLight(const SpotLight &light) { spot_lights_.push_back(light); }
+  void ClearSpotLights() { spot_lights_.clear(); }
+  [[nodiscard]] const std::vector<SpotLight> &GetSpotLights() const { return spot_lights_; }
+
+  /// @brief Maps a point light index to its cube shadow map index, or -1 when
+  /// the light does not cast a shadow (or exceeds the shadow budget).
+  [[nodiscard]] int GetPointShadowIndex(int light_index) const;
+
+  /// @brief Maximum number of point lights that can cast cube shadows.
+  static constexpr int kMaxPointShadows = 4;
+  /// @brief Maximum number of ADDITIONAL (unshadowed) directional lights the
+  /// engine path can show besides the shadow-casting primary sun.
+  static constexpr int kMaxDirectionalExtras = 4;
+
+  /// @brief Binds the HDR scene framebuffer for the main pass.
+  void BeginScene() const;
+  /// @brief Unbinds the HDR scene framebuffer.
+  void EndScene() const;
+  /// @brief Runs god rays + bloom + tone mapping to `target_fbo` (0 = default).
+  void PostProcess(const glm::mat4 &view, const glm::mat4 &proj, unsigned int target_fbo = 0,
+                   int target_width = 0, int target_height = 0) const;
+
+  /// @brief Resolves the jittered scene into the TAA history buffer.
+  void ResolveTAA() const;
+  /// @brief Returns the projection matrix with the current TAA jitter applied.
+  glm::mat4 GetJitteredProjection(const glm::mat4 &proj) const;
+
+  void SetTAAEnabled(bool enabled);
+  [[nodiscard]] bool IsTAAEnabled() const;
+
+  /// @brief Draws the skybox background.
+  void RenderSkybox(const glm::mat4 &view, const glm::mat4 &proj) const;
+
+  void SetExposure(float exposure);
+  void SetBloomStrength(float strength);
+  void SetBloomThreshold(float threshold);
+  void SetShadowPcfRadius(float radius);
+  void SetIblIntensity(float intensity);
+  /// @brief Toggles the specular (prefiltered + BRDF LUT) part of image-based
+  /// lighting. Off = diffuse-only IBL, which reproduces LO 6.pbr/2.1.2 (the
+  /// step before specular IBL was added). Default on.
+  void SetIblSpecular(bool enabled) { ibl_specular_ = enabled ? 1 : 0; }
+  [[nodiscard]] bool GetIblSpecular() const { return ibl_specular_ == 1; }
+  void SetGodRaysStrength(float strength);
+
+  /// @brief Rebuilds the IBL/skybox environment from a new equirectangular HDR
+  /// file at runtime (used by the editor to swap the skybox by drag-and-drop).
+  /// `path` is resolved through the AssetManager; `flip` mirrors the glTF HDR
+  /// vertical-flip convention. BRDF LUT is kept; env/irradiance/prefilter
+  /// regenerated from the new file.
+  void SetEnvironmentHdr(const std::string &hdr_path, bool flip);
+
+  /// @brief Toggles drawing the skybox as the scene background (the IBL
+  /// environment still lights the scene either way).
+  void SetSkyboxEnabled(bool enabled) { skybox_enabled_ = enabled; }
+  [[nodiscard]] bool IsSkyboxEnabled() const { return skybox_enabled_; }
+  /// @brief Solid color the scene clears to when the skybox is disabled.
+  void SetBackgroundColor(const glm::vec3 &color) { background_color_ = color; }
+  [[nodiscard]] const glm::vec3 &GetBackgroundColor() const { return background_color_; }
+
+  void SetBloomEnabled(bool enabled);
+  [[nodiscard]] bool IsBloomEnabled() const;
+
+  /// @brief Raw/linear composite output (no ACES, no gamma) - LearnOpenGL parity.
+  void SetLinearOutput(bool enabled);
+  [[nodiscard]] bool IsLinearOutput() const;
+
+  /// @brief LearnOpenGL 6.hdr / 7.bloom tone mapping (1-exp(-x) + gamma).
+  void SetLoHdrTone(bool enabled);
+  void SetReinhardTone(bool enabled);
+  [[nodiscard]] bool IsLoHdrTone() const;
+  [[nodiscard]] bool IsReinhardTone() const;
+
+  /// @brief LearnOpenGL-exact lighting mode (for the "blinn" shader): each light
+  /// contributes a separate ambient/diffuse/specular term like LO's shaders
+  /// (Phong reflect specular without NdotL, no shadow/AO, specular map read
+  /// from the material). Non-LO scenes keep their current look.
+  void SetLoLighting(bool enabled) { lo_lighting_ = enabled; }
+  [[nodiscard]] bool IsLoLighting() const { return lo_lighting_; }
+
+  /// @brief In LO-exact mode, use Blinn-Phong halfway specular instead of
+  /// Phong reflect (LO 4.normal_mapping uses Blinn; the other LO lighting .fs
+  /// use Phong). Default off.
+  void SetLoBlinnSpec(bool enabled) { lo_blinn_spec_ = enabled; }
+  [[nodiscard]] bool IsLoBlinnSpec() const { return lo_blinn_spec_; }
+
+  /// @brief In LO-exact mode, apply the engine directional shadow map to the
+  /// directional light's diffuse+specular (LO 3.1.3.shadow_mapping). Default
+  /// off so LO ports without shadows stay exact.
+  void SetLoDirShadow(bool enabled) { lo_dir_shadow_ = enabled; }
+  [[nodiscard]] bool IsLoDirShadow() const { return lo_dir_shadow_; }
+
+  void SetRenderMode(RenderMode mode) { render_mode_ = mode; }
+  [[nodiscard]] RenderMode GetRenderMode() const { return render_mode_; }
+
+  /// @brief Clears the per-frame counters (call at the start of a scene pass).
+  void ResetFrameStats() const { stats_ = RenderStats{}; }
+  /// @brief Clears the once-per-main-pass "scene constants per shader" upload
+  /// cache (call at the start of each main scene pass). DrawMeshInstanced then
+  /// skips re-uploading the light/IBL/SSAO/spot arrays on later draws that use
+  /// the same shader, since those values only change between passes.
+  void ResetFrameUniformCache() const { cached_scene_shader_ = nullptr; }
+  /// @brief Per-frame counters (draw calls, triangles, culled entities).
+  [[nodiscard]] const RenderStats &GetFrameStats() const { return stats_; }
+  /// @brief Records how many entities the scene's frustum culling rejected.
+  void RecordCulledEntities(uint64_t count) const { stats_.culled_entities = count; }
+
+  [[nodiscard]] float GetExposure() const;
+  [[nodiscard]] float GetBloomStrength() const;
+  [[nodiscard]] float GetBloomThreshold() const;
+  [[nodiscard]] float GetShadowPcfRadius() const { return shadow_pcf_radius_; }
+  [[nodiscard]] float GetIblIntensity() const { return ibl_intensity_; }
+  [[nodiscard]] float GetGodRaysStrength() const;
 
  private:
-  std::shared_ptr<RenderPass>     pass_;
-  std::shared_ptr<RenderPipeline> pipeline_;
+  Ref<Texture>        default_texture_;
+  Ref<ShadowMap>      shadow_map_;
+  Ref<Shader>         depth_shader_;
+  std::vector<Ref<CubeShadowMap>> point_light_shadow_maps_;
+  Ref<Shader>         point_light_depth_shader_;
+  Ref<PostProcessing> post_processing_;
+  Ref<Skybox>         skybox_;
+  Ref<SSAO>           ssao_;
+  /// Orthographic camera of the 2D pass in progress (set by Begin2DScene).
+  mutable glm::mat4   view_proj_2d_{1.0f};
+  DirectionalLight    light_;
+  std::vector<DirectionalLight> directional_extras_;
+  std::vector<PointLight> point_lights_;
+  std::vector<SpotLight>  spot_lights_;
+  float shadow_pcf_radius_ = 2.0f;
+  float ibl_intensity_     = 1.0f;
+  int   ibl_specular_      = 1;
+  bool  ssao_enabled_      = false;
+  bool  skybox_enabled_    = true;
+  bool  lo_lighting_       = false;
+  bool  lo_blinn_spec_     = false;
+  bool  lo_dir_shadow_     = false;
+  glm::vec3 background_color_{0.0f};  RenderMode render_mode_  = RenderMode::Lit;
 
-  std::shared_ptr<spdlog::logger> logger_;
+  mutable RenderStats stats_;
+  mutable const Shader *cached_scene_shader_ = nullptr;
 };
 
 }  // namespace MEngine

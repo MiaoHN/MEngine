@@ -1,0 +1,39 @@
+/*
+ * Small layout touches that the Material theme does not cover for this repo.
+ */
+
+/* Mermaid diagrams (see docs/javascripts/mermaid.js): center them, keep them
+   responsive and give the generated SVG a little breathing room. */
+.mermaid-diagram {
+  text-align: center;
+  margin: 1em 0;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* The block is still a <pre> in the source, so it inherits code styling until it
+   is rendered - make the un-rendered state readable rather than a code box. */
+.mermaid-diagram--rendered {
+  background: none;
+  border: none;
+  padding: 0;
+  overflow: visible;
+}
+
+/* Diagram failed to render (bad syntax): show the source, not an empty box. */
+.mermaid-diagram--error {
+  border-left: 3px solid #ef5350;
+  padding-left: 0.6rem;
+}
+
+/* Wide tables (component lists, milestone tables) should scroll, not squeeze. */
+.md-typeset__table {
+  width: 100%;
+}
+
+.md-typeset table:not([class]) {
+  display: table;
+}

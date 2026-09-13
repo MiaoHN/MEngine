@@ -1,0 +1,175 @@
+#include "render/asset_manager.hpp"
+
+#include <filesystem>
+#include <fstream>
+
+#include <json.hpp>
+
+#include "core/logger.hpp"
+#include "render/mesh.hpp"
+#include "render/model_loader.hpp"
+#include "render/shader.hpp"
+#include "render/texture.hpp"
+
+namespace MEngine {
+
+AssetManager &AssetManager::Instance() {
+  static AssetManager instance;
+  return instance;
+}
+
+AssetManager::~AssetManager() = default;
+
+void AssetManager::SetAssetRoot(const std::string &root) {
+  asset_root_ = root;
+  if (!asset_root_.empty() && asset_root_.back() == '/') {
+    asset_root_.pop_back();
+  }
+  if (!shader_library_) {
+    shader_library_ = std::make_unique<ShaderLibrary>();
+  }
+  if (!texture_library_) {
+    texture_library_ = std::make_unique<TextureLibrary>();
+  }
+  LoadManifest();
+  LOG_INFO("AssetManager") << "Asset root set to: " << asset_root_;
+}
+
+std::string AssetManager::Resolve(const std::string &relative) const {
+  if (relative.empty()) {
+    return asset_root_;
+  }
+  if (asset_root_.empty()) {
+    return relative;
+  }
+  // Already absolute: resolving must not prefix the asset root again.
+  std::error_code ec;
+  if (std::filesystem::path(relative).is_absolute()) {
+    return relative;
+  }
+  (void)ec;
+  return (std::filesystem::path(asset_root_) / relative).string();
+}
+
+void AssetManager::LoadManifest() {
+  shader_manifest_.clear();
+  texture_manifest_.clear();
+
+  const std::string manifest_path = Resolve("manifest.json");
+  std::ifstream     file(manifest_path);
+  if (!file.is_open()) {
+    LOG_WARN("AssetManager") << "No manifest at " << manifest_path << "; falling back to naming conventions.";
+    return;
+  }
+
+  nlohmann::json manifest;
+  file >> manifest;
+
+  if (manifest.contains("shaders")) {
+    for (const auto &[name, entry] : manifest["shaders"].items()) {
+      shader_manifest_[name] = {entry[0].get<std::string>(), entry[1].get<std::string>()};
+    }
+  }
+  if (manifest.contains("textures")) {
+    for (const auto &[name, entry] : manifest["textures"].items()) {
+      texture_manifest_[name] = entry.get<std::string>();
+    }
+  }
+}
+
+Ref<Shader> AssetManager::GetShader(const std::string &name) {
+  if (shader_library_->Exists(name)) {
+    return shader_library_->Get(name);
+  }
+
+  std::string vert_rel;
+  std::string frag_rel;
+
+  const auto it = shader_manifest_.find(name);
+  if (it != shader_manifest_.end()) {
+    vert_rel = it->second.first;
+    frag_rel = it->second.second;
+  } else {
+    // Naming convention fallback: shaders/{name}_vert.glsl + {name}_frag.glsl.
+    vert_rel = "shaders/" + name + "_vert.glsl";
+    frag_rel = "shaders/" + name + "_frag.glsl";
+  }
+
+  return shader_library_->Load(name, Resolve(vert_rel), Resolve(frag_rel));
+}
+
+Ref<Texture> AssetManager::GetTexture(const std::string &name_or_path, bool srgb) {
+  // Distinct cache entry for the sRGB variant so the same file can be used raw
+  // (LO lighting tutorials) and as sRGB (LO 6.hdr / 7.bloom) independently.
+  const std::string cache_key = name_or_path + (srgb ? "@srgb" : "");
+  if (texture_library_->Exists(cache_key)) {
+    return texture_library_->Get(cache_key);
+  }
+
+  std::string relative = name_or_path;
+  const auto  it       = texture_manifest_.find(name_or_path);
+  if (it != texture_manifest_.end()) {
+    relative = it->second;
+  }
+
+  // Accept both spellings of a path: "textures/x.png" (relative to the asset
+  // root) and one that already points at an existing file (absolute, or already
+  // carrying the asset root). Resolving a resolved path would look for
+  // "<root>/<root>/textures/x.png", which silently loads the magenta fallback
+  // texture instead (e.g. every sprite after a play / stop round-trip).
+  std::error_code ec;
+  const std::string resolved = std::filesystem::exists(relative, ec) ? relative : Resolve(relative);
+  return texture_library_->Load(cache_key, resolved, srgb);
+}
+
+Ref<Shader> AssetManager::GetDefaultShader() {
+  if (!default_shader_) {
+    default_shader_ = GetShader("default");
+  }
+  return default_shader_;
+}
+
+Ref<Mesh> AssetManager::GetMesh(const std::string &source) {
+  if (source.empty()) {
+    return nullptr;
+  }
+  const auto cached = mesh_cache_.find(source);
+  if (cached != mesh_cache_.end()) {
+    return cached->second;
+  }
+
+  Ref<Mesh> mesh;
+  if (source == "cube") {
+    mesh = Mesh::CreateCube();
+  } else if (source == "plane") {
+    mesh = Mesh::CreatePlane();
+  } else if (source == "sphere") {
+    mesh = Mesh::CreateSphere();
+  } else {
+    const std::string resolved = Resolve(source);
+    const std::string ext      = std::filesystem::path(resolved).extension().string();
+    if (ext == ".obj") {
+      mesh = ModelLoader::LoadObj(resolved);
+    } else if (ext == ".gltf" || ext == ".glb") {
+      mesh = ModelLoader::LoadGltf(resolved);
+    }
+  }
+
+  if (!mesh) {
+    return nullptr;  // do not cache failures; a later file may appear
+  }
+  mesh->SetSource(source);
+  mesh_cache_[source] = mesh;
+  return mesh;
+}
+
+Ref<Texture> AssetManager::GetDefaultTexture() {
+  if (!default_texture_) {
+    default_texture_ = CreateRef<Texture>();
+    unsigned char white[4] = {255, 255, 255, 255};
+    default_texture_->SetData(white, 1, 1);
+  }
+  return default_texture_;
+}
+
+}  // namespace MEngine

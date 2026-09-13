@@ -1,221 +1,843 @@
-#include "editor.hpp"
-
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
 
-#include <filesystem>
-#include <fstream>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <sstream>
+#include "editor.hpp"
 
-// clang-format off
-// #include <ImGuizmo.h>
-// clang-format on
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <limits>
+#include <thread>
 
-#include "core/input.hpp"
-#include "render/renderer.hpp"
+#include <glm/gtx/matrix_decompose.hpp>
 
-Editor::Editor() {}
+#include "render/asset_manager.hpp"
+#include "render/model_loader.hpp"
+#include "utils/profiler.h"
 
-Editor::~Editor() {}
+// Native scene open/save dialogs. Windows only; other platforms currently fall
+// back to a no-op (returning false == "cancelled"). NOMINMAX keeps windows.h
+// from #defining min/max and breaking std algorithms below.
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <commdlg.h>
+#ifdef ERROR
+#undef ERROR
+#endif
+#endif
+
+namespace {
+
+#if defined(_WIN32)
+/// @brief Shows the native "Open" dialog; returns true and fills `out_path`
+/// when the user picks a file. `initial_dir` (optional) is where the dialog
+/// starts browsing.
+bool NativeOpenFileDialog(std::string &out_path, const std::string &initial_dir) {
+  char file_buffer[MAX_PATH] = {};
+  OPENFILENAMEA ofn{};
+  ofn.lStructSize     = sizeof(ofn);
+  ofn.lpstrFilter     = "MEngine Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0\0";
+  ofn.lpstrFile       = file_buffer;
+  ofn.nMaxFile        = static_cast<DWORD>(sizeof(file_buffer));
+  ofn.lpstrTitle      = "Open Scene";
+  ofn.lpstrInitialDir = initial_dir.empty() ? nullptr : initial_dir.c_str();
+  ofn.Flags           = OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+  if (GetOpenFileNameA(&ofn)) {
+    out_path = file_buffer;
+    return true;
+  }
+  return false;
+}
+
+/// @brief Shows the native "Save As" dialog; returns true and fills `out_path`
+/// when the user confirms a file name. `initial_dir` (optional) is where the
+/// dialog starts browsing.
+bool NativeSaveFileDialog(std::string &out_path, const std::string &initial_dir) {
+  char file_buffer[MAX_PATH] = {};
+  OPENFILENAMEA ofn{};
+  ofn.lStructSize     = sizeof(ofn);
+  ofn.lpstrFilter     = "MEngine Scene (*.scene)\0*.scene\0All Files (*.*)\0*.*\0\0";
+  ofn.lpstrFile       = file_buffer;
+  ofn.nMaxFile        = static_cast<DWORD>(sizeof(file_buffer));
+  ofn.lpstrTitle      = "Save Scene As";
+  ofn.lpstrInitialDir = initial_dir.empty() ? nullptr : initial_dir.c_str();
+  ofn.lpstrDefExt     = "scene";
+  ofn.Flags           = OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+  if (GetSaveFileNameA(&ofn)) {
+    out_path = file_buffer;
+    return true;
+  }
+  return false;
+}
+#else
+bool NativeOpenFileDialog(std::string &, const std::string &) { return false; }
+bool NativeSaveFileDialog(std::string &, const std::string &) { return false; }
+#endif
+
+/// @brief Resolves the folder a scene dialog should open in: the folder of the
+/// currently open scene when present, else the asset `scenes/` folder.
+std::string SceneDialogInitialDir(const std::filesystem::path &asset_root, const std::string &current_scene) {
+  if (!current_scene.empty()) {
+    const std::filesystem::path parent = std::filesystem::path(current_scene).parent_path();
+    if (!parent.empty() && std::filesystem::is_directory(parent)) {
+      return parent.string();
+    }
+  }
+  const std::filesystem::path scenes = asset_root / "scenes";
+  if (std::filesystem::is_directory(scenes)) {
+    return scenes.string();
+  }
+  return std::string();
+}
+
+/// @brief Portable environment-variable read. Uses _dupenv_s on Windows where
+/// std::getenv is marked deprecated under clang-cl.
+std::string GetEnvVar(const char *name) {
+#if defined(_WIN32)
+  char  *buffer = nullptr;
+  size_t length = 0;
+  if (_dupenv_s(&buffer, &length, name) == 0 && buffer) {
+    std::string value = buffer;
+    free(buffer);
+    return value;
+  }
+  return std::string();
+#else
+  const char *value = std::getenv(name);
+  return value ? std::string(value) : std::string();
+#endif
+}
+
+Ref<Material> CreateDefaultMaterial() {
+  auto material = CreateRef<Material>();
+  material->SetShader(AssetManager::Instance().GetShader("pbr"));
+  material->SetBaseColorFactor(glm::vec4(0.8f, 0.8f, 0.8f, 1.0f));
+  material->SetMetallicFactor(0.0f);
+  material->SetRoughnessFactor(0.8f);
+  material->SetSpecularFactor(0.5f);
+  return material;
+}
+
+bool IsImageFile(const std::filesystem::path &path) {
+  const std::string ext = path.extension().string();
+  for (const char *e : {".png", ".jpg", ".jpeg", ".bmp", ".tga"}) {
+    if (ext == e) return true;
+  }
+  return false;
+}
+
+/// @brief Auto-assigns common OBJ texture names found next to the model file.
+///
+/// The classic "backpack"-style assets ship `diffuse.jpg`, `normal.png`,
+/// `roughness.jpg` and `ao.jpg`; `specular.jpg` belongs to the legacy
+/// specular-glossiness workflow and is intentionally ignored by our
+/// metallic-roughness PBR shader.
+void AutoAssignObjTextures(const Ref<Material> &material, const std::filesystem::path &obj_path) {
+  const auto dir = obj_path.parent_path();
+
+  const auto find_texture = [&](std::initializer_list<const char *> names) -> Ref<Texture> {
+    for (const char *name : names) {
+      const std::filesystem::path candidate = dir / name;
+      if (std::filesystem::exists(candidate)) {
+        return Texture::Create(candidate.string());
+      }
+    }
+    return nullptr;
+  };
+
+  if (auto t = find_texture({"diffuse.jpg", "diffuse.png", "albedo.jpg", "albedo.png"})) {
+    material->SetAlbedoMap(t);
+  }
+  if (auto t = find_texture({"normal.png", "normal.jpg"})) {
+    material->SetNormalMap(t);
+  }
+  if (auto t = find_texture({"roughness.jpg", "roughness.png"})) {
+    material->SetMetallicRoughnessMap(t);
+    material->SetRoughnessFactor(1.0f);  // let the roughness map control it
+  }
+  if (auto t = find_texture({"ao.jpg", "ao.png", "occlusion.jpg", "occlusion.png"})) {
+    material->SetAOMap(t);
+  }
+}
+
+/// @brief Loads a model asset into `mesh`/`material`. OBJ assets get their
+/// sibling textures auto-assigned; glTF assets use their own PBR material.
+/// Returns false if the file could not be loaded.
+bool LoadModelAsset(const std::filesystem::path &path, Ref<Mesh> &mesh, Ref<Material> &material) {
+  const std::string ext = path.extension().string();
+
+  // Default to a matte, white, non-metallic material so textured assets
+  // (multiplied by white) and bare meshes alike read correctly.
+  material = CreateRef<Material>();
+  material->SetShader(AssetManager::Instance().GetShader("pbr"));
+  material->SetBaseColorFactor(glm::vec4(1.0f));
+  material->SetMetallicFactor(0.0f);
+  material->SetRoughnessFactor(1.0f);
+  material->SetSpecularFactor(0.3f);  // fabric: keep reflections low
+
+  if (ext == ".obj") {
+    mesh = ModelLoader::LoadObj(path.string());
+    if (mesh) {
+      // Prefer the OBJ's own .mtl material (exact maps/factors); fall back to
+      // the sibling-texture name heuristic when there is no readable .mtl.
+      if (auto mtl_mat = ModelLoader::LoadObjMaterial(path.string())) {
+        mtl_mat->SetShader(AssetManager::Instance().GetShader("pbr"));
+        material = mtl_mat;
+      } else {
+        AutoAssignObjTextures(material, path);
+      }
+    }
+  } else if (ext == ".gltf" || ext == ".glb") {
+    mesh = ModelLoader::LoadGltf(path.string());
+    if (auto mat = ModelLoader::LoadGltfMaterial(path.string())) {
+      mat->SetShader(AssetManager::Instance().GetShader("pbr"));
+      material = mat;
+    }
+  }
+
+  if (mesh) {
+    mesh->SetSource(path.string());
+  }
+
+  return mesh != nullptr;
+}
+
+/// @brief Converts an absolute path to one relative to the asset root (falls
+/// back to the original string when the path lies outside the asset root).
+std::string ToAssetRelativePath(const std::filesystem::path &abs_path) {
+  const std::filesystem::path root = std::filesystem::absolute(AssetManager::Instance().GetAssetRoot());
+  std::error_code             ec;
+  const std::filesystem::path rel = std::filesystem::relative(abs_path, root, ec);
+  return ec ? abs_path.string() : rel.generic_string();
+}
+
+/// @brief Relative paths (e.g. "scripts/spin.lua") of every .lua file under
+/// the asset root's `scripts/` directory.
+std::vector<std::string> ListLuaScriptPaths() {
+  std::vector<std::string> out;
+  const std::filesystem::path scripts_dir =
+      std::filesystem::absolute(AssetManager::Instance().GetAssetRoot()) / "scripts";
+  if (!std::filesystem::exists(scripts_dir)) return out;
+
+  for (const auto &entry : std::filesystem::directory_iterator(scripts_dir)) {
+    if (!entry.is_regular_file() || entry.path().extension() != ".lua") continue;
+    out.push_back(ToAssetRelativePath(entry.path()));
+  }
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
+/// @brief Starter source written when a new script is created in the editor.
+constexpr const char *kLuaScriptTemplate = R"(-- New Lua entity script.
+-- Attach it to an entity (Lua Script component) or use it as the scene main
+-- script. `self` is the owning entity; hooks only run when they are defined.
+
+function OnStart()
+  MEngine.log("attached to: " .. self:get_name())
+end
+
+function OnUpdate(dt)
+  -- dt = seconds since the last frame
+end
+
+function OnFixedUpdate(dt)
+  -- dt = fixed step (1/60 s)
+end
+
+function OnCollisionEnter(other)
+  MEngine.log("collision enter: '" .. self:get_name() .. "' vs '" .. other:get_name() .. "'")
+end
+
+function OnCollisionExit(other)
+  MEngine.log("collision exit: '" .. self:get_name() .. "' vs '" .. other:get_name() .. "'")
+end
+
+function OnDestroy()
+end
+)";
+
+enum class LogLevel { Trace, Debug, Info, Warn, Error, Fatal, Unknown };
+
+/// @brief Extracts the `[LEVEL]` token from a log line ("[time] [INFO] [name] msg").
+LogLevel ParseLogLevel(const std::string &line) {
+  const size_t first = line.find('[');
+  if (first == std::string::npos) return LogLevel::Unknown;
+  const size_t second = line.find('[', first + 1);
+  if (second == std::string::npos) return LogLevel::Unknown;
+  const size_t end = line.find(']', second);
+  if (end == std::string::npos) return LogLevel::Unknown;
+
+  const std::string level = line.substr(second + 1, end - second - 1);
+  if (level == "TRACE") return LogLevel::Trace;
+  if (level == "DEBUG") return LogLevel::Debug;
+  if (level == "INFO") return LogLevel::Info;
+  if (level == "WARN") return LogLevel::Warn;
+  if (level == "ERROR") return LogLevel::Error;
+  if (level == "FATAL") return LogLevel::Fatal;
+  return LogLevel::Unknown;
+}
+
+ImVec4 LogLevelColor(LogLevel level) {
+  switch (level) {
+    case LogLevel::Trace:
+      return {0.55f, 0.57f, 0.62f, 1.0f};
+    case LogLevel::Debug:
+      return {0.35f, 0.64f, 0.95f, 1.0f};
+    case LogLevel::Info:
+      return {0.78f, 0.80f, 0.84f, 1.0f};
+    case LogLevel::Warn:
+      return {0.98f, 0.80f, 0.28f, 1.0f};
+    case LogLevel::Error:
+      return {1.00f, 0.42f, 0.42f, 1.0f};
+    case LogLevel::Fatal:
+      return {1.00f, 0.30f, 0.42f, 1.0f};
+    default:
+      return {0.62f, 0.64f, 0.68f, 1.0f};
+  }
+}
+
+bool ContainsIgnoreCase(const std::string &haystack, const std::string &needle) {
+  if (needle.empty()) return true;
+  const auto it = std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), [](char a, char b) {
+    return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+  });
+  return it != haystack.end();
+}
+
+/// @brief Invisible hit target spanning the remaining width, used as a drag-drop
+/// zone by the inspectors.
+///
+/// The width is clamped: `InvisibleButton` rejects a zero-sized target, and
+/// `GetContentRegionAvail().x` really is 0 for the frames in which a window is
+/// laid out while still hidden / auto-fitting (a docked panel that is not the
+/// active tab is only skipped once ImGui has sized it). Panels also keep their
+/// content valid while hidden, so the value reaches the call.
+void FullWidthDropZone(const char *id, float height) {
+  ImGui::InvisibleButton(id, ImVec2(std::max(ImGui::GetContentRegionAvail().x, 1.0f), height));
+}
+
+/// @brief Applies a polished dark theme (VS Code / Visual Studio-style neutral
+/// charcoal base + blue accent) to the ImGui style.
+void SetupImGuiStyle() {
+  ImGui::StyleColorsDark();
+
+  ImGuiStyle &style = ImGui::GetStyle();
+
+  // Sharp, flat shapes (no rounded corners).
+  style.WindowRounding    = 0.0f;
+  style.ChildRounding     = 0.0f;
+  style.FrameRounding     = 0.0f;
+  style.PopupRounding     = 0.0f;
+  style.ScrollbarRounding = 0.0f;
+  style.GrabRounding      = 0.0f;
+  style.TabRounding       = 0.0f;
+
+  // Left-aligned titles read more like a native/modern editor.
+  style.WindowTitleAlign = ImVec2(0.0f, 0.5f);
+
+  // Comfortable, less cramped spacing.
+  style.WindowPadding    = ImVec2(10.0f, 10.0f);
+  style.FramePadding     = ImVec2(6.0f, 4.0f);
+  style.ItemSpacing      = ImVec2(8.0f, 5.0f);
+  style.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
+  style.CellPadding      = ImVec2(6.0f, 4.0f);
+  style.IndentSpacing    = 22.0f;
+  style.ScrollbarSize    = 14.0f;
+  style.GrabMinSize      = 10.0f;
+
+  // Subtle borders give widgets definition without being harsh.
+  style.WindowBorderSize = 1.0f;
+  style.ChildBorderSize  = 1.0f;
+  style.FrameBorderSize  = 1.0f;
+  style.PopupBorderSize  = 1.0f;
+  style.TabBorderSize    = 1.0f;
+
+  // ---- Neutral-charcoal base (VS Code / Visual Studio dark) + blue accent --
+  ImVec4 *colors                          = style.Colors;
+  const ImVec4 accent(0.24f, 0.53f, 0.92f, 1.00f);  // friendly VS blue
+
+  // Surfaces.
+  colors[ImGuiCol_WindowBg]           = ImVec4(0.145f, 0.145f, 0.152f, 1.00f);  // panels
+  colors[ImGuiCol_ChildBg]            = ImVec4(0.115f, 0.115f, 0.122f, 1.00f);  // wells / editors
+  colors[ImGuiCol_PopupBg]            = ImVec4(0.160f, 0.160f, 0.170f, 0.98f);
+  colors[ImGuiCol_MenuBarBg]          = ImVec4(0.158f, 0.158f, 0.166f, 1.00f);
+  colors[ImGuiCol_TitleBg]            = ImVec4(0.152f, 0.152f, 0.162f, 1.00f);
+  colors[ImGuiCol_TitleBgActive]      = ImVec4(0.205f, 0.208f, 0.222f, 1.00f);
+  colors[ImGuiCol_TitleBgCollapsed]   = ImVec4(0.150f, 0.150f, 0.158f, 1.00f);
+  colors[ImGuiCol_DockingEmptyBg]     = ImVec4(0.102f, 0.102f, 0.108f, 1.00f);
+  colors[ImGuiCol_ModalWindowDimBg]   = ImVec4(0.00f, 0.00f, 0.00f, 0.55f);
+
+  // Text.
+  colors[ImGuiCol_Text]               = ImVec4(0.82f, 0.83f, 0.86f, 1.00f);
+  colors[ImGuiCol_TextDisabled]       = ImVec4(0.45f, 0.46f, 0.51f, 1.00f);
+  colors[ImGuiCol_TextSelectedBg]     = ImVec4(accent.x, accent.y, accent.z, 0.35f);
+
+  // Borders / separators.
+  colors[ImGuiCol_Border]             = ImVec4(0.235f, 0.235f, 0.255f, 1.00f);
+  colors[ImGuiCol_BorderShadow]       = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+  colors[ImGuiCol_Separator]          = ImVec4(0.260f, 0.262f, 0.285f, 0.85f);
+  colors[ImGuiCol_SeparatorHovered]   = ImVec4(0.35f, 0.55f, 0.85f, 0.80f);
+  colors[ImGuiCol_SeparatorActive]    = accent;
+
+  // Interactive frames (buttons, inputs, combos, slider tracks).
+  colors[ImGuiCol_FrameBg]            = ImVec4(0.195f, 0.196f, 0.215f, 1.00f);
+  colors[ImGuiCol_FrameBgHovered]     = ImVec4(0.275f, 0.285f, 0.315f, 1.00f);
+  colors[ImGuiCol_FrameBgActive]      = ImVec4(0.315f, 0.330f, 0.365f, 1.00f);
+  colors[ImGuiCol_Button]             = ImVec4(0.215f, 0.220f, 0.240f, 1.00f);
+  colors[ImGuiCol_ButtonHovered]      = ImVec4(0.320f, 0.355f, 0.410f, 1.00f);
+  colors[ImGuiCol_ButtonActive]       = ImVec4(0.380f, 0.420f, 0.490f, 1.00f);
+  colors[ImGuiCol_CheckMark]          = ImVec4(0.35f, 0.62f, 1.00f, 1.00f);
+  colors[ImGuiCol_SliderGrab]         = ImVec4(0.34f, 0.55f, 0.86f, 1.00f);
+  colors[ImGuiCol_SliderGrabActive]   = ImVec4(0.44f, 0.66f, 0.95f, 1.00f);
+  colors[ImGuiCol_ScrollbarBg]        = ImVec4(0.102f, 0.102f, 0.108f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrab]      = ImVec4(0.300f, 0.305f, 0.330f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.380f, 0.390f, 0.425f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrabActive]  = ImVec4(0.460f, 0.475f, 0.520f, 1.00f);
+
+  // Selection headers (scene-tree rows, collapsing headers, menu highlight).
+  colors[ImGuiCol_Header]             = ImVec4(accent.x, accent.y, accent.z, 0.22f);
+  colors[ImGuiCol_HeaderHovered]      = ImVec4(accent.x, accent.y, accent.z, 0.34f);
+  colors[ImGuiCol_HeaderActive]       = ImVec4(accent.x, accent.y, accent.z, 0.46f);
+
+  // Tabs (dock tab bar).
+  colors[ImGuiCol_Tab]                = ImVec4(0.150f, 0.150f, 0.162f, 1.00f);
+  colors[ImGuiCol_TabHovered]         = ImVec4(0.255f, 0.290f, 0.345f, 1.00f);
+  colors[ImGuiCol_TabActive]          = ImVec4(0.235f, 0.325f, 0.455f, 1.00f);
+  colors[ImGuiCol_TabUnfocused]       = ImVec4(0.145f, 0.145f, 0.155f, 1.00f);
+  colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.185f, 0.188f, 0.210f, 1.00f);
+
+  // Docking / resize preview.
+  colors[ImGuiCol_DockingPreview]     = ImVec4(accent.x, accent.y, accent.z, 0.70f);
+}
+
+/// @brief Draws a crisp amber folder icon with the draw list (clearly visible
+/// on the dark theme).
+void DrawFolderIcon(ImDrawList *draw, const ImVec2 &min, const ImVec2 &max) {
+  const ImU32 body  = ImGui::GetColorU32(ImVec4(0.96f, 0.78f, 0.30f, 1.00f));
+  const ImU32 tab   = ImGui::GetColorU32(ImVec4(0.86f, 0.60f, 0.12f, 1.00f));
+  const float w     = max.x - min.x;
+  const float h     = max.y - min.y;
+  const float pad_x = w * 0.06f;
+  const float tab_h = h * 0.10f;
+  const float tab_w = w * 0.42f;
+
+  const ImVec2 tab_min(min.x + pad_x, min.y);
+  const ImVec2 tab_max(tab_min.x + tab_w, tab_min.y + tab_h);
+  draw->AddRectFilled(tab_min, tab_max, tab);
+
+  const ImVec2 body_min(min.x + pad_x, min.y + tab_h);
+  const ImVec2 body_max(max.x - pad_x, max.y - h * 0.04f);
+  draw->AddRectFilled(body_min, body_max, body);
+}
+
+/// @brief Projects a world point to viewport screen coordinates (returns a
+/// sentinel with x == float max when the point is behind the camera).
+glm::vec2 WorldToScreen(const glm::mat4 &view_proj, const ImVec2 &image_pos, const ImVec2 &image_size,
+                        const glm::vec3 &world) {
+  const glm::vec4 clip = view_proj * glm::vec4(world, 1.0f);
+  if (clip.w <= 0.0f) {
+    return glm::vec2(std::numeric_limits<float>::max(), 0.0f);
+  }
+  const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+  return glm::vec2(image_pos.x + (ndc.x * 0.5f + 0.5f) * image_size.x,
+                   image_pos.y + (0.5f - ndc.y * 0.5f) * image_size.y);
+}
+
+/// @brief Draws a 3D line through the gizmo projection (skipped when either
+/// endpoint is behind the camera).
+void DrawWorldLine(ImDrawList *draw_list, const glm::mat4 &view_proj, const ImVec2 &image_pos,
+                   const ImVec2 &image_size, const glm::vec3 &a, const glm::vec3 &b, ImU32 color,
+                   float thickness = 1.5f) {
+  const glm::vec2 sa = WorldToScreen(view_proj, image_pos, image_size, a);
+  const glm::vec2 sb = WorldToScreen(view_proj, image_pos, image_size, b);
+  if (sa.x == std::numeric_limits<float>::max() || sb.x == std::numeric_limits<float>::max()) {
+    return;
+  }
+  draw_list->AddLine(ImVec2(sa.x, sa.y), ImVec2(sb.x, sb.y), color, thickness);
+}
+
+}  // namespace
+
+Editor::Editor() : Application(Application::GetStartupApi()) {}
+
+Editor::~Editor() {
+  if (rhi_) {
+    rhi_->ShutdownImGuiBackend();
+  }
+  if (ImGui::GetCurrentContext()) {
+    ImGui::DestroyContext();
+  }
+}
 
 void Editor::Initialize() {
-  active_scene_ = std::make_shared<Scene>();
+  PROFILER_FUNCTION();
 
-  editor_camera_info_ = std::make_shared<Camera2D>(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, true);
+active_scene_ = std::make_shared<Scene>();
 
-  editor_camera_info_->SetZoomLevel(100.0f);
+  // Default editor lighting: a dim environment + soft sun so the HDR-emissive
+  // lamp cubes below are the bright spots and clearly bloom. The per-scene
+  // "Rendering -> IBL Intensity" overrides the saved value.
+  active_scene_->SetIblIntensity(0.12f);
+  active_scene_->SetExposure(1.0f);
+  active_scene_->SetBloomEnabled(true);
+  active_scene_->SetBloomThreshold(1.0f);
+  active_scene_->SetBloomStrength(0.015f);
+  active_scene_->SetShadowPcfRadius(4.0f);
+  active_scene_->SetGodRaysStrength(0.06f);
 
-  script_engine_ = std::make_shared<ScriptEngine>();
-
-  script_engine_->LoadScript("res/scripts/test.lua");
+  // Soft, cool sun: keep the scene readable without washing out the lamps.
+  {
+    auto &sun = active_scene_->GetLight();
+    sun.color    = glm::vec3(1.2f);
+    sun.ambient  = glm::vec3(0.02f);
+    sun.diffuse  = glm::vec3(1.0f);
+    sun.specular = glm::vec3(1.0f);
+  }
 
   // ImGUI setup
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGuiIO &io = ImGui::GetIO();
-  (void)io;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-  ImGui::StyleColorsDark();
+  // DPI-aware font sizing so the UI stays crisp on high-DPI displays.
+  int window_w = 0;
+  int window_h = 0;
+  glfwGetWindowSize(window_, &window_w, &window_h);
+  int fb_w = 0;
+  int fb_h = 0;
+  glfwGetFramebufferSize(window_, &fb_w, &fb_h);
+  float dpi_scale = (window_w > 0 && fb_w > 0) ? static_cast<float>(fb_w) / static_cast<float>(window_w) : 1.0f;
+  if (dpi_scale < 1.0f || dpi_scale > 4.0f) dpi_scale = 1.0f;
 
-  ImGui_ImplGlfw_InitForOpenGL(window_, true);
-  ImGui_ImplOpenGL3_Init("#version 330");
+  // Modern sans-serif for the UI, monospace for the Log panel.
+  ImFontConfig font_cfg{};
+  font_cfg.OversampleH = 3;
+  font_cfg.OversampleV = 3;
+  io.Fonts->Clear();
+  if (!io.Fonts->AddFontFromFileTTF("res/fonts/Roboto-Medium.ttf", 17.0f * dpi_scale, &font_cfg)) {
+    io.Fonts->AddFontDefault();
+  }
+  mono_font_ = io.Fonts->AddFontFromFileTTF("res/fonts/Cousine-Regular.ttf", 15.0f * dpi_scale, &font_cfg);
 
+SetupImGuiStyle();
+
+  if (rhi_ && !rhi_->InitializeImGuiBackend(window_)) {
+    LOG_FATAL("Editor") << "Failed to initialize ImGui backend for selected RHI";
+    exit(-1);
+  }
+
+  // Viewport framebuffer: match the window framebuffer on startup; it is
+  // resized to the viewport image area afterwards.
   frame_buffer_ = std::make_shared<FrameBuffer>();
+  int fb_width  = 0;
+  int fb_height = 0;
+  glfwGetFramebufferSize(window_, &fb_width, &fb_height);
+  if (fb_width > 0 && fb_height > 0) {
+    frame_buffer_->Resize(fb_width, fb_height);
+    frame_buffer_->CheckStatus();
+    viewport_width_  = fb_width;
+    viewport_height_ = fb_height;
+  }
 
-  // TODO
-  m_BaseDirectory    = std::filesystem::current_path();
-  m_CurrentDirectory = m_BaseDirectory;
-  m_DirectoryIcon    = Texture::Create("res/icon/DirectoryIcon.png");
-  m_FileIcon         = Texture::Create("res/icon/FileIcon.png");
+  editor_camera_.Reset();
+  editor_camera_.aspect = static_cast<float>(fb_width) / static_cast<float>(std::max(1, fb_height));
+
+default_material_ = CreateDefaultMaterial();
+
+  // Ground grid: a large XZ plane with a procedural grid shader. The grid is
+  // an editor-only overlay, hidden while Play mode is simulating.
+  grid_material_ = CreateRef<Material>();
+  grid_material_->SetShader(AssetManager::Instance().GetShader("grid"));
+  // Editor overlay plane: keep double-sided so it stays visible from below.
+  grid_material_->SetCullMode(CullMode::None);
+  grid_mesh_   = Mesh::CreatePlane(500.0f);
+  grid_entity_ = active_scene_->CreateEntity("Grid");
+  grid_entity_.GetComponent<Tag>().editor_only = true;
+  grid_entity_.AddComponent<Transform>();
+  grid_entity_.AddComponent<MeshComponent>(grid_mesh_, grid_material_);
+
+  // Default scene: a general-engine (PBR + ACES) lighting showroom - matte
+  // floor + boxes + a metallic sphere lit by the sun (shadows) and two colored
+  // point lights with HDR-emissive lamp cubes (bloom). Everything at rest until
+  // Play. This deliberately avoids the LO-exact path so light Color/Intensity
+  // edits and shadows behave like a normal engine light.
+  CreateEngineDemo();
+
+  // No scene-level main script by default: pressing Play only runs the light
+  // entities' own orbit_light.lua scripts. (Set one via the Scene panel.)
+
+  base_directory_    = std::filesystem::absolute(AssetManager::Instance().GetAssetRoot());
+  current_directory_ = base_directory_;
+  directory_icon_    = AssetManager::Instance().GetTexture("icons/DirectoryIcon.png");
+  file_icon_         = AssetManager::Instance().GetTexture("icons/FileIcon.png");
+
+  // Optional `--scene <path>`: start the editor already inside a scene (Edit
+  // mode), replacing the default physics demo. Mirrors File -> Open Scene.
+  const std::string &startup_scene = Application::GetStartupScenePath();
+  if (!startup_scene.empty()) {
+    OpenScenePath(startup_scene);
+  }
+
+  LOG_INFO("Editor") << "Editor initialized (scene + ImGui + viewport framebuffer)";
 }
 
 void Editor::OnUpdate(float dt) {
+  PROFILER_FUNCTION();
+
+  // Unattended verification of the File-menu scene ops. Enabled with
+  // MENGINE_EDITOR_SELFTEST_SCENE=<path>; runs once on the first frame and
+  // restores the default demo scene afterwards so interactive use is unaffected.
+  static bool        scene_selftest_done = false;
+  const std::string  selftest_scene      = GetEnvVar("MENGINE_EDITOR_SELFTEST_SCENE");
+  if (!selftest_scene.empty() && !scene_selftest_done) {
+    scene_selftest_done = true;
+    RunSceneFileSelftest(selftest_scene);
+  }
+
+  // Unattended verification of the 2D workspace: MENGINE_EDITOR_SELFTEST_2D_SAVE
+  // creates the default 2D scene, saves it to that path and reports the result.
+  // The saved file doubles as a fixture for `--scene <path>` 2D round-trips.
+  static bool        scene_2d_selftest_done = false;
+  const std::string  selftest_2d_path       = GetEnvVar("MENGINE_EDITOR_SELFTEST_2D_SAVE");
+  if (!selftest_2d_path.empty() && !scene_2d_selftest_done) {
+    scene_2d_selftest_done = true;
+    NewScene2D();
+    const size_t sprites = active_scene_->GetRegistry().view<SpriteComponent>().size();
+    LOG_INFO("Editor") << "[selftest] new 2D scene: dimension=" << (active_scene_->Is2D() ? "2D" : "3D")
+                       << " sprites=" << sprites << " primary_camera=" << active_scene_->HasPrimaryCamera()
+                       << " skybox=" << (active_scene_->IsSkyboxEnabled() ? "on" : "off")
+                       << " 2d_view=" << (Is2DView() ? "yes" : "no");
+    try {
+      active_scene_->SaveScene(selftest_2d_path);
+      LOG_INFO("Editor") << "[selftest] 2D scene saved to " << selftest_2d_path;
+    } catch (...) {
+      LOG_ERROR("Editor") << "[selftest] failed to save 2D scene to " << selftest_2d_path;
+    }
+  }
+
+  // Unattended verification of Play -> Stop round-trip:
+  // MENGINE_EDITOR_SELFTEST_PLAY_STOP=<frame> presses Play at that frame, Stop
+  // three frames later and reports the scene content on both sides. Play/Stop
+  // goes through the snapshot restore, so this is what catches a broken
+  // authoring scene (missing sprites, lost textures, wrong dimension).
+  static int         selftest_frame    = 0;
+  static bool        play_stop_done    = false;
+  const std::string  selftest_play_stop = GetEnvVar("MENGINE_EDITOR_SELFTEST_PLAY_STOP");
+  if (!selftest_play_stop.empty() && !play_stop_done) {
+    ++selftest_frame;
+    const int    at      = std::atoi(selftest_play_stop.c_str());
+    const auto   describe = [this]() {
+      const auto &registry = active_scene_->GetRegistry();
+      std::string text     = "dimension=" + std::string(active_scene_->Is2D() ? "2D" : "3D") +
+                         " sprites=" + std::to_string(registry.view<SpriteComponent>().size()) +
+                         " meshes=" + std::to_string(registry.view<MeshComponent>().size()) +
+                         " 2d_view=" + (Is2DView() ? "yes" : "no");
+      int missing = 0;
+      for (auto &entity : active_scene_->GetAllEntitiesWith<SpriteComponent>()) {
+        if (entity.GetComponent<SpriteComponent>().texture == nullptr) {
+          ++missing;
+        }
+      }
+      return text + " sprites_without_texture=" + std::to_string(missing);
+    };
+    if (selftest_frame == at) {
+      LOG_INFO("Editor") << "[selftest] Play  (before: " << describe() << ")";
+      game_mode_ = GameMode::Play;
+      active_scene_->StartSimulation();
+      active_scene_->GetScriptEngine().LoadMainScript(active_scene_->GetMainScript());
+      active_scene_->GetScriptEngine().StartAll();
+      SetGridVisible(false);
+    } else if (selftest_frame == at + 3) {
+      game_mode_ = GameMode::Edit;
+      active_scene_->GetScriptEngine().Clear();
+      active_scene_->StopSimulation();
+      SetGridVisible(true);
+      LOG_INFO("Editor") << "[selftest] Stop  (after:  " << describe() << ")";
+      play_stop_done = true;
+    }
+  }
+
   if (Input::IsKeyPressed(GLFW_KEY_ESCAPE)) {
     glfwSetWindowShouldClose(window_, true);
   }
 
   if (viewport_resized_) {
-    editor_camera_info_->OnWindowResize(viewport_width_, viewport_height_);
-  }
-
-  frame_buffer_->Bind();
-  frame_buffer_->Clear();
-  if (viewport_resized_) {
+    LOG_TRACE("Editor") << "Viewport resized to " << viewport_width_ << "x" << viewport_height_;
     frame_buffer_->Resize(viewport_width_, viewport_height_);
     frame_buffer_->CheckStatus();
-    frame_buffer_->AttachTexture();
-    frame_buffer_->AttachRenderBuffer();
+    viewport_resized_ = false;
   }
 
-  switch (game_mode_) {
-    case GameMode::Edit: {
-      active_scene_->OnUpdateEditor(*editor_camera_info_);
-      break;
-    }
-    case GameMode::Play: {
-      active_scene_->OnUpdateRuntime(dt, viewport_width_, viewport_height_);
-      break;
-    }
+  // Advance the physics simulation and Lua scripts while in Play mode.
+  // StepSimulation runs physics, collision dispatch and OnFixedUpdate together
+  // on a fixed step; Update drives per-frame OnStart/OnUpdate afterwards.
+  // (StepSimulation also advances the animation timeline while simulating.)
+  if (game_mode_ == GameMode::Play) {
+    active_scene_->StepSimulation(dt);
+    active_scene_->GetScriptEngine().Update(dt);
+  } else if (active_scene_->IsAnimationPlaying()) {
+    // Edit-mode timeline playback: drive the animated entities every frame.
+    active_scene_->AdvanceAnimation(dt);
   }
 
+  // Sprite-sheet animations preview in the editor itself (a 2D scene is authored
+  // by looking at it, and a walk cycle that only runs in Play mode is invisible
+  // while you lay the level out). Play mode already advances them through
+  // StepSimulation above.
+  if (game_mode_ == GameMode::Edit && active_scene_->Is2D()) {
+    active_scene_->UpdateSpriteAnimations(dt);
+  }
+
+  // Render the scene into the viewport framebuffer (Edit = editor camera,
+  // Play = the scene's primary camera, falling back to the editor camera when
+  // no primary camera has been placed).
+  editor_camera_.aspect = static_cast<float>(viewport_width_) / static_cast<float>(std::max(1, viewport_height_));
+  editor_camera_.viewport_height = viewport_height_;
+  editor_camera_.Set2D(active_scene_->Is2D());
+  if (game_mode_ == GameMode::Play && active_scene_->HasPrimaryCamera()) {
+    active_scene_->RenderFromPrimaryCamera(frame_buffer_->GetFrameBufferId(), viewport_width_, viewport_height_);
+  } else if (active_scene_->Is2D()) {
+    // A 2D scene is never rendered by the 3D pipeline, not even for the editor
+    // preview: sprites only, straight into the viewport framebuffer.
+    active_scene_->Render2D(editor_camera_.GetViewMatrix(), editor_camera_.GetProjectionMatrix(),
+                            frame_buffer_->GetFrameBufferId(), viewport_width_, viewport_height_);
+  } else {
+    active_scene_->RenderMeshes(editor_camera_.GetViewMatrix(), editor_camera_.GetProjectionMatrix(),
+                                editor_camera_.GetPosition(), frame_buffer_->GetFrameBufferId(), viewport_width_,
+                                viewport_height_);
+  }
+
+  // The scene composite leaves the viewport framebuffer bound; unbind it so
+  // ImGui draws to the window instead of into the offscreen texture.
   frame_buffer_->Unbind();
 
   BeginImGui();
 
-  bool open = false;
+  // Editor shortcuts (ignored while typing in a text field).
+  if (!ImGui::GetIO().WantTextInput) {
+    if (!editor_camera_.IsFlyMode() && ImGui::IsKeyPressed(ImGuiKey_W)) gizmo_operation_ = ImGuizmo::TRANSLATE;
+    if (!editor_camera_.IsFlyMode() && ImGui::IsKeyPressed(ImGuiKey_E)) gizmo_operation_ = ImGuizmo::ROTATE;
+    if (!editor_camera_.IsFlyMode() && ImGui::IsKeyPressed(ImGuiKey_R)) gizmo_operation_ = ImGuizmo::SCALE;
+    if (ImGui::IsKeyPressed(ImGuiKey_F) && selected_entity_.GetHandle() != entt::null &&
+        selected_entity_.HasComponent<Transform>()) {
+      editor_camera_.target = active_scene_->GetWorldPosition(selected_entity_.GetHandle());
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_D) && ImGui::GetIO().KeyCtrl) {
+      DuplicateSelectedEntity();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_N) && ImGui::GetIO().KeyCtrl) {
+      NewScene();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_O) && ImGui::GetIO().KeyCtrl) {
+      OpenSceneDialog();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_S) && ImGui::GetIO().KeyCtrl) {
+      SaveCurrentScene();
+    }
+  }
+
   if (ImGui::BeginMenuBar()) {
     if (ImGui::BeginMenu("File")) {
-      ImGui::MenuItem("Open", NULL, &open);
-
+      if (ImGui::MenuItem("New Scene", "Ctrl+N")) {
+        NewScene();
+      }
+      if (ImGui::MenuItem("New 2D Scene")) {
+        NewScene2D();
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Open Scene...", "Ctrl+O")) {
+        OpenSceneDialog();
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Save", "Ctrl+S")) {
+        SaveCurrentScene();
+      }
+      if (ImGui::MenuItem("Save Scene As...", nullptr)) {
+        SaveSceneAsDialog();
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Close Scene")) {
+        ExitGameModeForFileOp();
+        NewScene();
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Exit")) {
+        glfwSetWindowShouldClose(window_, GLFW_TRUE);
+      }
       ImGui::EndMenu();
     }
-
+    if (ImGui::BeginMenu("View")) {
+      ImGui::MenuItem("Content Browser", nullptr, &show_content_browser_);
+      ImGui::MenuItem("Scene", nullptr, &show_scene_);
+      // Both viewport panels are listed; only the one matching the scene's
+      // dimension is drawn (2D scenes in the 2D Viewport, 3D scenes in the 3D
+      // one), so the other stays available as a dock tab without being drawn.
+      ImGui::MenuItem("Viewport", nullptr, &show_viewport_);
+      ImGui::MenuItem("2D Viewport", nullptr, &show_viewport_2d_);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("The 2D workspace, shown for 2D scenes (%s)", Is2DView() ? "current scene is 2D" : "inactive");
+      }
+      ImGui::MenuItem("Properties", nullptr, &show_properties_);
+      ImGui::MenuItem("Lighting", nullptr, &show_lighting_);
+      ImGui::MenuItem("Rendering", nullptr, &show_rendering_);
+      ImGui::MenuItem("Log", nullptr, &show_log_);
+      ImGui::MenuItem("Information", nullptr, &show_information_);
+      ImGui::MenuItem("Script Editor", nullptr, &show_script_editor_);
+      ImGui::MenuItem("Timeline", nullptr, &show_timeline_);
+      ImGui::Separator();
+      if (ImGui::MenuItem("Reset Layout")) {
+        ApplyDefaultLayout(dockspace_id_);
+      }
+      ImGui::EndMenu();
+    }
     ImGui::EndMenuBar();
   }
 
-  // Content Browser
-  ImGui::Begin("Content Browser");
-
-  if (m_CurrentDirectory != std::filesystem::path(m_BaseDirectory)) {
-    if (ImGui::Button("<-")) {
-      m_CurrentDirectory = m_CurrentDirectory.parent_path();
-    }
+  if (show_content_browser_) ShowImGuiContentBrowser();
+  // The viewport panel follows the scene's dimension: a 2D scene is edited (and
+  // drawn) in the 2D Viewport, a 3D scene in the 3D Viewport.
+  if (Is2DView()) {
+    if (show_viewport_2d_) ShowImGui2DViewport();
+  } else if (show_viewport_) {
+    ShowImGuiViewport();
   }
+  if (show_scene_) ShowImGuiScene();
+  if (show_properties_) ShowImGuiProperties();
+  if (show_lighting_) ShowImGuiLighting();
+  if (show_rendering_) ShowImGuiRendering();
+  if (show_log_) ShowImGuiLog();
 
-  static float padding       = 16.0f;
-  static float thumbnailSize = 128.0f;
-  float        cellSize      = thumbnailSize + padding;
+  if (show_information_) ShowImGuiInformation();
 
-  float panelWidth  = ImGui::GetContentRegionAvail().x;
-  int   columnCount = (int)(panelWidth / cellSize);
-  if (columnCount < 1) columnCount = 1;
+  if (show_script_editor_) ShowImGuiScriptEditor();
+  if (show_timeline_) ShowImGuiTimeline();
 
-  ImGui::Columns(columnCount, 0, false);
-
-  for (auto &directoryEntry : std::filesystem::directory_iterator(m_CurrentDirectory)) {
-    const auto &path           = directoryEntry.path();
-    std::string filenameString = path.filename().string();
-
-    ImGui::PushID(filenameString.c_str());
-    std::shared_ptr<Texture> icon = directoryEntry.is_directory() ? m_DirectoryIcon : m_FileIcon;
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-    ImGui::ImageButton((ImTextureID)icon->GetID(), {thumbnailSize, thumbnailSize}, {0, 1}, {1, 0});
-
-    if (ImGui::BeginDragDropSource()) {
-      std::filesystem::path relativePath(path);
-      const wchar_t        *itemPath = relativePath.c_str();
-      ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", itemPath, (wcslen(itemPath) + 1) * sizeof(wchar_t));
-      ImGui::EndDragDropSource();
-    }
-
-    ImGui::PopStyleColor();
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-      if (directoryEntry.is_directory()) m_CurrentDirectory /= path.filename();
-    }
-    ImGui::TextWrapped("%s", filenameString.c_str());
-
-    ImGui::NextColumn();
-
-    ImGui::PopID();
-  }
-
-  ImGui::Columns(1);
-
-  ImGui::SliderFloat("Thumbnail Size", &thumbnailSize, 16, 512);
-  ImGui::SliderFloat("Padding", &padding, 0, 32);
-
-  // TODO: status bar
-  ImGui::End();
-
-  ShowImGuiViewport();
-
-  ShowImGuiScene();
-
-  ShowImGuiProperties();
-
-  ImGui::Begin("Log");
-  std::ifstream     file("MEngine.log");
-  std::stringstream ss;
-  if (file.is_open()) {
-    ss << file.rdbuf();
-  }
-  std::string log = ss.str();
-  ImGui::Text("%s", log.c_str());
-
-  ImGui::End();
-
-  // print fps
-  ImGui::Begin("Information");
-  ImGui::Text("FPS: %d", GetFPS());
-  // control editor camera
-  ImGui::Text("Camera Control");
-  if (ImGui::DragFloat2("Position", glm::value_ptr(editor_camera_info_->GetPosition()), 0.1f)) {
-    editor_camera_info_->RecalculateViewMatrix();
-  }
-  if (ImGui::DragFloat("Rotation", &editor_camera_info_->GetRotation(), 0.1f)) {
-    editor_camera_info_->RecalculateViewMatrix();
-  }
-  if (ImGui::DragFloat("Zoom Level", &editor_camera_info_->GetZoomLevel(), 0.1f, 0.1f, 100.0f)) {
-    editor_camera_info_->SetProjection(-editor_camera_info_->GetAspectRatio() * editor_camera_info_->GetZoomLevel(),
-                                       editor_camera_info_->GetAspectRatio() * editor_camera_info_->GetZoomLevel(),
-                                       -editor_camera_info_->GetZoomLevel(), editor_camera_info_->GetZoomLevel());
-  }
-  if (ImGui::DragFloat("Aspect Ratio", &editor_camera_info_->GetAspectRatio(), 0.1f)) {
-    editor_camera_info_->SetProjection(-editor_camera_info_->GetAspectRatio() * editor_camera_info_->GetZoomLevel(),
-                                       editor_camera_info_->GetAspectRatio() * editor_camera_info_->GetZoomLevel(),
-                                       -editor_camera_info_->GetZoomLevel(), editor_camera_info_->GetZoomLevel());
-  }
-
-  if (ImGui::Button("Reset Camera")) {
-    editor_camera_info_->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
-    editor_camera_info_->SetRotation(0.0f);
-    editor_camera_info_->SetZoomLevel(1.0f);
-    editor_camera_info_->SetAspectRatio((float)viewport_width_ / viewport_height_);
-  }
-
-  ImGui::End();
-
+  // Close the "DockSpace Demo" host window opened in BeginImGui().
   ImGui::End();
 
   EndImGui();
 }
 
 void Editor::BeginImGui() {
+  PROFILER_FUNCTION();
   // ImGui test
-  ImGui_ImplOpenGL3_NewFrame();
-  ImGui_ImplGlfw_NewFrame();
+  if (rhi_) {
+    rhi_->BeginImGuiFrame();
+  }
   ImGui::NewFrame();
 
   // Note: Switch this to true to enable dockspace
   static bool               dockspaceOpen             = true;
   static bool               opt_fullscreen_persistant = true;
-  bool                      opt_fullscreen            = opt_fullscreen_persistant;
+  const bool                opt_fullscreen            = opt_fullscreen_persistant;
   static ImGuiDockNodeFlags dockspace_flags           = ImGuiDockNodeFlags_None;
 
   // We are using the ImGuiWindowFlags_NoDocking flag to make the parent
@@ -223,7 +845,7 @@ void Editor::BeginImGui() {
   // docking targets within each others.
   ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
   if (opt_fullscreen) {
-    ImGuiViewport *viewport = ImGui::GetMainViewport();
+    const ImGuiViewport *viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->Pos);
     ImGui::SetNextWindowSize(viewport->Size);
     ImGui::SetNextWindowViewport(viewport->ID);
@@ -253,34 +875,49 @@ void Editor::BeginImGui() {
   if (opt_fullscreen) ImGui::PopStyleVar(2);
 
   // DockSpace
-  ImGuiIO    &io          = ImGui::GetIO();
-  ImGuiStyle &style       = ImGui::GetStyle();
-  float       minWinSizeX = style.WindowMinSize.x;
-  style.WindowMinSize.x   = 370.0f;
+  ImGuiIO    &io        = ImGui::GetIO();
+  ImGuiStyle &style     = ImGui::GetStyle();
+  style.WindowMinSize.x = 370.0f;
   if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
     ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
+    dockspace_id_        = dockspace_id;
+
+    // Build a sensible default layout the first time (no saved layout yet).
+    static bool first_layout = true;
+    if (first_layout) {
+      first_layout = false;
+      if (ImGui::DockBuilderGetNode(dockspace_id) == nullptr) {
+        ApplyDefaultLayout(dockspace_id);
+      }
+    }
+
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
   }
 }
 
 void Editor::EndImGui() {
+  PROFILER_FUNCTION();
   ImGui::Render();
-  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+  if (rhi_) {
+    rhi_->RenderImGuiDrawData(ImGui::GetDrawData());
+  }
 }
 
 template <typename T, typename UIFunction>
 static void DrawComponent(const std::string &name, Entity entity, UIFunction uiFunction) {
-  const ImGuiTreeNodeFlags treeNodeFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed |
-                                           ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap |
-                                           ImGuiTreeNodeFlags_FramePadding;
+  PROFILER_FUNCTION();
+  constexpr ImGuiTreeNodeFlags treeNodeFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed |
+                                               ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowItemOverlap |
+                                               ImGuiTreeNodeFlags_FramePadding;
   if (entity.HasComponent<T>()) {
-    auto  &component              = entity.GetComponent<T>();
-    ImVec2 contentRegionAvailable = ImGui::GetContentRegionAvail();
+    auto        &component              = entity.GetComponent<T>();
+    const ImVec2 contentRegionAvailable = ImGui::GetContentRegionAvail();
 
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2{4, 4});
-    float lineHeight = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+    const float lineHeight = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
     ImGui::Separator();
-    bool open = ImGui::TreeNodeEx((void *)typeid(T).hash_code(), treeNodeFlags, "%s", name.c_str());
+    const bool open =
+        ImGui::TreeNodeEx(reinterpret_cast<void *>(typeid(T).hash_code()), treeNodeFlags, "%s", name.c_str());
     ImGui::PopStyleVar();
     ImGui::SameLine(contentRegionAvailable.x - lineHeight * 0.5f);
     if (ImGui::Button("+", ImVec2{lineHeight, lineHeight})) {
@@ -305,8 +942,9 @@ static void DrawComponent(const std::string &name, Entity entity, UIFunction uiF
 
 static void DrawVec3Control(const std::string &label, glm::vec3 &values, float resetValue = 0.0f,
                             float columnWidth = 100.0f) {
-  ImGuiIO &io       = ImGui::GetIO();
-  auto     boldFont = io.Fonts->Fonts[0];
+  PROFILER_FUNCTION();
+  const ImGuiIO &io       = ImGui::GetIO();
+  const auto     boldFont = io.Fonts->Fonts[0];
 
   ImGui::PushID(label.c_str());
 
@@ -318,8 +956,8 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
   ImGui::PushMultiItemsWidths(3, ImGui::CalcItemWidth());
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{0, 0});
 
-  float  lineHeight = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
-  ImVec2 buttonSize = {lineHeight + 3.0f, lineHeight};
+  const float  lineHeight = GImGui->Font->FontSize + GImGui->Style.FramePadding.y * 2.0f;
+  const ImVec2 buttonSize = {lineHeight + 3.0f, lineHeight};
 
   ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.8f, 0.1f, 0.15f, 1.0f});
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.9f, 0.2f, 0.2f, 1.0f});
@@ -368,6 +1006,7 @@ static void DrawVec3Control(const std::string &label, glm::vec3 &values, float r
 
 template <typename T>
 void Editor::DisplayAddComponentEntry(const std::string &entryName) {
+  PROFILER_FUNCTION();
   if (!selected_entity_.HasComponent<T>()) {
     if (ImGui::MenuItem(entryName.c_str())) {
       selected_entity_.AddComponent<T>();
@@ -377,32 +1016,203 @@ void Editor::DisplayAddComponentEntry(const std::string &entryName) {
 }
 
 void Editor::ShowImGuiScene() {
+  PROFILER_FUNCTION();
   ImGui::Begin("Scene");
 
-  if (ImGui::Button("Create")) {
-    active_scene_->CreateEntity();
-  }
-
-  ImGui::SameLine();
-
-  // delete selected entity
-  if (ImGui::Button("Delete")) {
-    if (selected_entity_.GetHandle() != entt::null) {
-      active_scene_->DestroyEntity(selected_entity_);
-      selected_entity_ = Entity();
+  // Scene-level main Lua script (optional GameManager-style script).
+  {
+    char main_script[512] = {};
+    std::snprintf(main_script, sizeof(main_script), "%s", active_scene_->GetMainScript().c_str());
+    if (ImGui::InputText("Main Script", main_script, sizeof(main_script))) {
+      active_scene_->SetMainScript(std::string(main_script));
     }
   }
 
-  std::vector<Entity> &entities = active_scene_->GetAllEntities();
+  if (ImGui::Button("Create")) {
+    ImGui::OpenPopup("CreateEntity");
+  }
 
-  for (Entity &entity : entities) {
-    auto              &tag = entity.GetComponent<Tag>().tag;
-    ImGuiTreeNodeFlags flags =
-        ((entity == selected_entity_) ? ImGuiTreeNodeFlags_Selected : 0) | ImGuiTreeNodeFlags_OpenOnArrow;
-    bool opened = ImGui::TreeNodeEx((void *)(intptr_t)entity.GetHandle(), flags, "%s", tag.c_str());
+  if (ImGui::BeginPopup("CreateEntity")) {
+    if (ImGui::MenuItem("Empty Entity")) CreatePrimitive("Empty", nullptr);
+    if (ImGui::MenuItem("Cube")) CreatePrimitive("Cube", AssetManager::Instance().GetMesh("cube"));
+    if (ImGui::MenuItem("Plane")) CreatePrimitive("Plane", AssetManager::Instance().GetMesh("plane"));
+    if (ImGui::MenuItem("Sphere")) CreatePrimitive("Sphere", AssetManager::Instance().GetMesh("sphere"));
+    ImGui::Separator();
+    if (ImGui::MenuItem("Sprite")) CreateSpriteEntity();
+    ImGui::Separator();
+    if (ImGui::MenuItem("Point Light")) CreatePointLightEntity();
+    if (ImGui::MenuItem("Spot Light")) CreateSpotLightEntity();
+    if (ImGui::MenuItem("Directional Light")) CreateDirectionalLightEntity();
+    ImGui::Separator();
+    if (ImGui::MenuItem("Camera")) CreateCameraEntity();
+    ImGui::EndPopup();
+  }
 
+  const bool has_selection = selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_;
+
+  ImGui::SameLine();
+  if (!has_selection) {
+    ImGui::BeginDisabled();
+  }
+  if (ImGui::Button("Delete")) {
+    active_scene_->DestroyEntity(selected_entity_);
+    selected_entity_ = Entity();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Duplicate")) {
+    DuplicateSelectedEntity();
+  }
+  if (!has_selection) {
+    ImGui::EndDisabled();
+  }
+
+  // Filter the hierarchy by name.
+  static char search[128] = {};
+  ImGui::SetNextItemWidth(-1);
+  ImGui::InputTextWithHint("##SceneSearch", "Search...", search, sizeof(search));
+  ImGui::Separator();
+
+  const bool filtering = search[0] != '\0';
+
+  // Draws one scene-hierarchy node (label + drag/drop + context menu) and then
+  // its children. Only called for root nodes from the loop below; recursion
+  // handles everything underneath.
+  std::function<void(entt::entity)> draw_node = [&](entt::entity handle) {
+    Entity entity(handle, &active_scene_->GetRegistry());
+    if (entity.GetHandle() == entt::null || !active_scene_->GetRegistry().valid(handle)) {
+      return;
+    }
+    if (entity == grid_entity_) {
+      return;
+    }
+
+    const std::string &tag = entity.GetComponent<Tag>().tag;
+    const bool         has_children = active_scene_->HasChildren(handle);
+    const std::string  label = tag + "##" + std::to_string(entt::to_integral(handle));
+
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick |
+                               ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_DefaultOpen;
+    if (!has_children) {
+      flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+    }
+    if (entity == selected_entity_) {
+      flags |= ImGuiTreeNodeFlags_Selected;
+    }
+
+    const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
     if (ImGui::IsItemClicked()) {
       selected_entity_ = entity;
+    }
+
+    // --- Right-click: create child / duplicate / delete / unparent ----------
+    if (ImGui::BeginPopupContextItem(label.c_str())) {
+      if (ImGui::MenuItem("Create Child##Empty")) CreateChildPrimitive("Child", nullptr);
+      if (ImGui::MenuItem("Create Child Cube")) CreateChildPrimitive("Cube", AssetManager::Instance().GetMesh("cube"));
+      if (ImGui::MenuItem("Create Child Plane")) {
+        CreateChildPrimitive("Plane", AssetManager::Instance().GetMesh("plane"));
+      }
+      if (ImGui::MenuItem("Create Child Sphere")) {
+        CreateChildPrimitive("Sphere", AssetManager::Instance().GetMesh("sphere"));
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Duplicate")) {
+        selected_entity_ = entity;
+        DuplicateSelectedEntity();
+      }
+      if (ImGui::MenuItem("Delete")) {
+        selected_entity_ = entity;
+        active_scene_->DestroyEntity(selected_entity_);
+        selected_entity_ = Entity();
+      }
+      if (active_scene_->GetParent(handle) != entt::null) {
+        ImGui::Separator();
+        if (ImGui::MenuItem("Unparent")) {
+          active_scene_->SetParent(handle, entt::null);
+        }
+      }
+      ImGui::EndPopup();
+    }
+
+    // --- Drag source: reparent this entity by dropping it onto another ------
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+      ImGui::SetDragDropPayload("SCENE_ENTITY", &handle, sizeof(handle));
+      ImGui::TextUnformatted(("Parent '" + tag + "' onto...").c_str());
+      ImGui::EndDragDropSource();
+    }
+
+    // --- Drop target: make the dragged entity a child of this one -----------
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("SCENE_ENTITY")) {
+        if (payload->Data != nullptr) {
+          const entt::entity dragged = *static_cast<const entt::entity *>(payload->Data);
+          if (dragged != handle && active_scene_->GetRegistry().valid(dragged)) {
+            active_scene_->SetParent(dragged, handle);
+          }
+        }
+      }
+      ImGui::EndDragDropTarget();
+    }
+
+    if (open && has_children) {
+      for (const entt::entity child : active_scene_->GetChildren(handle)) {
+        draw_node(child);
+      }
+      ImGui::TreePop();
+    }
+  };
+
+  if (!filtering) {
+    // Snapshot the hierarchy before drawing: the per-node context menus can
+    // delete / duplicate / create-child WHILE we iterate (they mutate the
+    // scene's live entity vector), which would invalidate the loop's
+    // iterators mid-frame and crash (an erased iterator is dereferenced on the
+    // next step). Iterating a copy keeps the draw stable; entries whose entity
+    // was just destroyed are skipped by the validity checks in draw_node().
+    const std::vector<Entity> snapshot = active_scene_->GetAllEntities();
+
+    // Roots first (entities without a parent), then their subtrees recursively.
+    for (const auto &entity : snapshot) {
+      if (entity == grid_entity_) {
+        continue;
+      }
+      if (active_scene_->GetParent(entity.GetHandle()) != entt::null) {
+        continue;  // rendered by its parent
+      }
+      draw_node(entity.GetHandle());
+    }
+
+    // A catch-all drop zone under the tree: dropping an entity here detaches it
+    // back to the root level.
+    ImGui::Dummy(ImVec2(0.0f, 6.0f));
+    ImGui::Separator();
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("SCENE_ENTITY")) {
+        if (payload->Data != nullptr) {
+          const entt::entity dragged = *static_cast<const entt::entity *>(payload->Data);
+          if (active_scene_->GetRegistry().valid(dragged)) {
+            active_scene_->SetParent(dragged, entt::null);
+          }
+        }
+      }
+      ImGui::EndDragDropTarget();
+    }
+    ImGui::TextDisabled("Drag an entity onto another to parent it.");
+  } else {
+    // While searching, show a flat list of matches (any depth).
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (entity == grid_entity_) {
+        continue;
+      }
+      const std::string &tag = entity.GetComponent<Tag>().tag;
+      if (!ContainsIgnoreCase(tag, search)) {
+        continue;
+      }
+      const ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen |
+                                       (entity == selected_entity_ ? ImGuiTreeNodeFlags_Selected : 0);
+      ImGui::TreeNodeEx(tag.c_str(), flags);
+      if (ImGui::IsItemClicked()) {
+        selected_entity_ = entity;
+      }
     }
   }
 
@@ -410,52 +1220,450 @@ void Editor::ShowImGuiScene() {
 }
 
 void Editor::ShowImGuiViewport() {
+  PROFILER_FUNCTION();
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
   ImGui::Begin("Viewport");
-  ImVec2 size        = ImGui::GetContentRegionAvail();
-  ImVec2 button_size = ImVec2(50, 25);
-  size.y -= button_size.y + 5;
-  if (viewport_width_ != size.x || viewport_height_ != size.y) {
-    viewport_width_   = size.x;
-    viewport_height_  = size.y;
+
+  const ImVec2 avail = ImGui::GetContentRegionAvail();
+
+  // Toolbar: fly/orbit toggle + play/stop. Gizmo operations live in an
+  // icon-button overlay at the bottom-left of the viewport image.
+  // The width is clamped: a freshly created / freshly docked window reports a
+  // zero content region for one frame, which BeginChild rejects.
+  constexpr float toolbar_height = 26.0f;
+  ImGui::BeginChild("##ViewportToolbar", ImVec2(std::max(avail.x, 64.0f), toolbar_height));
+  if (ImGui::Button(editor_camera_.IsFlyMode() ? "Orbit" : "Fly")) {
+    editor_camera_.SetFlyMode(!editor_camera_.IsFlyMode());
+  }
+  ImGui::SameLine();
+  const char *play_label = game_mode_ == GameMode::Edit ? "Play" : "Stop";
+  if (ImGui::Button(play_label)) {
+    if (game_mode_ == GameMode::Edit) {
+      game_mode_ = GameMode::Play;
+      active_scene_->StartSimulation();
+      active_scene_->GetScriptEngine().LoadMainScript(active_scene_->GetMainScript());
+      // Start OnStart on every script before the first physics step so
+      // collisions on frame one are delivered to already-started scripts.
+      active_scene_->GetScriptEngine().StartAll();
+      SetGridVisible(false);
+    } else {
+      game_mode_ = GameMode::Edit;
+      // Fire OnDestroy hooks first (while the entities are still alive), then
+      // restore the authoring scene captured at Play start.
+      active_scene_->GetScriptEngine().Clear();
+      active_scene_->StopSimulation();
+      SetGridVisible(true);
+
+      // The snapshot restore re-creates entities; drop a selection that no
+      // longer exists so the Properties panel never dereferences a stale handle.
+      if (selected_entity_.GetHandle() != entt::null &&
+          !active_scene_->GetRegistry().valid(selected_entity_.GetHandle())) {
+        selected_entity_ = Entity();
+      }
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Launch")) {
+    LaunchStandalone();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Run the scene standalone in a new window");
+  }
+  ImGui::EndChild();
+
+  // Image fills the remaining region; clamp to a minimum so a degenerate
+  // (collapsed) window never renders a 0/1-pixel framebuffer.
+  ImVec2 image_size(avail.x, avail.y - toolbar_height - 4.0f);
+  if (image_size.x < 64.0f) image_size.x = 64.0f;
+  if (image_size.y < 64.0f) image_size.y = 64.0f;
+
+  // Resize the viewport framebuffer when the image area changes.
+  const int w = static_cast<int>(image_size.x);
+  const int h = static_cast<int>(image_size.y);
+  if (w != viewport_width_ || h != viewport_height_) {
+    viewport_width_   = w;
+    viewport_height_  = h;
     viewport_resized_ = true;
-    frame_buffer_->Resize(viewport_width_, viewport_height_);
-  } else {
-    viewport_resized_ = false;
   }
 
-  ImVec2 button_pos((size.x - button_size.x) / 2, button_size.y);
+  ImGui::Image(reinterpret_cast<void *>(static_cast<intptr_t>(frame_buffer_->GetTextureId())), image_size, ImVec2(0, 1),
+               ImVec2(1, 0));
 
-  ImGui::SetCursorPos(button_pos);
+  // Drop a model (OBJ / glTF) from the Content Browser to import it.
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+      if (payload->Data != nullptr) {
+        const std::filesystem::path file_path(static_cast<const wchar_t *>(payload->Data));
+        const std::string           ext = file_path.extension().string();
+        if (ext == ".obj" || ext == ".gltf" || ext == ".glb") {
+          CreateModelEntity(file_path);
+        }
+      }
+    }
+    ImGui::EndDragDropTarget();
+  }
+
+  const ImVec2 image_pos  = ImGui::GetItemRectMin();
+  const ImVec2 image_area = ImGui::GetItemRectSize();
+
+  // Editor camera input while hovering the viewport (Edit mode only).
+  const bool hovered     = ImGui::IsItemHovered();
+  const bool using_gizmo = ImGuizmo::IsUsing();
+  if (hovered && !using_gizmo && game_mode_ == GameMode::Edit) {
+    const ImGuiIO &io = ImGui::GetIO();
+    if (editor_camera_.IsFlyMode()) {
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+        editor_camera_.LookAround(io.MouseDelta.x, io.MouseDelta.y);
+      }
+      float forward = 0.0f;
+      float right   = 0.0f;
+      float up      = 0.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_W)) forward += 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_S)) forward -= 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_D)) right += 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_A)) right -= 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_E)) up += 1.0f;
+      if (ImGui::IsKeyDown(ImGuiKey_Q)) up -= 1.0f;
+      editor_camera_.MoveLocal(forward, right, up, io.DeltaTime);
+    } else {
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+        editor_camera_.Orbit(io.MouseDelta.x, io.MouseDelta.y);
+      }
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+        editor_camera_.Pan(io.MouseDelta.x, io.MouseDelta.y);
+      }
+      if (io.MouseWheel != 0.0f) {
+        editor_camera_.Zoom(io.MouseWheel);
+      }
+    }
+  }
+
+  // Scene camera controllers while hovering the viewport (Play mode only).
+  if (hovered && game_mode_ == GameMode::Play) {
+    const ImGuiIO &io = ImGui::GetIO();
+    active_scene_->UpdateCameraControllers(io.DeltaTime, glm::vec2(io.MouseDelta.x, io.MouseDelta.y),
+                                           io.MouseDown[ImGuiMouseButton_Right]);
+  }
 
   if (game_mode_ == GameMode::Edit) {
-    if (ImGui::Button("Play", button_size)) {
-      game_mode_ = GameMode::Play;
+    ShowGizmo(image_pos, image_area);
+    DrawCameraGizmos(image_pos, image_area);
+    DrawLightGizmos(image_pos, image_area);
+    if (show_colliders_) {
+      DrawColliderGizmos(image_pos, image_area);
     }
-  } else {
-    if (ImGui::Button("Stop", button_size)) {
-      game_mode_ = GameMode::Edit;
+
+    // Bottom-left overlay: small icon-like buttons for the gizmo operation.
+    constexpr float btn_size = 24.0f;
+    constexpr float padding  = 8.0f;
+    ImGui::SetCursorScreenPos(ImVec2(image_pos.x + padding, image_pos.y + image_area.y - btn_size - padding));
+
+    struct GizmoButton {
+      const char         *label;
+      const char         *tooltip;
+      ImGuizmo::OPERATION operation;
+    };
+    const GizmoButton buttons[] = {
+        {"T", "Translate (W)", ImGuizmo::TRANSLATE},
+        {"R", "Rotate (E)", ImGuizmo::ROTATE},
+        {"S", "Scale (R)", ImGuizmo::SCALE},
+    };
+    for (const GizmoButton &button : buttons) {
+      ImGui::PushID(button.label);
+      const bool active = gizmo_operation_ == button.operation;
+      if (active) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.24f, 0.54f, 0.92f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.60f, 0.98f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.20f, 0.48f, 0.86f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+      }
+      if (ImGui::Button(button.label, ImVec2(btn_size, btn_size))) {
+        gizmo_operation_ = button.operation;
+      }
+      if (active) {
+        ImGui::PopStyleColor(4);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", button.tooltip);
+      }
+      ImGui::PopID();
+      ImGui::SameLine();
     }
   }
 
-  ImGui::Image((void *)(intptr_t)frame_buffer_->GetTextureId(), size, ImVec2(0, 1), ImVec2(1, 0));
+  ImGui::End();
+  ImGui::PopStyleVar();
+}
+
+/// @brief The 2D workspace: a dedicated panel for 2D scenes, shown instead of
+/// the 3D "Viewport". It is a flat, orthographic editor — pan with the middle
+/// mouse button, zoom with the wheel, drop a texture to create a sprite — and
+/// it is the only surface a 2D scene is rendered into (`Scene::Render2D`).
+void Editor::ShowImGui2DViewport() {
+  PROFILER_FUNCTION();
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+  ImGui::Begin("2D Viewport");
+
+  const ImVec2 avail = ImGui::GetContentRegionAvail();
+
+  constexpr float toolbar_height = 26.0f;
+  // Clamped like the 3D toolbar: a zero-width content region (first frame of a
+  // newly created window) would trip an ImGui assertion inside BeginChild.
+  ImGui::BeginChild("##Viewport2DToolbar", ImVec2(std::max(avail.x, 64.0f), toolbar_height));
+  const char *play_label = game_mode_ == GameMode::Edit ? "Play" : "Stop";
+  if (ImGui::Button(play_label)) {
+    if (game_mode_ == GameMode::Edit) {
+      game_mode_ = GameMode::Play;
+      active_scene_->StartSimulation();
+      active_scene_->GetScriptEngine().LoadMainScript(active_scene_->GetMainScript());
+      active_scene_->GetScriptEngine().StartAll();
+      SetGridVisible(false);
+    } else {
+      game_mode_ = GameMode::Edit;
+      active_scene_->GetScriptEngine().Clear();
+      active_scene_->StopSimulation();
+      SetGridVisible(true);
+      if (selected_entity_.GetHandle() != entt::null &&
+          !active_scene_->GetRegistry().valid(selected_entity_.GetHandle())) {
+        selected_entity_ = Entity();
+      }
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Sprite")) {
+    CreateSpriteEntity();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Create a sprite under the selection (or at the origin)");
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Frame All")) {
+    // Fit the 2D camera to every sprite's world bounds (uses the scene's AABB).
+    glm::vec3 scene_min;
+    glm::vec3 scene_max;
+    if (active_scene_->GetContentBounds(scene_min, scene_max)) {
+      editor_camera_.view_center = glm::vec2((scene_min.x + scene_max.x) * 0.5f, (scene_min.y + scene_max.y) * 0.5f);
+      const float half_height    = std::max(scene_max.y - scene_min.y, (scene_max.x - scene_min.x) / std::max(0.1f, editor_camera_.aspect));
+      editor_camera_.ortho_size  = glm::clamp(half_height, 0.25f, 500.0f);
+    }
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Center and zoom the 2D view on all sprites");
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Launch")) {
+    LaunchStandalone();
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Run the scene standalone in a new window");
+  }
+  ImGui::SameLine();
+  ImGui::TextDisabled("|  middle-drag: pan   wheel: zoom");
+  ImGui::EndChild();
+
+  ImVec2 image_size(avail.x, avail.y - toolbar_height - 4.0f);
+  if (image_size.x < 64.0f) image_size.x = 64.0f;
+  if (image_size.y < 64.0f) image_size.y = 64.0f;
+
+  const int w = static_cast<int>(image_size.x);
+  const int h = static_cast<int>(image_size.y);
+  if (w != viewport_width_ || h != viewport_height_) {
+    viewport_width_   = w;
+    viewport_height_  = h;
+    viewport_resized_ = true;
+  }
+
+  ImGui::Image(reinterpret_cast<void *>(static_cast<intptr_t>(frame_buffer_->GetTextureId())), image_size, ImVec2(0, 1),
+               ImVec2(1, 0));
+
+  // Dropping an image creates a sprite using it — the usual 2D workflow.
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+      if (payload->Data != nullptr) {
+        const std::filesystem::path file_path(static_cast<const wchar_t *>(payload->Data));
+        const std::string           ext = file_path.extension().string();
+        if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga") {
+          CreateSpriteEntity();
+          if (selected_entity_.GetHandle() != entt::null &&
+              selected_entity_.HasComponent<SpriteComponent>()) {
+            auto texture = Texture::Create(file_path.string());
+            if (texture) {
+              selected_entity_.GetComponent<SpriteComponent>().SetTexture(texture);
+            }
+          }
+        }
+      }
+    }
+    ImGui::EndDragDropTarget();
+  }
+
+  const ImVec2 image_pos  = ImGui::GetItemRectMin();
+  const ImVec2 image_area = ImGui::GetItemRectSize();
+
+  // 2D navigation: middle-drag pans, wheel zooms. No orbit, no fly.
+  const bool hovered     = ImGui::IsItemHovered();
+  const bool using_gizmo = ImGuizmo::IsUsing();
+  if (hovered && !using_gizmo && game_mode_ == GameMode::Edit) {
+    const ImGuiIO &io = ImGui::GetIO();
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+      editor_camera_.Pan2D(io.MouseDelta.x, io.MouseDelta.y);
+    }
+    if (io.MouseWheel != 0.0f) {
+      editor_camera_.Zoom2D(io.MouseWheel);
+    }
+  }
+
+  if (hovered && game_mode_ == GameMode::Play) {
+    const ImGuiIO &io = ImGui::GetIO();
+    active_scene_->UpdateCameraControllers(io.DeltaTime, glm::vec2(io.MouseDelta.x, io.MouseDelta.y),
+                                           io.MouseDown[ImGuiMouseButton_Right]);
+  }
+
+  if (game_mode_ == GameMode::Edit) {
+    ShowGizmo(image_pos, image_area);
+    DrawCameraGizmos(image_pos, image_area);
+
+    // 2D gizmo operations: sprites translate and scale in the plane; rotate is
+    // offered too (around Z only in practice, the gizmo is unconstrained).
+    constexpr float btn_size = 24.0f;
+    constexpr float padding  = 8.0f;
+    ImGui::SetCursorScreenPos(ImVec2(image_pos.x + padding, image_pos.y + image_area.y - btn_size - padding));
+    struct GizmoButton {
+      const char         *label;
+      const char         *tooltip;
+      ImGuizmo::OPERATION operation;
+    };
+    const GizmoButton buttons[] = {
+        {"T", "Translate (W)", ImGuizmo::TRANSLATE},
+        {"R", "Rotate (E)", ImGuizmo::ROTATE},
+        {"S", "Scale (R)", ImGuizmo::SCALE},
+    };
+    for (const GizmoButton &button : buttons) {
+      ImGui::PushID(button.label);
+      const bool active = gizmo_operation_ == button.operation;
+      if (active) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.24f, 0.54f, 0.92f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.60f, 0.98f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.20f, 0.48f, 0.86f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+      }
+      if (ImGui::Button(button.label, ImVec2(btn_size, btn_size))) {
+        gizmo_operation_ = button.operation;
+      }
+      if (active) {
+        ImGui::PopStyleColor(4);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", button.tooltip);
+      }
+      ImGui::PopID();
+      ImGui::SameLine();
+    }
+  }
 
   ImGui::End();
+  ImGui::PopStyleVar();
+}
+
+/// @brief Edits one PBR material in place: the four texture-map thumbnails
+/// (drag from the Content Browser, right-click to clear) plus the scalar
+/// factors. Shared by the Mesh and Model (per-part) component inspectors.
+void DrawMaterialEditor(Material *material) {
+  if (!material) {
+    ImGui::TextDisabled("No material.");
+    return;
+  }
+
+  // Texture maps: thumbnails in a row, label underneath. Drag an image from
+  // the Content Browser to assign; right-click to clear.
+  const float thumb    = 64.0f;
+  auto        draw_map = [&](const char *label, const Ref<Texture> &get, auto &&set) {
+    ImGui::BeginGroup();
+    if (get) {
+      ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(get->GetID())), {thumb, thumb}, ImVec2(0, 1),
+                   ImVec2(1, 0));
+    } else {
+      ImGui::Button("None", {thumb, thumb});
+    }
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+        const auto *path = static_cast<const wchar_t *>(payload->Data);
+        set(Texture::Create(std::filesystem::path(path).string()));
+      }
+      ImGui::EndDragDropTarget();
+    }
+    if (get && ImGui::BeginPopupContextItem(label)) {
+      if (ImGui::MenuItem("Clear")) {
+        set(nullptr);
+      }
+      ImGui::EndPopup();
+    }
+    const float text_w = ImGui::CalcTextSize(label).x;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (thumb - text_w) * 0.5f);
+    ImGui::Text("%s", label);
+    ImGui::EndGroup();
+  };
+
+  draw_map("Albedo", material->GetAlbedoMap(), [&](Ref<Texture> t) { material->SetAlbedoMap(t); });
+  ImGui::SameLine();
+  draw_map("Normal", material->GetNormalMap(), [&](Ref<Texture> t) { material->SetNormalMap(t); });
+  ImGui::SameLine();
+  draw_map("Roughness", material->GetMetallicRoughnessMap(),
+           [&](Ref<Texture> t) { material->SetMetallicRoughnessMap(t); });
+  ImGui::SameLine();
+  draw_map("AO", material->GetAOMap(), [&](Ref<Texture> t) { material->SetAOMap(t); });
+
+  // Height map + parallax scale live on their own row (parallax occlusion
+  // mapping); the height map's red channel stores 0 = base .. 1 = top.
+  draw_map("Height", material->GetHeightMap(), [&](Ref<Texture> t) { material->SetHeightMap(t); });
+  ImGui::SameLine();
+  ImGui::BeginDisabled(material->GetHeightMap() == nullptr);
+  float height_scale = material->GetHeightScale();
+  if (ImGui::SliderFloat("Height Scale", &height_scale, 0.0f, 0.2f, "%.3f")) {
+    material->SetHeightScale(height_scale);
+  }
+  ImGui::EndDisabled();
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Parallax occlusion strength (0 = flat). ~0.02-0.1 is typical.\n"
+                      "A height map must be set for this to have an effect.");
+  }
+  ImGui::TextDisabled("Parallax: drag a height map above, right-click it to clear.");
+
+  ImGui::Separator();
+  ImGui::Text("Properties");
+
+  glm::vec4 base_color = material->GetBaseColorFactor();
+  if (ImGui::ColorEdit4("Base Color", glm::value_ptr(base_color))) {
+    material->SetBaseColorFactor(base_color);
+  }
+
+  float metallic = material->GetMetallicFactor();
+  if (ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f)) {
+    material->SetMetallicFactor(metallic);
+  }
+
+  float roughness = material->GetRoughnessFactor();
+  if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f)) {
+    material->SetRoughnessFactor(roughness);
+  }
+
+  float specular = material->GetSpecularFactor();
+  if (ImGui::SliderFloat("Specular", &specular, 0.0f, 1.0f)) {
+    material->SetSpecularFactor(specular);
+  }
 }
 
 void Editor::ShowImGuiProperties() {
+  PROFILER_FUNCTION();
   ImGui::Begin("Properties");
 
   if (selected_entity_.GetHandle() != entt::null) {
-    auto &tag = selected_entity_.GetComponent<Tag>().tag;
-    char  buffer[256];
-    memset(buffer, 0, sizeof(buffer));
-    strcpy_s(buffer, sizeof(buffer), tag.c_str());
-    if (ImGui::InputText("##Tag", buffer, sizeof(buffer))) {
+    auto &tag         = selected_entity_.GetComponent<Tag>().tag;
+    char  buffer[256] = {};
+    std::snprintf(buffer, sizeof(buffer), "%s", tag.c_str());
+    if (ImGui::InputText("Name", buffer, sizeof(buffer))) {
       tag = std::string(buffer);
     }
-
-    ImGui::SameLine();
-    ImGui::PushItemWidth(-1);
 
     if (ImGui::Button("Add Component")) {
       ImGui::OpenPopup("AddComponent");
@@ -463,13 +1671,23 @@ void Editor::ShowImGuiProperties() {
 
     if (ImGui::BeginPopup("AddComponent")) {
       DisplayAddComponentEntry<Transform>("Transform");
-      DisplayAddComponentEntry<Sprite2D>("Sprite2D");
-      DisplayAddComponentEntry<Camera2D>("Camera2D");
+      DisplayAddComponentEntry<MeshComponent>("Mesh");
+      DisplayAddComponentEntry<SpriteComponent>("Sprite (2D)");
+      DisplayAddComponentEntry<SpriteAnimationComponent>("Sprite Animation (2D)");
+      DisplayAddComponentEntry<CameraComponent>("Camera");
+      DisplayAddComponentEntry<CameraController>("Camera Controller");
+      DisplayAddComponentEntry<PointLightComponent>("Point Light");
+      DisplayAddComponentEntry<SpotLightComponent>("Spot Light");
+      DisplayAddComponentEntry<DirectionalLightComponent>("Directional Light");
+      DisplayAddComponentEntry<LuaScriptComponent>("Lua Script");
+      DisplayAddComponentEntry<RigidBodyComponent>("Rigid Body");
+      DisplayAddComponentEntry<ColliderComponent>("Collider");
+      DisplayAddComponentEntry<ColliderGroupComponent>("Collider Group");
 
       ImGui::EndPopup();
     }
 
-    ImGui::PopItemWidth();
+    ImGui::Separator();
 
     DrawComponent<Transform>("Transform", selected_entity_, [](auto &component) {
       DrawVec3Control("Translation", component.translation);
@@ -479,37 +1697,2588 @@ void Editor::ShowImGuiProperties() {
       DrawVec3Control("Scale", component.scale, 1.0f);
     });
 
-    DrawComponent<Camera2D>("Camera", selected_entity_, [](auto &component) {
-      ImGui::Checkbox("Primary", &component.primary);
-
-      DrawVec3Control("Position", component.position);
-
-      ImGui::DragFloat("Rotation", &component.rotation, 0.1f);
-
-      ImGui::DragFloat("Zoom Level", &component.zoom_level, 0.1f, 0.0f, 100.0f);
-
-      ImGui::DragFloat("Aspect Ratio", &component.aspect_ratio, 0.1f);
-    });
-
-    DrawComponent<Sprite2D>("Sprite2D", selected_entity_, [](auto &component) {
-      ImGui::ColorEdit4("Color", glm::value_ptr(component.color));
-
-      ImGui::Button("Texture", ImVec2(100.0f, 0.0f));
+    DrawComponent<MeshComponent>("Mesh", selected_entity_, [](auto &component) {
+      // Drop zone: drag a model file (.obj/.gltf/.glb) here to (re)assign the mesh.
+      FullWidthDropZone("##MeshDropZone", 24.0f);
+      const ImVec2 zone_min = ImGui::GetItemRectMin();
+      const ImVec2 zone_max = ImGui::GetItemRectMax();
       if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
-          const wchar_t           *path = (const wchar_t *)payload->Data;
-          std::filesystem::path    texturePath(path);
-          std::shared_ptr<Texture> texture = Texture::Create(texturePath.string());
-          component.texture                = texture;
+          const std::filesystem::path file_path(static_cast<const wchar_t *>(payload->Data));
+          const std::string           ext = file_path.extension().string();
+          if (ext == ".obj" || ext == ".gltf" || ext == ".glb") {
+            Ref<Mesh>     mesh;
+            Ref<Material> material;
+            if (LoadModelAsset(file_path, mesh, material)) {
+              component.mesh     = mesh;
+              component.material = material;
+              LOG_INFO("Editor") << "Assigned model '" << file_path.filename().string() << "' to entity";
+            } else {
+              LOG_WARN("Editor") << "Failed to load model: " << file_path;
+            }
+          }
         }
         ImGui::EndDragDropTarget();
       }
+      ImGui::GetWindowDrawList()->AddRect(zone_min, zone_max, ImGui::GetColorU32(ImGuiCol_Separator));
+      ImGui::SetCursorScreenPos(ImVec2(zone_min.x + 6.0f, zone_min.y + 5.0f));
+      ImGui::TextDisabled(
+          "%s", component.mesh ? "Drop a model here to replace the mesh" : "Drop a model here to assign a mesh");
 
-      ImGui::DragFloat("Tiling Factor", &component.tiling_factor, 0.1f, 0.0f, 100.0f);
+      if (!component.mesh) {
+        if (ImGui::Button("Cube")) component.mesh = Mesh::CreateCube();
+        ImGui::SameLine();
+        if (ImGui::Button("Plane")) component.mesh = Mesh::CreatePlane();
+        ImGui::SameLine();
+        if (ImGui::Button("Sphere")) component.mesh = Mesh::CreateSphere();
+      } else {
+        ImGui::Text("Triangles: %d", component.mesh->GetIndexCount() / 3);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Remove Mesh")) component.mesh = nullptr;
+      }
+
+      if (!component.material) {
+        component.material = CreateDefaultMaterial();
+      }
+
+      DrawMaterialEditor(component.material.get());
     });
+
+    DrawComponent<ModelComponent>("Model", selected_entity_, [&](auto &component) {
+      if (!component.model || component.model->parts.empty()) {
+        ImGui::TextDisabled("No model loaded.");
+        return;
+      }
+      ImGui::Text("Source: %s", component.source.empty() ? "(none)" : component.source.c_str());
+      ImGui::Text("Parts: %zu", component.model->parts.size());
+      ImGui::TextDisabled("Single entity - every part shares its Transform. Pick a part\n"
+                          "below to edit its material; parts all cast shadows.");
+
+      // Keep the edited part across frames, resetting when the model changes.
+      static const Model *s_part_owner = nullptr;
+      static int          s_part        = 0;
+      if (s_part_owner != component.model.get()) {
+        s_part_owner = component.model.get();
+        s_part       = 0;
+      }
+      if (s_part < 0 || s_part >= static_cast<int>(component.model->parts.size())) {
+        s_part = 0;
+      }
+
+      const auto part_label = [&](size_t i) {
+        return component.model->parts[i].name.empty() ? "Part " + std::to_string(i)
+                                                      : component.model->parts[i].name;
+      };
+      if (ImGui::BeginCombo("Part", part_label(static_cast<size_t>(s_part)).c_str())) {
+        for (size_t i = 0; i < component.model->parts.size(); ++i) {
+          if (ImGui::Selectable(part_label(i).c_str(), static_cast<size_t>(s_part) == i)) {
+            s_part = static_cast<int>(i);
+          }
+        }
+        ImGui::EndCombo();
+      }
+
+      ModelPart &part = component.model->parts[static_cast<size_t>(s_part)];
+      ImGui::Text("Triangles: %d", part.mesh ? part.mesh->GetIndexCount() / 3 : 0);
+      if (part.material) {
+        ImGui::PushID(s_part);
+        DrawMaterialEditor(part.material.get());
+        ImGui::PopID();
+      } else {
+        ImGui::TextDisabled("This part has no material yet.");
+      }
+    });
+
+    DrawComponent<CameraComponent>("Camera", selected_entity_, [&](auto &component) {
+      bool primary = component.primary;
+      if (ImGui::Checkbox("Primary", &primary)) {
+        component.primary = primary;
+        if (primary) {
+          // A scene has at most one primary camera.
+          for (auto &entity : active_scene_->GetAllEntities()) {
+            if (entity != selected_entity_ && entity.HasComponent<CameraComponent>()) {
+              entity.GetComponent<CameraComponent>().primary = false;
+            }
+          }
+        }
+      }
+
+      DrawVec3Control("Position", component.camera.position);
+      DrawVec3Control("Rotation", component.camera.rotation);
+
+      const char *items[] = {"Perspective", "Orthographic"};
+      int         current = component.camera.projection_type == ProjectionType::Perspective ? 0 : 1;
+      if (ImGui::Combo("Projection", &current, items, 2)) {
+        component.camera.projection_type = current == 0 ? ProjectionType::Perspective : ProjectionType::Orthographic;
+      }
+
+      ImGui::DragFloat("FOV", &component.camera.fov_degrees, 0.5f, 1.0f, 179.0f);
+      ImGui::DragFloat("Ortho Size", &component.camera.ortho_size, 0.1f, 0.1f, 1000.0f);
+      ImGui::DragFloat("Near", &component.camera.near_plane, 0.01f, 0.001f, 1000.0f);
+      ImGui::DragFloat("Far", &component.camera.far_plane, 1.0f, 0.1f, 10000.0f);
+    });
+
+    DrawComponent<PointLightComponent>("Point Light", selected_entity_, [](auto &component) {
+      PointLight &light = component.light;
+      ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
+      ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 500.0f);
+      ImGui::DragFloat("Radius", &light.radius, 0.1f, 0.1f, 100.0f);
+      ImGui::Checkbox("Cast Shadow", &light.casts_shadow);
+      ImGui::Checkbox("LO Attenuation", &light.lo_attenuation);
+      if (light.lo_attenuation) {
+        ImGui::DragFloat("Constant", &light.constant, 0.05f, 0.0f, 10.0f);
+        ImGui::DragFloat("Linear", &light.linear, 0.01f, 0.0f, 2.0f);
+        ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
+        DrawVec3Control("Ambient", light.ambient);
+        DrawVec3Control("Diffuse", light.diffuse);
+        DrawVec3Control("Specular", light.specular);
+      }
+      ImGui::TextDisabled("Position = the entity's Transform (move it with the gizmo).");
+    });
+
+    DrawComponent<SpotLightComponent>("Spot Light", selected_entity_, [&](auto &component) {
+      SpotLight &light = component.light;
+      ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
+      ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 500.0f);
+      ImGui::DragFloat("Range", &light.range, 0.1f, 0.1f, 200.0f);
+      float inner = glm::degrees(glm::acos(std::clamp(light.cutoff, -1.0f, 1.0f)));
+      float outer = glm::degrees(glm::acos(std::clamp(light.outer_cutoff, -1.0f, 1.0f)));
+      if (ImGui::DragFloat("Inner Cone", &inner, 0.5f, 0.0f, 90.0f)) {
+        light.cutoff = glm::cos(glm::radians(inner));
+      }
+      if (ImGui::DragFloat("Outer Cone", &outer, 0.5f, 0.0f, 90.0f)) {
+        light.outer_cutoff = glm::cos(glm::radians(outer));
+      }
+      if (selected_entity_.HasComponent<Transform>()) {
+        const glm::vec3 &d = light.direction;  // derived each frame (see SyncLightComponents)
+        ImGui::TextWrapped("Aim follows the entity's Rotation (local -Z): rotate with the gizmo (E).");
+        ImGui::Text("Aim dir: (%.2f, %.2f, %.2f)", d.x, d.y, d.z);
+      } else {
+        DrawVec3Control("Direction", light.direction);
+      }
+      ImGui::TextDisabled("Position = the entity's Transform (move it with the gizmo).");
+    });
+
+    DrawComponent<DirectionalLightComponent>("Directional Light", selected_entity_, [&](auto &component) {
+      DirectionalLight &light = component.light;
+      if (selected_entity_.HasComponent<Transform>()) {
+        ImGui::TextWrapped("Direction follows the entity's Rotation (local -Z): "
+                            "select it and rotate with the gizmo (E).");
+        const glm::vec3 &d = light.direction;  // derived each frame (see SyncLightComponents)
+        ImGui::Text("Travel dir: (%.2f, %.2f, %.2f)", d.x, d.y, d.z);
+        ImGui::Separator();
+      } else {
+        // No Transform: fall back to editing the raw component direction.
+        DrawVec3Control("Direction (travel)", light.direction);
+      }
+      ImGui::ColorEdit3("Color", glm::value_ptr(light.color));
+      DrawVec3Control("Ambient", light.ambient);
+      DrawVec3Control("Diffuse", light.diffuse);
+      DrawVec3Control("Specular", light.specular);
+    });
+
+    DrawComponent<SpriteComponent>("Sprite (2D)", selected_entity_, [&](auto &component) {
+      // Texture slot: drag an image from the Content Browser, right-click to clear.
+      constexpr float thumb = 64.0f;
+      ImGui::BeginGroup();
+      if (component.texture) {
+        ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(component.texture->GetID())), {thumb, thumb},
+                     ImVec2(0, 1), ImVec2(1, 0));
+      } else {
+        ImGui::Button("None", {thumb, thumb});
+      }
+      if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+          const auto *path  = static_cast<const wchar_t *>(payload->Data);
+          component.texture = Texture::Create(std::filesystem::path(path).string());
+          LOG_INFO("Editor") << "Sprite texture -> " << std::filesystem::path(path).filename().string();
+        }
+        ImGui::EndDragDropTarget();
+      }
+      if (component.texture && ImGui::BeginPopupContextItem("SpriteTexture")) {
+        if (ImGui::MenuItem("Clear")) {
+          component.texture = nullptr;
+        }
+        ImGui::EndPopup();
+      }
+      ImGui::Text("Texture");
+      ImGui::EndGroup();
+      ImGui::SameLine();
+      ImGui::BeginGroup();
+      if (component.texture) {
+        ImGui::Text("%d x %d px", component.texture->GetWidth(), component.texture->GetHeight());
+      } else {
+        ImGui::TextDisabled("No texture (plain tinted quad).\nDrag an image here.");
+      }
+      ImGui::EndGroup();
+
+      ImGui::ColorEdit4("Tint", glm::value_ptr(component.color));
+      ImGui::DragFloat2("Size (world units)", glm::value_ptr(component.size), 0.05f, 0.001f, 1000.0f);
+      ImGui::DragFloat2("Tiling", glm::value_ptr(component.tiling), 0.05f, 0.0f, 1000.0f);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Texture repeats across the quad. (1,1) stretches the texture;\n"
+                          "a larger value turns the sprite into a repeating pattern.\n"
+                          "Tiling != Size stretches the texels: use Tile for a seamless\n"
+                          "background whose cells stay square.");
+      }
+      ImGui::Checkbox("Flip X", &component.flip_x);
+      ImGui::SameLine();
+      ImGui::Checkbox("Flip Y", &component.flip_y);
+      ImGui::DragInt("Sorting Layer", &component.sorting_layer, 0.2f);
+      ImGui::DragInt("Order in Layer", &component.order_in_layer, 0.2f);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Translucent items are drawn in (Sorting Layer, Order in Layer)\n"
+                          "order - the 2D draw order. The entity's Z is not used for sorting.");
+      }
+      ImGui::DragFloat4("UV Rect", glm::value_ptr(component.uv_rect), 0.002f, 0.0f, 1.0f, "%.3f");
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Normalized (u0, v0, u1, v1) sub-rect of the texture:\n"
+                          "the whole texture by default, one sheet cell when animated.");
+      }
+      if (ImGui::Button("Whole Texture")) {
+        component.SetWholeTexture();
+      }
+      ImGui::SameLine();
+      SpriteSheet sheet{1, 1};
+      if (selected_entity_.HasComponent<SpriteAnimationComponent>()) {
+        sheet = selected_entity_.GetComponent<SpriteAnimationComponent>().sheet;
+      }
+      if (ImGui::Button("Fit to 32 px/unit")) {
+        component.FitPixels(sheet, 32.0f);
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Tile at 32 px/unit")) {
+        component.SetTiledSize(component.size, 32.0f);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Repeat the texture at its own size (32 px = 1 unit) over the\n"
+                          "current Size, so the pattern keeps square texels - the usual\n"
+                          "repeating-background setup.");
+      }
+    });
+
+    DrawComponent<SpriteAnimationComponent>("Sprite Animation (2D)", selected_entity_, [&](auto &component) {
+      ImGui::DragInt("Columns", &component.sheet.columns, 0.1f, 1, 64);
+      ImGui::SameLine();
+      ImGui::DragInt("Rows", &component.sheet.rows, 0.1f, 1, 64);
+      const int sheet_frames = component.sheet.FrameCount();
+      ImGui::DragInt("First Frame", &component.first_frame, 0.2f, 0, std::max(0, sheet_frames - 1));
+      ImGui::DragInt("Frame Count", &component.frame_count, 0.2f, 0, sheet_frames);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Frames in this clip (0 = the whole sheet), so several\n"
+                          "animations can share one texture (row 0 = walk, row 1 = idle, ...).");
+      }
+      ImGui::DragFloat("FPS", &component.fps, 0.1f, 0.0f, 240.0f);
+      ImGui::Checkbox("Loop", &component.loop);
+      ImGui::SameLine();
+      ImGui::Checkbox("Ping-pong", &component.ping_pong);
+      ImGui::SameLine();
+      ImGui::Checkbox("Playing", &component.playing);
+      ImGui::Checkbox("Play While Moving", &component.play_while_moving);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Walk-cycle mode: the clip runs only while the entity moves and\n"
+                          "returns to the first frame when it stops - move the entity with a\n"
+                          "script / physics / animation and the walk cycle follows.");
+      }
+
+      ImGui::Text("Sheet %d x %d = %d frames | clip %d frames | frame %d (sheet %d)", component.sheet.columns,
+                  component.sheet.rows, sheet_frames, component.FrameCount(), component.frame, component.SheetFrame());
+      int frame = component.frame;
+      if (ImGui::SliderInt("Scrub", &frame, 0, component.FrameCount() - 1)) {
+        component.frame = frame;
+        component.time  = (component.fps > 0.0f) ? static_cast<float>(frame) / component.fps : 0.0f;
+      }
+      ImGui::TextDisabled("Play mode advances the clip; Scrub previews frames in Edit mode.");
+
+      // Show the scrubbed frame immediately: Edit mode does not step the
+      // simulation, so the scene-level update never runs here.
+      if (selected_entity_.HasComponent<SpriteComponent>()) {
+        selected_entity_.GetComponent<SpriteComponent>().SetSheetFrame(component.sheet, component.SheetFrame());
+      }
+    });
+
+    DrawComponent<RigidBodyComponent>("Rigid Body", selected_entity_, [](auto &component) {
+      const char *types[] = {"Static", "Dynamic"};
+      int         current = component.type == RigidBodyComponent::Type::Static ? 0 : 1;
+      if (ImGui::Combo("Type", &current, types, 2)) {
+        component.type = current == 0 ? RigidBodyComponent::Type::Static : RigidBodyComponent::Type::Dynamic;
+      }
+      ImGui::SliderFloat("Friction", &component.friction, 0.0f, 1.0f);
+      ImGui::SliderFloat("Restitution", &component.restitution, 0.0f, 1.0f);
+      ImGui::Checkbox("Continuous (CCD)", &component.continuous_collision);
+      ImGui::Checkbox("Sensor (trigger)", &component.is_sensor);
+    });
+
+    DrawComponent<ColliderComponent>("Collider", selected_entity_, [](auto &component) {
+      const char *shapes[] = {"Box", "Sphere", "Capsule", "Cylinder"};
+      int         current  = static_cast<int>(component.shape);
+      if (ImGui::Combo("Shape", &current, shapes, 4)) {
+        component.shape = static_cast<ColliderComponent::Shape>(current);
+      }
+      switch (component.shape) {
+        case ColliderComponent::Shape::Sphere:
+          ImGui::DragFloat("Radius", &component.sphere_radius, 0.01f, 0.01f, 100.0f);
+          break;
+        case ColliderComponent::Shape::Capsule:
+          ImGui::DragFloat("Radius", &component.capsule_radius, 0.01f, 0.01f, 100.0f);
+          ImGui::DragFloat("Half Height", &component.capsule_half_height, 0.01f, 0.01f, 100.0f);
+          break;
+        case ColliderComponent::Shape::Cylinder:
+          ImGui::DragFloat("Radius", &component.cylinder_radius, 0.01f, 0.01f, 100.0f);
+          ImGui::DragFloat("Half Height", &component.cylinder_half_height, 0.01f, 0.01f, 100.0f);
+          break;
+        case ColliderComponent::Shape::Box:
+        default:
+          DrawVec3Control("Half Extents", component.box_half_extents, 1.0f);
+          break;
+      }
+      DrawVec3Control("Offset", component.offset, 1.0f);
+    });
+
+    // Compound collider group: extra shapes merged with the primary collider.
+    DrawComponent<ColliderGroupComponent>("Collider Group", selected_entity_, [](auto &group) {
+      constexpr const char *kShapeNames[] = {"Box", "Sphere", "Capsule", "Cylinder"};
+
+      const auto draw_shape = [&kShapeNames](ColliderShapeData &s) {
+        int current = static_cast<int>(s.shape);
+        if (ImGui::Combo("Type", &current, kShapeNames, 4)) {
+          s.shape = static_cast<ColliderShapeData::Shape>(current);
+        }
+        switch (s.shape) {
+          case ColliderShapeData::Shape::Sphere:
+            ImGui::DragFloat("Radius", &s.sphere_radius, 0.01f, 0.01f, 100.0f);
+            break;
+          case ColliderShapeData::Shape::Capsule:
+            ImGui::DragFloat("Radius", &s.capsule_radius, 0.01f, 0.01f, 100.0f);
+            ImGui::DragFloat("Half Height", &s.capsule_half_height, 0.01f, 0.01f, 100.0f);
+            break;
+          case ColliderShapeData::Shape::Cylinder:
+            ImGui::DragFloat("Radius", &s.cylinder_radius, 0.01f, 0.01f, 100.0f);
+            ImGui::DragFloat("Half Height", &s.cylinder_half_height, 0.01f, 0.01f, 100.0f);
+            break;
+          case ColliderShapeData::Shape::Box:
+          default:
+            DrawVec3Control("Half Extents", s.box_half_extents, 1.0f);
+            break;
+        }
+        DrawVec3Control("Offset", s.offset, 1.0f);
+      };
+
+      for (size_t i = 0; i < group.shapes.size();) {
+        ImGui::PushID(static_cast<int>(i));
+        ImGui::Text("Shape %zu", i + 1);
+        draw_shape(group.shapes[i]);
+        if (ImGui::Button("Remove")) {
+          group.shapes.erase(group.shapes.begin() + static_cast<ptrdiff_t>(i));
+          ImGui::PopID();
+          ImGui::Separator();
+          continue;  // don't advance i
+        }
+        ImGui::PopID();
+        ImGui::Separator();
+        ++i;
+      }
+      if (ImGui::Button("Add Shape")) {
+        group.shapes.push_back(ColliderShapeData{});
+      }
+      ImGui::TextDisabled("Extra shapes are merged with the primary collider into one body.");
+    });
+
+    DrawComponent<CameraController>("Camera Controller", selected_entity_, [](auto &component) {
+      ImGui::DragFloat("Move Speed", &component.move_speed, 0.1f, 0.0f, 100.0f);
+      ImGui::DragFloat("Look Sensitivity", &component.look_sensitivity, 0.01f, 0.0f, 2.0f);
+    });
+
+    DrawComponent<LuaScriptComponent>("Lua Script", selected_entity_, [&](auto &component) {
+      char buffer[512] = {};
+      std::snprintf(buffer, sizeof(buffer), "%s", component.path.c_str());
+      if (ImGui::InputText("Path", buffer, sizeof(buffer))) {
+        component.path = std::string(buffer);
+      }
+      ImGui::TextDisabled("Relative to the asset root, e.g. scripts/enemy.lua");
+
+      // Quick picker listing the scripts in assets/scripts/.
+      const char *preview = component.path.empty() ? "<select a script>" : component.path.c_str();
+      ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+      if (ImGui::BeginCombo("##LuaScriptPicker", preview)) {
+        for (const std::string &relative : ListLuaScriptPaths()) {
+          if (ImGui::Selectable(relative.c_str(), relative == component.path)) {
+            component.path = relative;
+          }
+        }
+        ImGui::EndCombo();
+      }
+
+      // Drop a .lua from the Content Browser here to assign it.
+      FullWidthDropZone("##LuaScriptDropZone", 20.0f);
+      if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+          const std::filesystem::path file_path(static_cast<const wchar_t *>(payload->Data));
+          if (file_path.extension() == ".lua") {
+            component.path = ToAssetRelativePath(file_path);
+          }
+        }
+        ImGui::EndDragDropTarget();
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Drop a .lua file from the Content Browser to assign it");
+      }
+
+      if (!component.path.empty()) {
+        if (ImGui::Button("Open in Script Editor")) {
+          OpenScriptInEditor(component.path);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Reload")) {
+          active_scene_->GetScriptEngine().ReloadScript(component.path);
+        }
+      }
+    });
+  } else {
+    ImGui::TextDisabled("Select an entity in the Scene panel to edit its properties.");
   }
 
   ImGui::End();
+}
+
+void Editor::ShowImGuiLighting() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Lighting");
+
+  ImGui::TextDisabled("Lights are scene entities - move / aim them with the gizmos,");
+  ImGui::TextDisabled("edit Color & intensity in Properties.");
+
+  // --- Directional lights (entities): first = shadowing sun, rest = fill ----
+  ImGui::Separator();
+  ImGui::TextUnformatted("Directional Lights");
+  if (ImGui::Button("Add Directional Light")) {
+    CreateDirectionalLightEntity();
+  }
+  {
+    auto dirs = active_scene_->GetAllEntitiesWith<DirectionalLightComponent>();
+    if (dirs.empty()) {
+      ImGui::TextDisabled("None yet (using the Scene Sun below).");
+    }
+    int index = 0;
+    for (auto &e : dirs) {
+      const std::string &name = e.GetComponent<Tag>().tag;
+      if (ImGui::Selectable(name.c_str(), e == selected_entity_)) {
+        selected_entity_ = e;
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip(index == 0
+                              ? "Primary sun - casts shadows. Rotate with the gizmo (E) to aim."
+                              : "Additional (fill) directional light - no shadow.");
+      }
+      ++index;
+    }
+    if (!dirs.empty()) {
+      ImGui::TextDisabled("First entity = primary (casts shadows); the rest are fill lights.");
+    }
+  }
+
+  // Scene sun (used while no directional entity is in the scene).
+  if (active_scene_->GetAllEntitiesWith<DirectionalLightComponent>().empty()) {
+    DirectionalLight &dir_light = active_scene_->GetLight();
+    ImGui::TextUnformatted("Scene Sun");
+    DrawVec3Control("Direction (travel)", dir_light.direction);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("Direction the light TRAVELS (away from the sun).\n"
+                        "The sun is at the opposite end.\n"
+                        "e.g. (0, -1, 0) = sun straight above.\n"
+                        "Filling in the sun position instead makes shading look inverted.");
+    }
+    ImGui::ColorEdit3("Color", glm::value_ptr(dir_light.color));
+    DrawVec3Control("Ambient", dir_light.ambient);
+    DrawVec3Control("Diffuse", dir_light.diffuse);
+    DrawVec3Control("Specular", dir_light.specular);
+  }
+
+  // --- Point lights (ECS entities) ----------------------------------------
+  ImGui::Separator();
+  ImGui::TextUnformatted("Point Lights");
+  if (ImGui::Button("Add Point Light")) {
+    CreatePointLightEntity();
+  }
+  {
+    auto lights = active_scene_->GetAllEntitiesWith<PointLightComponent>();
+    if (lights.empty()) {
+      ImGui::TextDisabled("None yet.");
+    }
+    for (auto &e : lights) {
+      const std::string &name = e.GetComponent<Tag>().tag;
+      if (ImGui::Selectable(name.c_str(), e == selected_entity_)) {
+        selected_entity_ = e;
+      }
+      if (ImGui::IsItemHovered()) {
+        const PointLight &pl = e.GetComponent<PointLightComponent>().light;
+        ImGui::SetTooltip("Color (%.2f, %.2f, %.2f)\nIntensity %.1f  Radius %.1f\nCasts shadow: %s",
+                          pl.color.x, pl.color.y, pl.color.z, pl.intensity, pl.radius,
+                          pl.casts_shadow ? "yes" : "no");
+      }
+    }
+  }
+
+  // --- Spot lights (ECS entities) -----------------------------------------
+  ImGui::Separator();
+  ImGui::TextUnformatted("Spot Lights");
+  if (ImGui::Button("Add Spot Light")) {
+    CreateSpotLightEntity();
+  }
+  {
+    auto lights = active_scene_->GetAllEntitiesWith<SpotLightComponent>();
+    if (lights.empty()) {
+      ImGui::TextDisabled("None yet.");
+    }
+    for (auto &e : lights) {
+      const std::string &name = e.GetComponent<Tag>().tag;
+      if (ImGui::Selectable(name.c_str(), e == selected_entity_)) {
+        selected_entity_ = e;
+      }
+      if (ImGui::IsItemHovered()) {
+        const SpotLight &sl = e.GetComponent<SpotLightComponent>().light;
+        ImGui::SetTooltip("Color (%.2f, %.2f, %.2f)\nRange %.1f  Intensity %.1f", sl.color.x,
+                          sl.color.y, sl.color.z, sl.range, sl.intensity);
+      }
+    }
+  }
+  ImGui::TextDisabled("Delete lights in the Scene panel; edit values in Properties.");
+
+  ImGui::End();
+}
+
+void Editor::ShowImGuiRendering() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Rendering");
+
+  int         render_mode = static_cast<int>(active_scene_->GetRenderMode());
+  const char *items[]     = {"Lit", "Unlit", "Wireframe"};
+  if (ImGui::Combo("Render Mode", &render_mode, items, 3)) {
+    active_scene_->SetRenderMode(static_cast<RenderMode>(render_mode));
+  }
+
+  ImGui::Checkbox("Show Colliders", &show_colliders_);
+
+  const char *tone_items[] = {"ACES + Gamma", "Linear (raw)", "LO HDR (1-exp)", "Reinhard + Gamma"};
+  int         tone         = 0;
+  if (active_scene_->IsLinearOutput()) {
+    tone = 1;
+  } else if (active_scene_->IsLoHdrTone()) {
+    tone = 2;
+  } else if (active_scene_->IsReinhardTone()) {
+    tone = 3;
+  }
+  if (ImGui::Combo("Tone Mapping", &tone, tone_items, 4)) {
+    active_scene_->SetLinearOutput(tone == 1);
+    active_scene_->SetLoHdrTone(tone == 2);
+    active_scene_->SetReinhardTone(tone == 3);
+  }
+
+  bool bloom = active_scene_->IsBloomEnabled();
+  if (ImGui::Checkbox("HDR (Bloom)", &bloom)) {
+    active_scene_->SetBloomEnabled(bloom);
+  }
+
+  float exposure = active_scene_->GetExposure();
+  if (ImGui::SliderFloat("Exposure", &exposure, 0.0f, 5.0f)) {
+    active_scene_->SetExposure(exposure);
+  }
+
+  float bloom_strength = active_scene_->GetBloomStrength();
+  if (ImGui::SliderFloat("Bloom Strength", &bloom_strength, 0.0f, 1.0f)) {
+    active_scene_->SetBloomStrength(bloom_strength);
+  }
+
+  float bloom_threshold = active_scene_->GetBloomThreshold();
+  if (ImGui::SliderFloat("Bloom Threshold", &bloom_threshold, 0.0f, 5.0f)) {
+    active_scene_->SetBloomThreshold(bloom_threshold);
+  }
+
+  float god_rays = active_scene_->GetGodRaysStrength();
+  if (ImGui::SliderFloat("God Rays", &god_rays, 0.0f, 1.0f)) {
+    active_scene_->SetGodRaysStrength(god_rays);
+  }
+
+  ImGui::Separator();
+
+  bool ssao = active_scene_->IsSSAOEnabled();
+  if (ImGui::Checkbox("SSAO", &ssao)) {
+    active_scene_->SetSSAOEnabled(ssao);
+  }
+
+  bool taa = active_scene_->IsTAAEnabled();
+  if (ImGui::Checkbox("TAA", &taa)) {
+    active_scene_->SetTAAEnabled(taa);
+  }
+
+  ImGui::Separator();
+
+  bool skybox = active_scene_->IsSkyboxEnabled();
+  if (ImGui::Checkbox("Skybox", &skybox)) {
+    active_scene_->SetSkyboxEnabled(skybox);
+  }
+  if (!skybox) {
+    glm::vec3 bg = active_scene_->GetBackgroundColor();
+    if (ImGui::ColorEdit3("Background", glm::value_ptr(bg))) {
+      active_scene_->SetBackgroundColor(bg);
+    }
+  }
+
+  ImGui::TextDisabled("Drag a .hdr below to replace the skybox / IBL environment");
+  FullWidthDropZone("##EnvDrop", 22.0f);
+  const ImVec2 env_min = ImGui::GetItemRectMin();
+  const ImVec2 env_max = ImGui::GetItemRectMax();
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM")) {
+      const std::filesystem::path file(static_cast<const wchar_t *>(payload->Data));
+      if (file.extension().string() == ".hdr") {
+        active_scene_->SetEnvironmentHdr(file.string(), env_hdr_flip_);
+        LOG_INFO("Editor") << "Environment HDR set to " << file.string();
+      } else {
+        LOG_WARN("Editor") << "Environment expects an equirectangular .hdr file, got "
+                            << file.extension().string();
+      }
+    }
+    ImGui::EndDragDropTarget();
+  }
+  ImGui::GetWindowDrawList()->AddRect(env_min, env_max, ImGui::GetColorU32(ImGuiCol_Separator));
+  ImGui::SetCursorScreenPos(ImVec2(env_min.x + 6.0f, env_min.y + 3.0f));
+  ImGui::TextColored(ImVec4(0.55f, 0.70f, 1.0f, 1.0f), "( .hdr )");
+  if (ImGui::Checkbox("Flip V (glTF)", &env_hdr_flip_)) {
+    active_scene_->SetEnvironmentHdr(Application::GetEnvironmentHdrPath(), env_hdr_flip_);
+  }
+
+  bool ibl_spec = active_scene_->IsIblSpecular();
+  if (ImGui::Checkbox("IBL Specular", &ibl_spec)) {
+    active_scene_->SetIblSpecular(ibl_spec);
+  }
+
+  float ibl = active_scene_->GetIblIntensity();
+  if (ImGui::SliderFloat("IBL Intensity", &ibl, 0.0f, 2.0f)) {
+    active_scene_->SetIblIntensity(ibl);
+  }
+
+  float pcf = active_scene_->GetShadowPcfRadius();
+  if (ImGui::SliderFloat("Shadow PCF Radius", &pcf, 0.0f, 8.0f)) {
+    active_scene_->SetShadowPcfRadius(pcf);
+  }
+
+  ImGui::End();
+}
+
+void Editor::ShowImGuiLog() {
+  PROFILER_FUNCTION();
+
+  // State persists across frames.
+  static char                     search[128] = {};
+  static bool                     auto_scroll = true;
+  static bool                     show_trace  = false;
+  static bool                     show_debug  = false;
+  static bool                     show_info   = true;
+  static bool                     show_warn   = true;
+  static bool                     show_error  = true;
+  static bool                     show_fatal  = true;
+  static std::vector<std::string> lines;
+  static std::uintmax_t           cached_size = 0;
+
+  ImGui::Begin("Log");
+
+  // Toolbar: Clear | Auto-scroll | Search.
+  if (ImGui::Button("Clear")) {
+    std::ofstream(std::string(kLogFileName), std::ios::trunc).close();
+    lines.clear();
+    cached_size = 0;
+  }
+  ImGui::SameLine();
+  ImGui::Checkbox("Auto-scroll", &auto_scroll);
+  ImGui::SameLine();
+  ImGui::SetNextItemWidth(220.0f);
+  ImGui::InputTextWithHint("##LogSearch", "Search...", search, sizeof(search));
+
+  // Level filter toggles (colored buttons).
+  struct LevelToggle {
+    const char *name;
+    bool       *flag;
+    ImVec4      color;
+  };
+  static const LevelToggle toggles[] = {
+      {"TRACE", &show_trace, {0.58f, 0.61f, 0.65f, 1.0f}}, {"DEBUG", &show_debug, {0.33f, 0.62f, 0.95f, 1.0f}},
+      {"INFO", &show_info, {0.42f, 0.78f, 0.64f, 1.0f}},   {"WARN", &show_warn, {0.93f, 0.74f, 0.20f, 1.0f}},
+      {"ERROR", &show_error, {0.90f, 0.34f, 0.34f, 1.0f}}, {"FATAL", &show_fatal, {0.82f, 0.30f, 0.55f, 1.0f}},
+  };
+  for (const auto &toggle : toggles) {
+    const ImVec4 c = *toggle.flag ? toggle.color : ImVec4(0.28f, 0.29f, 0.31f, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, c);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, c);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, c);
+    if (ImGui::SmallButton(toggle.name)) {
+      *toggle.flag = !*toggle.flag;
+    }
+    ImGui::PopStyleColor(3);
+    ImGui::SameLine();
+  }
+  ImGui::NewLine();
+
+  ImGui::Separator();
+
+  // Reload the file only when its size changed (or after Clear).
+  const std::string    log_path(kLogFileName);
+  const std::uintmax_t size = std::filesystem::exists(log_path) ? std::filesystem::file_size(log_path) : 0;
+  if (size != cached_size) {
+    cached_size = size;
+    lines.clear();
+    std::ifstream file(log_path);
+    std::string   line;
+    while (std::getline(file, line)) {
+      lines.push_back(line);
+    }
+  }
+
+  const bool auto_scroll_this_frame = auto_scroll;
+  if (mono_font_) ImGui::PushFont(mono_font_);
+  ImGui::BeginChild("##LogText", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+  const bool at_bottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY();
+
+  for (const std::string &line : lines) {
+    const LogLevel level    = ParseLogLevel(line);
+    const bool     level_ok = (level == LogLevel::Trace && show_trace) || (level == LogLevel::Debug && show_debug) ||
+                              (level == LogLevel::Info && show_info) || (level == LogLevel::Warn && show_warn) ||
+                              (level == LogLevel::Error && show_error) || (level == LogLevel::Fatal && show_fatal) ||
+                              (level == LogLevel::Unknown);
+    if (!level_ok) {
+      continue;
+    }
+    if (search[0] != '\0' && !ContainsIgnoreCase(line, search)) {
+      continue;
+    }
+
+    ImGui::PushStyleColor(ImGuiCol_Text, LogLevelColor(level));
+    ImGui::TextUnformatted(line.c_str());
+    ImGui::PopStyleColor();
+  }
+
+  if (auto_scroll_this_frame && at_bottom) {
+    ImGui::SetScrollHereY(1.0f);
+  }
+
+  ImGui::EndChild();
+  if (mono_font_) ImGui::PopFont();
+  ImGui::End();
+}
+
+void Editor::ShowImGuiInformation() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Information");
+  ImGui::Text("FPS: %d", GetFPS());
+
+  // Live render statistics (draw calls / triangles / culling / pass times).
+  ImGui::Separator();
+  ImGui::TextUnformatted("Render Stats");
+  if (active_scene_) {
+    const auto &stats = active_scene_->GetRenderStats();
+    ImGui::Text("Draw calls:   %llu", static_cast<unsigned long long>(stats.draw_calls));
+    ImGui::Text("Instanced:    %llu", static_cast<unsigned long long>(stats.instanced_draws));
+    ImGui::Text("Triangles:    %llu", static_cast<unsigned long long>(stats.triangles));
+    ImGui::Text("Culled:       %llu", static_cast<unsigned long long>(stats.culled_entities));
+    float pass_ms[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    active_scene_->GetLastPassTimes(pass_ms);
+    ImGui::Text("Shadow/Point/SSAO/Main/Post: %.2f / %.2f / %.2f / %.2f / %.2f ms", pass_ms[0], pass_ms[1],
+                pass_ms[2], pass_ms[3], pass_ms[5]);
+  }
+  ImGui::Separator();
+
+  ImGui::Text("Editor Camera");
+  if (Is2DView()) {
+    // The 2D workspace camera: an XY center plus a zoom, mirroring the controls
+    // a 2D view offers in other engines.
+    ImGui::DragFloat2("Center (XY)", &editor_camera_.view_center.x, 0.01f);
+    ImGui::DragFloat("Zoom size", &editor_camera_.ortho_size, 0.05f, 0.25f, 500.0f);
+    ImGui::TextDisabled("Half-height of the visible area = %.2f units", editor_camera_.ortho_size);
+  } else {
+    DrawVec3Control("Target", editor_camera_.target);
+    ImGui::DragFloat("Yaw", &editor_camera_.yaw, 0.5f);
+    ImGui::DragFloat("Pitch", &editor_camera_.pitch, 0.5f, -89.0f, 89.0f);
+    ImGui::DragFloat("Distance", &editor_camera_.distance, 0.1f, 0.1f, 10000.0f);
+    ImGui::DragFloat("FOV", &editor_camera_.fov, 0.5f, 1.0f, 179.0f);
+  }
+  if (ImGui::Button("Reset Camera")) {
+    editor_camera_.Reset();
+  }
+  ImGui::End();
+}
+
+void Editor::ShowImGuiContentBrowser() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Content Browser");
+
+  // ---- Toolbar: back, current path, search, thumbnail size ----
+  const bool at_root = current_directory_ == std::filesystem::path(base_directory_);
+  if (at_root) {
+    ImGui::BeginDisabled();
+  }
+  if (ImGui::Button("<-")) {
+    current_directory_ = current_directory_.parent_path();
+  }
+  if (at_root) {
+    ImGui::EndDisabled();
+  }
+  ImGui::SameLine();
+
+  std::string rel = std::filesystem::relative(current_directory_, base_directory_).string();
+  if (rel.empty()) {
+    rel = ".";
+  }
+  ImGui::TextDisabled("%s", ("assets/" + rel).c_str());
+  ImGui::SameLine();
+
+  static char search[256] = {};
+  ImGui::SetNextItemWidth(200.0f);
+  ImGui::InputTextWithHint("##ContentBrowserSearch", "Search...", search, sizeof(search));
+  ImGui::SameLine();
+
+  static float thumbnailSize = 96.0f;
+  ImGui::SetNextItemWidth(140.0f);
+  ImGui::SliderFloat("Size", &thumbnailSize, 32.0f, 256.0f, "%.0f");
+  ImGui::Separator();
+
+  // ---- Grid of assets ----
+  constexpr float kPad    = 12.0f;
+  const float     cell_w  = thumbnailSize + kPad;
+  const float     label_h = ImGui::GetTextLineHeightWithSpacing() * 2.0f + 4.0f;
+  const float     cell_h  = thumbnailSize + label_h + kPad;
+  const float     hit_h   = thumbnailSize + label_h;
+
+  ImGui::BeginChild("##ContentBrowserGrid", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+  const float avail_x = ImGui::GetContentRegionAvail().x;
+  const int   cols    = std::max(1, static_cast<int>(avail_x / cell_w));
+
+  ImDrawList      *draw = ImGui::GetWindowDrawList();
+  constexpr ImVec2 grid_origin(kPad, kPad);  // window-local grid origin
+
+  int index = 0;
+  for (const auto &entry : std::filesystem::directory_iterator(current_directory_)) {
+    const auto       &path   = entry.path();
+    const std::string name   = path.filename().string();
+    const bool        is_dir = entry.is_directory();
+
+    if (search[0] != '\0' && !ContainsIgnoreCase(name, search)) {
+      continue;
+    }
+
+    const int col = index % cols;
+    const int row = index / cols;
+
+    ImGui::PushID(name.c_str());
+
+    // Hit target covering the thumbnail + label. Window-local coords so the
+    // child window's scrolling is handled by ImGui automatically.
+    ImGui::SetCursorPos(ImVec2(grid_origin.x + col * cell_w, grid_origin.y + row * cell_h));
+    ImGui::InvisibleButton("##Cell", ImVec2(thumbnailSize, hit_h));
+    const bool   hovered   = ImGui::IsItemHovered();
+    const ImVec2 thumb_min = ImGui::GetItemRectMin();  // screen, scroll-adjusted
+    const ImVec2 thumb_max(thumb_min.x + thumbnailSize, thumb_min.y + thumbnailSize);
+
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+      std::filesystem::path abs_path(path);
+      const wchar_t        *item_path = abs_path.c_str();
+      ImGui::SetDragDropPayload("CONTENT_BROWSER_ITEM", item_path, (wcslen(item_path) + 1) * sizeof(wchar_t));
+      ImGui::EndDragDropSource();
+    }
+
+    // Hover highlight behind the thumbnail.
+    if (hovered) {
+      draw->AddRectFilled(thumb_min, thumb_max, ImGui::GetColorU32(ImVec4(0.22f, 0.45f, 0.90f, 0.40f)));
+    }
+
+    // Thumbnail: folder icon / image preview / file icon.
+    if (is_dir) {
+      DrawFolderIcon(draw, thumb_min, thumb_max);
+    } else if (IsImageFile(path)) {
+      const std::string key = path.string();
+      auto              it  = thumbnail_cache_.find(key);
+      if (it == thumbnail_cache_.end()) {
+        std::shared_ptr<Texture> thumb = Texture::Create(key);
+        if (thumb) {
+          it = thumbnail_cache_.emplace(key, thumb).first;
+        }
+      }
+      const bool have_thumb = it != thumbnail_cache_.end() && it->second && it->second->GetID() != 0;
+      if (have_thumb) {
+        draw->AddImage(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(it->second->GetID())), thumb_min, thumb_max,
+                       ImVec2(0, 1), ImVec2(1, 0));
+      } else if (file_icon_ && file_icon_->GetID() != 0) {
+        draw->AddImage(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(file_icon_->GetID())), thumb_min, thumb_max,
+                       ImVec2(0, 1), ImVec2(1, 0));
+      }
+    } else if (file_icon_ && file_icon_->GetID() != 0) {
+      draw->AddImage(reinterpret_cast<ImTextureID>(static_cast<intptr_t>(file_icon_->GetID())), thumb_min, thumb_max,
+                     ImVec2(0, 1), ImVec2(1, 0));
+    }
+
+    // Label centered under the thumbnail (window-local coordinates).
+    const ImVec2 text_size = ImGui::CalcTextSize(name.c_str(), nullptr, false, thumbnailSize - 4.0f);
+    const float  label_x   = grid_origin.x + col * cell_w + std::max(0.0f, (thumbnailSize - text_size.x)) * 0.5f;
+    const float  label_y   = grid_origin.y + row * cell_h + thumbnailSize + 4.0f;
+    ImGui::SetCursorPos(ImVec2(label_x, label_y));
+    ImGui::PushTextWrapPos(grid_origin.x + col * cell_w + thumbnailSize);
+    ImGui::TextUnformatted(name.c_str());
+    ImGui::PopTextWrapPos();
+
+    // Double-click a folder to enter it.
+    if (is_dir && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+      current_directory_ /= path.filename();
+      ImGui::PopID();
+      break;
+    }
+
+    // Double-click a .lua script to open it in the Script Editor.
+    if (!is_dir && path.extension() == ".lua" && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+      OpenScriptInEditor(ToAssetRelativePath(path));
+    }
+
+    ImGui::PopID();
+    ++index;
+  }
+
+  ImGui::EndChild();
+  ImGui::End();
+}
+
+void Editor::LoadScriptIntoBuffer(const std::string &relative) {
+  std::memset(script_code_, 0, sizeof(script_code_));
+  std::ifstream in(AssetManager::Instance().Resolve(relative));
+  if (in) {
+    in.read(script_code_, sizeof(script_code_) - 1);
+  }
+  current_script_path_ = relative;
+  script_dirty_        = false;
+}
+
+bool Editor::SaveCurrentScript() {
+  if (current_script_path_.empty()) return false;
+  if (!script_dirty_) return true;  // nothing to save (avoids pointless reloads)
+
+  std::ofstream out(AssetManager::Instance().Resolve(current_script_path_));
+  if (!out) {
+    LOG_ERROR("Editor") << "Failed to open script for writing: " << current_script_path_;
+    return false;
+  }
+  out << script_code_;
+  script_dirty_ = false;
+  LOG_INFO("Editor") << "Saved script " << current_script_path_;
+
+  // Hot-reload running instances (re-runs OnStart) when in Play mode.
+  active_scene_->GetScriptEngine().ReloadScript(current_script_path_);
+  return true;
+}
+
+void Editor::OpenScriptInEditor(const std::string &relative) {
+  if (relative.empty()) return;
+  show_script_editor_ = true;
+  if (relative == current_script_path_) return;  // already open (dirty or not)
+  if (script_dirty_ && script_pending_path_.empty()) {
+    script_pending_path_   = relative;
+    script_pending_create_ = false;
+    ImGui::OpenPopup("ScriptEditorUnsavedChanges");
+    return;
+  }
+  if (!script_dirty_) {
+    LoadScriptIntoBuffer(relative);
+  }
+}
+
+void Editor::ApplyScriptPending() {
+  if (script_pending_path_.empty()) return;
+  if (script_pending_create_) {
+    const std::filesystem::path resolved = AssetManager::Instance().Resolve(script_pending_path_);
+    const std::filesystem::path dir      = resolved.parent_path();
+    if (!std::filesystem::exists(dir)) {
+      std::filesystem::create_directories(dir);
+    }
+    if (!std::filesystem::exists(resolved)) {
+      std::ofstream out(resolved);
+      if (out) {
+        out << kLuaScriptTemplate;
+        LOG_INFO("Editor") << "Created script " << script_pending_path_;
+      } else {
+        LOG_ERROR("Editor") << "Failed to create script " << script_pending_path_;
+      }
+    }
+  }
+  LoadScriptIntoBuffer(script_pending_path_);
+  script_pending_path_.clear();
+  script_pending_create_ = false;
+}
+
+void Editor::ShowImGuiScriptEditor() {
+  PROFILER_FUNCTION();
+
+  const bool dirty = script_dirty_ && !current_script_path_.empty();
+  ImGui::Begin("Script Editor");
+
+  // Ctrl+S saves the open script while this window (or its text field) has focus.
+  const ImGuiIO &io = ImGui::GetIO();
+  if (dirty && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_S, false) &&
+      ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)) {
+    SaveCurrentScript();
+  }
+
+  // ---- Left: script list ----
+  ImGui::BeginChild("##ScriptList", ImVec2(210.0f, 0.0f), true);
+  if (ImGui::Button("New Script", ImVec2(-1.0f, 0.0f))) {
+    ImGui::OpenPopup("NewScriptName");
+  }
+  if (ImGui::BeginPopup("NewScriptName")) {
+    static char name[128] = "new_script.lua";
+    ImGui::Text("Name (optional .lua extension)");
+    ImGui::SetNextItemWidth(240.0f);
+    ImGui::InputText("##NewScriptNameField", name, sizeof(name));
+    ImGui::TextDisabled("Created in assets/scripts/");
+    const bool create_pressed = ImGui::Button("Create", ImVec2(120.0f, 0.0f));
+    if (create_pressed) {
+      std::string file_name = name;
+      // Trim surrounding whitespace.
+      const auto not_space = [](unsigned char c) { return !std::isspace(c); };
+      const auto first     = std::find_if(file_name.begin(), file_name.end(), not_space);
+      const auto last      = std::find_if(file_name.rbegin(), file_name.rend(), not_space).base();
+      file_name            = (first < last) ? std::string(first, last) : std::string();
+      if (file_name.find_first_of("/\\") != std::string::npos) {
+        LOG_WARN("Editor") << "Script name must not contain path separators";
+      } else if (!file_name.empty()) {
+        if (file_name.rfind(".lua") == std::string::npos) file_name += ".lua";
+        script_pending_path_   = "scripts/" + file_name;
+        script_pending_create_ = true;
+        if (dirty) {
+          ImGui::OpenPopup("ScriptEditorUnsavedChanges");
+        } else {
+          ApplyScriptPending();
+        }
+      }
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+  ImGui::Separator();
+  ImGui::TextDisabled("Scripts (assets/scripts/)");
+  ImGui::Separator();
+
+  const std::vector<std::string> scripts = ListLuaScriptPaths();
+  for (const std::string &relative : scripts) {
+    const std::string file_name = std::filesystem::path(relative).filename().string();
+    const bool        is_open   = relative == current_script_path_;
+    char              label[512];
+    std::snprintf(label, sizeof(label), "%s%s", file_name.c_str(), (is_open && dirty) ? " *" : "");
+    if (ImGui::Selectable(label, is_open)) {
+      OpenScriptInEditor(relative);
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("%s", relative.c_str());
+    }
+  }
+  if (scripts.empty()) {
+    ImGui::TextDisabled("No .lua scripts yet.");
+  }
+  ImGui::EndChild();
+
+  ImGui::SameLine();
+
+  // ---- Right: code editor + actions ----
+  ImGui::BeginChild("##ScriptEditorBody", ImVec2(0.0f, 0.0f), true);
+  if (current_script_path_.empty()) {
+    ImGui::TextWrapped("Select or create a Lua script on the left, or double-click a .lua file in the Content Browser.");
+  } else {
+    // Header row: path, dirty badge, Save / Revert / Attach.
+    ImGui::TextUnformatted(current_script_path_.c_str());
+    if (dirty) {
+      ImGui::SameLine();
+      ImGui::TextColored(ImVec4(0.85f, 0.45f, 0.05f, 1.0f), "* unsaved");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Save")) {
+      SaveCurrentScript();
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip("Save and hot-reload in the running scene (Ctrl+S)");
+    }
+    if (dirty) {
+      ImGui::SameLine();
+      if (ImGui::Button("Revert")) {
+        LoadScriptIntoBuffer(current_script_path_);
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Discard edits and reload from disk");
+      }
+    }
+
+    const bool can_attach = selected_entity_.GetHandle() != entt::null;
+    if (can_attach) {
+      ImGui::SameLine();
+      if (ImGui::Button("Attach to Selected")) {
+        if (!selected_entity_.HasComponent<LuaScriptComponent>()) {
+          selected_entity_.AddComponent<LuaScriptComponent>(current_script_path_);
+        } else {
+          selected_entity_.GetComponent<LuaScriptComponent>().path = current_script_path_;
+        }
+        LOG_INFO("Editor") << "Attached script " << current_script_path_ << " to entity '"
+                           << selected_entity_.GetComponent<Tag>().tag << "'";
+      }
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Add/update the Lua Script component on the entity selected in the Scene panel");
+      }
+    }
+    ImGui::Separator();
+
+    if (mono_font_) {
+      ImGui::PushFont(mono_font_);
+    }
+    const bool edited = ImGui::InputTextMultiline("##ScriptCode", script_code_, kScriptBufferSize, ImVec2(-1.0f, -1.0f),
+                                                  ImGuiInputTextFlags_AllowTabInput);
+    if (edited) {
+      script_dirty_ = true;
+    }
+    if (mono_font_) {
+      ImGui::PopFont();
+    }
+  }
+  ImGui::EndChild();
+
+  // ---- Unsaved-changes prompt (opened from list / New / Content Browser) ----
+  if (ImGui::BeginPopupModal("ScriptEditorUnsavedChanges", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    ImGui::TextWrapped("Save changes to '%s'?", current_script_path_.c_str());
+    ImGui::Separator();
+    const ImVec2 btn_size(150.0f, 0.0f);
+    bool         resolved = false;
+    if (ImGui::Button("Save", btn_size)) {
+      resolved = SaveCurrentScript();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Don't Save", btn_size)) {
+      resolved = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", btn_size)) {
+      script_pending_path_.clear();
+      script_pending_create_ = false;
+      ImGui::CloseCurrentPopup();
+    }
+    if (resolved) {
+      ApplyScriptPending();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+
+  ImGui::End();
+}
+
+void Editor::ShowImGuiTimeline() {
+  PROFILER_FUNCTION();
+  ImGui::Begin("Timeline");
+
+  // The scene has an explicit clip LENGTH (seconds). The playhead and loop wrap
+  // always move within [0, length] — independent of where keys happen to be, so
+  // the playhead is never "stuck" at 0.
+  const float length   = active_scene_->GetAnimationLength();
+  const float duration = active_scene_->GetAnimationDuration();
+
+  // --- Transport + clip length ----------------------------------------------
+  const bool playing = active_scene_->IsAnimationPlaying();
+  if (ImGui::Button(playing ? "Pause" : "Play")) {
+    if (!playing && !active_scene_->HasAnyAnimation()) {
+      LOG_INFO("Editor") << "Timeline: nothing animated yet — add a key first";
+    } else {
+      active_scene_->SetAnimationPlaying(!playing);
+      if (!playing && active_scene_->GetAnimationTime() >= length - 1e-3f) {
+        active_scene_->ResetAnimation();  // replay from the start
+      }
+    }
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("Stop")) {
+    active_scene_->SetAnimationPlaying(false);
+    active_scene_->ResetAnimation();
+  }
+  ImGui::SameLine();
+  bool loop = active_scene_->GetAnimationLoop();
+  if (ImGui::Checkbox("Loop", &loop)) {
+    active_scene_->SetAnimationLoop(loop);
+  }
+  ImGui::SameLine();
+  ImGui::Checkbox("Auto-Key", &auto_key_);
+
+  ImGui::SameLine();
+  ImGui::Text("|  Length");
+  ImGui::SameLine();
+  float len = length;
+  ImGui::SetNextItemWidth(64.0f);
+  if (ImGui::DragFloat("##anim_length", &len, 0.05f, 0.05f, 3600.0f, "%.2f s")) {
+    active_scene_->SetAnimationLength(len);
+  }
+  if (duration > 0.0f) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("(last key %.2fs)", duration);
+  }
+
+  // --- Numeric playhead (drag or type an exact time) -------------------------
+  ImGui::SetNextItemWidth(-1.0f);
+  float time = active_scene_->GetAnimationTime();
+  if (ImGui::DragFloat("##TimelineScrub", &time, 0.01f, 0.0f, length, "playhead  t = %.2f / %.2f s",
+                       ImGuiSliderFlags_AlwaysClamp)) {
+    active_scene_->SetAnimationTime(time);
+  }
+
+  if (!active_scene_->HasAnyAnimation()) {
+    ImGui::TextWrapped("Workflow: 1) select an entity and press a Key button below (t=0). "
+                       "2) Drag the ruler/playhead (or set Length) to a later time, move the entity — "
+                       "Auto-Key records it there. You can also drag keyframes (diamonds) to retime them.");
+  }
+
+  // --- Selected-entity keyframe editor ---------------------------------------
+  const bool has_target = selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_ &&
+                          selected_entity_.HasComponent<Transform>();
+  if (!has_target) {
+    ImGui::TextDisabled("Select an entity with a Transform to edit its keyframes.");
+    ImGui::End();
+    return;
+  }
+
+  Entity &target    = selected_entity_;
+  auto   &transform = target.GetComponent<Transform>();
+  if (target.HasComponent<Tag>()) {
+    ImGui::Text("Entity: %s", target.GetComponent<Tag>().tag.c_str());
+  }
+
+  AnimationComponent *anim = target.HasComponent<AnimationComponent>()
+                                 ? &target.GetComponent<AnimationComponent>()
+                                 : nullptr;
+
+  auto ensure_anim = [&]() -> AnimationComponent & {
+    if (anim == nullptr) {
+      target.AddComponent<AnimationComponent>();
+      anim = &target.GetComponent<AnimationComponent>();
+    }
+    return *anim;
+  };
+
+  using ChannelMember = std::vector<Keyframe> AnimationComponent::*;
+  struct ChannelInfo {
+    const char  *name;
+    ChannelMember member;
+    ImU32         color;
+  };
+  const ChannelInfo kChannels[3] = {
+      {"Translation", &AnimationComponent::translation_keys, IM_COL32(120, 190, 255, 255)},
+      {"Rotation", &AnimationComponent::rotation_keys, IM_COL32(255, 205, 120, 255)},
+      {"Scale", &AnimationComponent::scale_keys, IM_COL32(180, 235, 150, 255)},
+  };
+
+  // Adds a key at `at` recording the current (gizmo/playhead) pose.
+  const auto put_key = [&](int channel, float at, const glm::vec3 &value) {
+    auto       &a    = ensure_anim();
+    auto       &keys = a.*kChannels[channel].member;
+    const auto  it   = std::find_if(keys.begin(), keys.end(),
+                                    [&](const Keyframe &k) { return std::abs(k.time - at) < 1e-4f; });
+    if (it != keys.end()) {
+      it->value = value;
+    } else {
+      keys.push_back(Keyframe(at, value));
+      std::sort(keys.begin(), keys.end(), [](const Keyframe &x, const Keyframe &y) { return x.time < y.time; });
+    }
+    tl_sel_channel_ = channel;
+    tl_sel_time_    = at;
+  };
+  const float playhead_time = active_scene_->GetAnimationTime();
+
+  // --- "Add key @ playhead" buttons ------------------------------------------
+  if (ImGui::Button("Key Translation")) put_key(0, playhead_time, transform.translation);
+  ImGui::SameLine();
+  if (ImGui::Button("Key Rotation")) put_key(1, playhead_time, transform.rotation);
+  ImGui::SameLine();
+  if (ImGui::Button("Key Scale")) put_key(2, playhead_time, transform.scale);
+  ImGui::SameLine();
+  ImGui::TextDisabled("(records current pose at playhead)");
+  if (anim != nullptr && anim->Empty()) {
+    // Keys removed from every channel -> drop the now-useless component.
+    target.RemoveComponent<AnimationComponent>();
+    anim = nullptr;
+  }
+  ImGui::Separator();
+
+  // ==========================================================================
+  //  Keyframe graph (Godot/Unity style): time ruler + per-property lanes with
+  //  draggable keyframe diamonds.
+  // ==========================================================================
+  const float label_w = 90.0f;
+  const float lane_h  = 20.0f;
+  const float ruler_h = 22.0f;
+  const float left_x  = ImGui::GetCursorScreenPos().x;
+  const float top_y   = ImGui::GetCursorScreenPos().y;
+  const float avail_x = std::max(ImGui::GetContentRegionAvail().x, 60.0f);
+  const float lane_x0 = left_x + label_w;
+  const float lane_w  = std::max(avail_x - label_w - 6.0f, 20.0f);
+  const float px_per_s = length > 1e-4f ? lane_w / length : 0.0f;
+
+  const auto t_to_x = [&](float t) { return lane_x0 + t * px_per_s; };
+  const auto x_to_t = [&](float mx) {
+    return px_per_s > 0.0f ? std::max(0.0f, (mx - lane_x0) / px_per_s) : 0.0f;
+  };
+  auto scrub_to_x = [&](float mx) {
+    const float t = std::min(x_to_t(mx), length);
+    active_scene_->SetAnimationTime(t);
+  };
+
+  ImDrawList *dl = ImGui::GetWindowDrawList();
+  const float graph_bottom = top_y + ruler_h + 3.0f * lane_h;
+
+  // --- Ruler ---------------------------------------------------------------
+  ImGui::SetCursorScreenPos(ImVec2(lane_x0, top_y));
+  ImGui::InvisibleButton("##tl_ruler", ImVec2(lane_w, ruler_h));
+  if (ImGui::IsItemActive()) {
+    scrub_to_x(ImGui::GetIO().MousePos.x);
+  }
+  const float tick_step = length <= 2.0f   ? 0.25f
+                          : length <= 5.0f ? 0.5f
+                          : length <= 12.0f ? 1.0f
+                                            : 2.0f;
+  dl->AddRect(ImVec2(lane_x0, top_y), ImVec2(lane_x0 + lane_w, top_y + ruler_h), IM_COL32(120, 120, 120, 120));
+  for (float t = 0.0f; t <= length + 1e-4f; t += tick_step) {
+    const float x = t_to_x(t);
+    const bool  major = std::abs(t - std::floor(t + 1e-4f)) < 1e-3f;
+    dl->AddLine(ImVec2(x, top_y + (major ? 2.0f : 10.0f)), ImVec2(x, top_y + ruler_h - 2.0f),
+                IM_COL32(140, 140, 140, major ? 200 : 90));
+    if (major) {
+      char buf[16];
+      std::snprintf(buf, sizeof(buf), "%.0fs", t);
+      const ImVec2 ts = ImGui::CalcTextSize(buf);
+      dl->AddText(ImVec2(x - ts.x * 0.5f, top_y + 4.0f), IM_COL32(190, 190, 190, 220), buf);
+    }
+  }
+
+  // --- Lanes (T / R / S) ----------------------------------------------------
+  for (int c = 0; c < 3; ++c) {
+    const ChannelInfo &info = kChannels[c];
+    const float        y0   = top_y + ruler_h + static_cast<float>(c) * lane_h;
+
+    // Label + per-property quick-add.
+    ImGui::SetCursorScreenPos(ImVec2(left_x + 4.0f, y0));
+    ImGui::TextUnformatted(info.name);
+
+    // The lane itself: drag on empty space scrubs the playhead.
+    ImGui::SetCursorScreenPos(ImVec2(lane_x0, y0));
+    ImGui::InvisibleButton(("##tl_lane" + std::to_string(c)).c_str(), ImVec2(lane_w, lane_h));
+    if (ImGui::IsItemActive()) {
+      scrub_to_x(ImGui::GetIO().MousePos.x);
+    }
+    if (ImGui::IsItemHovered()) {
+      dl->AddRectFilled(ImVec2(lane_x0, y0), ImVec2(lane_x0 + lane_w, y0 + lane_h), IM_COL32(90, 90, 100, 24));
+    }
+
+    auto *keys = (anim != nullptr) ? &(anim->*info.member) : nullptr;
+    if (keys == nullptr) {
+      continue;
+    }
+
+    // Keyframe handles (created AFTER the lane so they take the hit) + diamonds.
+    constexpr float kEps = 1e-3f;
+    for (size_t i = 0; i < keys->size(); ++i) {
+      Keyframe &key = (*keys)[i];
+      const float cx = t_to_x(key.time);
+      ImGui::PushID(static_cast<int>(c) * 4096 + static_cast<int>(i));
+      ImGui::SetCursorScreenPos(ImVec2(cx - 6.0f, y0));
+      ImGui::InvisibleButton("##tl_key", ImVec2(12.0f, lane_h));
+      if (ImGui::IsItemActive()) {
+        // Retime this key by dragging horizontally; clamp between neighbours so
+        // the channel always stays sorted and no two keys share a time.
+        float t = std::min(x_to_t(ImGui::GetIO().MousePos.x), length);
+        if (i > 0) t = std::max(t, (*keys)[i - 1].time + kEps);
+        if (i + 1 < keys->size()) t = std::min(t, (*keys)[i + 1].time - kEps);
+        key.time          = t;
+        tl_sel_channel_   = c;
+        tl_sel_time_      = key.time;
+      }
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+        tl_sel_channel_ = c;
+        tl_sel_time_    = key.time;
+      }
+      ImGui::PopID();
+
+      const bool selected = tl_sel_channel_ == c && std::abs(tl_sel_time_ - key.time) < 1e-3f;
+      const float cy = y0 + lane_h * 0.5f;
+      if (selected) {
+        dl->AddRectFilled(ImVec2(cx - 4.0f, cy - 4.0f), ImVec2(cx + 4.0f, cy + 4.0f), IM_COL32(255, 255, 255, 255));
+      }
+      dl->AddTriangleFilled(ImVec2(cx, cy - 6.0f), ImVec2(cx - 5.0f, cy), ImVec2(cx + 5.0f, cy), info.color);
+      if (selected) {
+        dl->AddTriangle(ImVec2(cx, cy - 6.0f), ImVec2(cx - 5.0f, cy), ImVec2(cx + 5.0f, cy), IM_COL32(0, 0, 0, 255), 1.5f);
+      }
+    }
+  }
+
+  // Playhead line across the whole graph + a draggable head at the ruler.
+  {
+    const float px = t_to_x(active_scene_->GetAnimationTime());
+    dl->AddLine(ImVec2(px, top_y), ImVec2(px, graph_bottom), IM_COL32(240, 90, 90, 220), 1.5f);
+    dl->AddTriangleFilled(ImVec2(px, top_y), ImVec2(px - 5.0f, top_y + 6.0f), ImVec2(px + 5.0f, top_y + 6.0f),
+                          IM_COL32(240, 90, 90, 255));
+  }
+
+  // Advance layout below the graph, then the selected-key inspector.
+  ImGui::SetCursorScreenPos(ImVec2(left_x, graph_bottom + 6.0f));
+  ImGui::Separator();
+
+  // --- Selected key inspector ----------------------------------------------
+  // Identified by (channel, time); resolved to an index each frame so edits
+  // never dangle. Time edits are clamped between neighbours (no re-sort needed).
+  int                       sel_c = -1;
+  size_t                    sel_i = 0;
+  std::vector<Keyframe>    *sel_keys = nullptr;
+  if (anim != nullptr && tl_sel_channel_ >= 0 && tl_sel_channel_ < 3) {
+    auto &keys = anim->*kChannels[tl_sel_channel_].member;
+    for (size_t i = 0; i < keys.size(); ++i) {
+      if (std::abs(keys[i].time - tl_sel_time_) < 1e-3f) {
+        sel_c     = tl_sel_channel_;
+        sel_i     = i;
+        sel_keys  = &keys;
+        break;
+      }
+    }
+    if (sel_keys == nullptr) {
+      tl_sel_channel_ = -1;  // key deleted; drop the stale selection
+    }
+  }
+
+  if (sel_keys != nullptr) {
+    Keyframe &key = (*sel_keys)[sel_i];
+    ImGui::TextUnformatted(("Key  " + std::string(kChannels[sel_c].name)).c_str());
+    ImGui::SameLine();
+    constexpr float kEps = 1e-3f;
+    const float tmin = sel_i > 0 ? (*sel_keys)[sel_i - 1].time + kEps : 0.0f;
+    const float tmax = sel_i + 1 < sel_keys->size() ? (*sel_keys)[sel_i + 1].time - kEps : length;
+    float       st   = key.time;
+    ImGui::SetNextItemWidth(64.0f);
+    if (ImGui::DragFloat("time", &st, 0.01f, tmin, tmax, "%.2f s")) {
+      key.time    = st;
+      tl_sel_time_ = key.time;
+    }
+    bool edited = false;
+    ImGui::SetNextItemWidth(52.0f);
+    edited |= ImGui::DragFloat("##vx", &key.value.x, 0.05f, -1e4f, 1e4f, "%.2f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(52.0f);
+    edited |= ImGui::DragFloat("##vy", &key.value.y, 0.05f, -1e4f, 1e4f, "%.2f");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(52.0f);
+    edited |= ImGui::DragFloat("##vz", &key.value.z, 0.05f, -1e4f, 1e4f, "%.2f");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Delete")) {
+      sel_keys->erase(sel_keys->begin() + static_cast<std::ptrdiff_t>(sel_i));
+      tl_sel_channel_ = -1;
+    }
+    if (edited) {
+      // Refresh the viewport pose so value edits are visible immediately.
+      active_scene_->SetAnimationTime(active_scene_->GetAnimationTime());
+    }
+  } else {
+    ImGui::TextDisabled("Click a keyframe diamond (or drag it to change its time), then edit here.");
+  }
+
+  ImGui::Separator();
+  if (anim != nullptr && ImGui::Button("Remove Animation")) {
+    target.RemoveComponent<AnimationComponent>();
+    anim = nullptr;
+    tl_sel_channel_ = -1;
+    LOG_INFO("Editor") << "Removed animation from '" << target.GetComponent<Tag>().tag << "'";
+  }
+  if (anim != nullptr && !anim->Empty()) {
+    ImGui::SameLine();
+    ImGui::TextDisabled("content duration %.2f s (clip length %.2f s)", anim->Duration(), length);
+  }
+
+  ImGui::End();
+}
+
+Entity Editor::CreateEntityWithUniqueName(const std::string &base_name) {
+  const auto name_taken = [&](const std::string &candidate) {
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (entity.HasComponent<Tag>() && entity.GetComponent<Tag>().tag == candidate) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  std::string name   = base_name;
+  int         suffix = 1;
+  while (name_taken(name)) {
+    name = base_name + " (" + std::to_string(suffix++) + ")";
+  }
+  return active_scene_->CreateEntity(name);
+}
+
+void Editor::CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh) {
+  Entity entity = CreateEntityWithUniqueName(name);
+  entity.AddComponent<Transform>();
+
+  if (mesh) {
+    entity.AddComponent<MeshComponent>(mesh, CreateRef<Material>(*default_material_));
+    // Rest solid primitives on the ground grid.
+    entity.GetComponent<Transform>().translation.y = 0.5f;
+  }
+
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created primitive '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+namespace {
+
+/// @brief Default texture for a freshly created sprite: a procedurally generated
+/// 32x32 checkerboard so a new Sprite is visible before a texture is assigned.
+Ref<Texture> DefaultSpriteTexture() {
+  constexpr int kSize = 32;
+  static Ref<Texture> texture;
+  if (!texture) {
+    std::vector<unsigned char> rgba(static_cast<size_t>(kSize) * kSize * 4u, 255u);
+    for (int y = 0; y < kSize; ++y) {
+      for (int x = 0; x < kSize; ++x) {
+        const bool   light = ((x / 8) + (y / 8)) % 2 == 0;
+        const size_t o     = (static_cast<size_t>(y) * kSize + static_cast<size_t>(x)) * 4u;
+        rgba[o + 0]        = light ? 236 : 150;
+        rgba[o + 1]        = light ? 240 : 170;
+        rgba[o + 2]        = light ? 246 : 200;
+        rgba[o + 3]        = 255;
+      }
+    }
+    texture = CreateRef<Texture>();
+    texture->SetData(rgba.data(), kSize, kSize);
+  }
+  return texture;
+}
+
+}  // namespace
+
+void Editor::CreateSpriteEntity() {
+  const bool has_parent = selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_;
+  Entity     entity     = CreateEntityWithUniqueName("Sprite");
+  auto      &transform  = entity.AddComponent<Transform>();
+  auto      &sprite     = entity.AddComponent<SpriteComponent>(DefaultSpriteTexture());
+  sprite.size           = glm::vec2(1.0f, 1.0f);
+
+  if (has_parent) {
+    // Offset the child a little so it is not hidden behind its parent.
+    transform.translation = glm::vec3(1.0f, 0.0f, 0.0f);
+    active_scene_->SetParent(entity.GetHandle(), selected_entity_.GetHandle());
+  }
+
+  selected_entity_ = entity;
+  LOG_INFO("Editor") << "Created sprite '" << entity.GetComponent<Tag>().tag << "'" << (has_parent ? " (child)" : "");
+}
+
+Entity Editor::CreateChildPrimitive(const std::string &name, const Ref<Mesh> &mesh) {
+  const bool     has_parent = selected_entity_.GetHandle() != entt::null && selected_entity_ != grid_entity_;
+  Entity         entity     = CreateEntityWithUniqueName(name);
+  entity.AddComponent<Transform>();
+
+  if (mesh) {
+    entity.AddComponent<MeshComponent>(mesh, CreateRef<Material>(*default_material_));
+    // Sit the child just above the parent's local origin so it is visible
+    // (world placement follows the parent once reparented).
+    entity.GetComponent<Transform>().translation.y = 1.0f;
+  }
+
+  std::string parent_name = "root";
+  if (has_parent) {
+    parent_name = active_scene_->GetRegistry().get<Tag>(selected_entity_.GetHandle()).tag;
+    active_scene_->SetParent(entity.GetHandle(), selected_entity_.GetHandle());
+  }
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created child '" << entity.GetComponent<Tag>().tag << "' under '" << parent_name << "'";
+  return entity;
+}
+
+void Editor::CreateCameraEntity() {
+  Entity entity = CreateEntityWithUniqueName("Camera");
+
+  CameraComponent component;
+  component.camera.position = editor_camera_.GetPosition();
+  component.camera.LookAt(editor_camera_.target);
+  entity.AddComponent<CameraComponent>(component);
+
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created camera '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+void Editor::CreatePointLightEntity() {
+  Entity entity = CreateEntityWithUniqueName("Point Light");
+  entity.AddComponent<Transform>(glm::vec3(0.0f, 2.0f, 0.0f));
+  PointLightComponent component;
+  component.light.color        = glm::vec3(1.0f);
+  component.light.intensity    = 5.0f;
+  component.light.radius       = 10.0f;
+  component.light.casts_shadow = true;
+  entity.AddComponent<PointLightComponent>(component);
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created point light '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+void Editor::CreateSpotLightEntity() {
+  Entity entity = CreateEntityWithUniqueName("Spot Light");
+  auto   &t     = entity.AddComponent<Transform>(glm::vec3(0.0f, 2.0f, 0.0f));
+  // Aim down (-Z -> -Y) so a fresh spot shines onto the ground grid.
+  t.rotation = glm::radians(glm::vec3(-90.0f, 0.0f, 0.0f));
+  SpotLightComponent component;
+  component.light.color     = glm::vec3(1.0f);
+  component.light.intensity = 2.0f;
+  component.light.range     = 8.0f;
+  entity.AddComponent<SpotLightComponent>(component);
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created spot light '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+void Editor::CreateDirectionalLightEntity() {
+  Entity entity = CreateEntityWithUniqueName("Directional Light");
+  auto   &t     = entity.AddComponent<Transform>(glm::vec3(0.0f, 0.0f, 0.0f));
+  // Aim down (-Z -> -Y) so a fresh sun shines straight down; rotate to tilt it.
+  t.rotation = glm::radians(glm::vec3(-90.0f, 0.0f, 0.0f));
+  DirectionalLightComponent component;  // defaults match the engine's sun
+  entity.AddComponent<DirectionalLightComponent>(component);
+  selected_entity_ = entity;
+  LOG_DEBUG("Editor") << "Created directional light '" << entity.GetComponent<Tag>().tag << "'";
+}
+
+/// @brief The default editor scene: a general-engine (PBR + ACES) lighting
+/// showroom - a matte floor with a few boxes + a metallic sphere under the
+/// directional sun (so it casts shadows), plus two colored point lights with
+/// matching HDR-emissive lamp cubes (so they bloom). This is the opposite of
+/// the LO-exact demo: here light Color / Intensity edits take effect on PBR
+/// materials and the directional + shadow-casting point light both shadow the
+/// floor, which is the behaviour users expect from a normal engine light.
+void Editor::CreateEngineDemo() {
+  const auto pbr_material = [&](const glm::vec3 &color, float roughness, float metallic) {
+    auto m = CreateRef<Material>(*default_material_);
+    m->SetBaseColorFactor(glm::vec4(color, 1.0f));
+    m->SetRoughnessFactor(roughness);
+    m->SetMetallicFactor(metallic);
+    return m;
+  };
+  const Ref<Mesh> cube = Mesh::CreateCube();
+
+  // Matte floor (receives the directional + point shadows).
+  {
+    Entity floor = active_scene_->CreateEntity("Floor");
+    auto   &t    = floor.AddComponent<Transform>();
+    t.translation = glm::vec3(0.0f, -0.5f, 0.0f);
+    t.scale       = glm::vec3(24.0f, 1.0f, 24.0f);
+    floor.AddComponent<MeshComponent>(cube, pbr_material(glm::vec3(0.78f), 0.92f, 0.0f));
+  }
+
+  const auto put_box = [&](const glm::vec3 &pos, const glm::vec3 &scale, const glm::vec3 &color, float rough) {
+    Entity e = CreateEntityWithUniqueName("Box");
+    auto   &t = e.AddComponent<Transform>();
+    t.translation = pos;
+    t.scale       = scale;
+    e.AddComponent<MeshComponent>(cube, pbr_material(color, rough, 0.0f));
+    return e;
+  };
+  put_box({0.0f, 0.6f, -1.5f}, glm::vec3(1.2f), glm::vec3(0.70f, 0.48f, 0.34f), 0.8f);         // wood crate
+  put_box({-1.8f, 0.5f, 1.1f}, glm::vec3(1.0f), glm::vec3(0.42f, 0.55f, 0.86f), 0.6f);         // blue crate
+  put_box({1.7f, 0.5f, -0.6f}, glm::vec3(1.0f), glm::vec3(0.55f, 0.72f, 0.40f), 0.7f);         // green crate
+  put_box({-0.4f, 1.0f, 2.2f}, glm::vec3(1.0f, 2.0f, 1.0f), glm::vec3(0.88f, 0.82f, 0.55f), 0.75f);  // tall pillar
+
+  // Metallic sphere (shows the specular highlight / mirror-like response).
+  {
+    Entity ball = active_scene_->CreateEntity("Ball");
+    auto   &t   = ball.AddComponent<Transform>();
+    t.translation = glm::vec3(-3.4f, 0.5f, 0.7f);
+    ball.AddComponent<MeshComponent>(Mesh::CreateSphere(), pbr_material(glm::vec3(0.95f), 0.22f, 0.95f));
+  }
+
+  // Colored point lights + matching HDR-emissive lamp cubes (bloom). The warm
+  // light casts a shadow (casts_shadow), the cool one is a non-shadowing fill.
+  const auto put_lamp = [&](const glm::vec3 &pos, const glm::vec3 &color, float intensity, float radius,
+                            bool cast_shadow) {
+    Entity lamp = active_scene_->CreateEntity("Lamp");
+    auto   &t   = lamp.AddComponent<Transform>(pos);
+    t.scale     = glm::vec3(0.30f);
+
+    auto emissive = CreateRef<Material>(*default_material_);
+    emissive->SetBaseColorFactor(glm::vec4(color * 4.0f, 1.0f));  // HDR -> blooms
+    emissive->SetUnlit(true);
+    lamp.AddComponent<MeshComponent>(cube, emissive);
+
+    PointLightComponent pl;
+    pl.light.color        = color;
+    pl.light.intensity    = intensity;
+    pl.light.radius       = radius;
+    pl.light.casts_shadow = cast_shadow;
+    lamp.AddComponent<PointLightComponent>(pl);
+    return lamp;
+  };
+  put_lamp({2.6f, 2.2f, 2.6f}, glm::vec3(1.0f, 0.55f, 0.25f), 7.0f, 16.0f, true);
+  put_lamp({-2.6f, 1.8f, -2.2f}, glm::vec3(0.35f, 0.60f, 1.0f), 5.0f, 14.0f, false);
+
+  // General-engine presentation settings (ACES + gamma, sun + skybox, bloom).
+  auto &sun = active_scene_->GetLight();
+  sun.direction = glm::normalize(glm::vec3(-0.4f, -1.0f, -0.3f));
+  sun.color     = glm::vec3(1.35f);
+  sun.ambient   = glm::vec3(0.02f);
+  sun.diffuse   = glm::vec3(1.0f);
+  sun.specular  = glm::vec3(1.0f);
+  active_scene_->SetLoLighting(false);
+  active_scene_->SetLinearOutput(false);
+  active_scene_->SetLoHdrTone(false);
+  active_scene_->SetReinhardTone(false);
+  active_scene_->SetSkyboxEnabled(true);
+  active_scene_->SetIblIntensity(0.18f);
+  active_scene_->SetExposure(1.0f);
+  active_scene_->SetBloomEnabled(true);
+  active_scene_->SetBloomThreshold(1.0f);
+  active_scene_->SetBloomStrength(0.45f);
+  active_scene_->SetTAAEnabled(false);
+  active_scene_->SetSSAOEnabled(false);
+  active_scene_->SetGodRaysStrength(0.0f);
+  active_scene_->SetShadowPcfRadius(4.0f);
+
+  LOG_INFO("Editor") << "Created engine lighting demo (PBR floor/boxes + sun + colored point lights + bloom)";
+}
+
+void Editor::SetGridVisible(bool visible) {
+  if (grid_entity_.GetHandle() == entt::null) {
+    return;
+  }
+
+  const bool has_mesh = grid_entity_.HasComponent<MeshComponent>();
+  if (visible && !has_mesh) {
+    grid_entity_.AddComponent<MeshComponent>(grid_mesh_, grid_material_);
+  } else if (!visible && has_mesh) {
+    grid_entity_.RemoveComponent<MeshComponent>();
+  }
+}
+
+void Editor::LaunchStandalone() {
+  // Save the scene into the shared build-tree root, next to the sandbox
+  // executable, then run the sandbox in a new process (new window).
+  std::error_code            ec;
+  const std::filesystem::path build_root = std::filesystem::absolute("..", ec);
+  if (ec) {
+    LOG_ERROR("Editor") << "Failed to resolve build directory for standalone launch";
+    return;
+  }
+
+  // Return to the resting Edit state first so the saved scene has the initial
+  // transforms rather than mid-simulation poses.
+  if (game_mode_ == GameMode::Play) {
+    game_mode_ = GameMode::Edit;
+    active_scene_->GetScriptEngine().Clear();
+    active_scene_->StopSimulation();
+    SetGridVisible(true);
+    if (selected_entity_.GetHandle() != entt::null &&
+        !active_scene_->GetRegistry().valid(selected_entity_.GetHandle())) {
+      selected_entity_ = Entity();
+    }
+  }
+
+  const std::filesystem::path scene_path = build_root / "play_scene.json";
+  // Pick the sandbox that matches the scene: a 2D scene (orthographic primary
+  // camera) runs in sandbox2d, everything else in sandbox3d. Fall back to the
+  // other one when the preferred executable was not built.
+  const bool        scene_2d        = active_scene_->Is2D();
+  const std::string sandbox_name    = scene_2d ? "sandbox2d" : "sandbox3d";
+  const std::string fallback_name   = scene_2d ? "sandbox3d" : "sandbox2d";
+  std::filesystem::path sandbox_exe = build_root / sandbox_name / (sandbox_name + ".exe");
+  if (!std::filesystem::exists(sandbox_exe)) {
+    sandbox_exe = build_root / fallback_name / (fallback_name + ".exe");
+  }
+
+  active_scene_->SaveScene(scene_path.string());
+
+  const std::string command = "\"" + sandbox_exe.string() + "\" --scene \"" + scene_path.string() + "\"";
+  // `cmd /c` strips the outermost quotes; wrap the whole command so the inner
+  // quotes around each path survive shell parsing.
+  const std::string cmd = "\"" + command + "\"";
+  LOG_INFO("Editor") << "Launching standalone " << sandbox_name << ": " << command;
+
+  std::thread([cmd]() { std::system(cmd.c_str()); }).detach();
+}
+
+void Editor::ExitGameModeForFileOp() {
+  // Mirror the Play-mode Stop handler: fire OnDestroy hooks while entities are
+  // still alive, then restore the authoring scene. No-op in Edit mode.
+  if (game_mode_ != GameMode::Play) {
+    return;
+  }
+  game_mode_ = GameMode::Edit;
+  active_scene_->GetScriptEngine().Clear();
+  active_scene_->StopSimulation();
+  SetGridVisible(true);
+  if (selected_entity_.GetHandle() != entt::null &&
+      !active_scene_->GetRegistry().valid(selected_entity_.GetHandle())) {
+    selected_entity_ = Entity();
+  }
+}
+
+void Editor::NewScene() {
+  ExitGameModeForFileOp();
+  active_scene_->ClearContent();
+  current_scene_path_.clear();
+  selected_entity_ = Entity();
+
+  // Reset to friendly editor defaults (a new/empty scene should not inherit the
+  // previous scene's dark LO-toned look with no lights).
+  auto &sun = active_scene_->GetLight();
+  sun.direction = glm::normalize(glm::vec3(-0.3f, -1.0f, -0.4f));
+  sun.color     = glm::vec3(1.0f);
+  sun.ambient   = glm::vec3(0.05f);
+  sun.diffuse   = glm::vec3(1.0f);
+  sun.specular  = glm::vec3(1.0f);
+  active_scene_->SetLoLighting(false);
+  active_scene_->SetLinearOutput(false);
+  active_scene_->SetLoHdrTone(false);
+  active_scene_->SetReinhardTone(false);
+  active_scene_->SetSkyboxEnabled(true);
+  active_scene_->SetBackgroundColor(glm::vec3(0.0f));
+  active_scene_->SetIblIntensity(0.6f);
+  active_scene_->SetExposure(1.0f);
+  active_scene_->SetTAAEnabled(false);
+  active_scene_->SetSSAOEnabled(false);
+  active_scene_->SetGodRaysStrength(0.06f);
+  active_scene_->SetBloomEnabled(true);
+  active_scene_->SetBloomThreshold(1.0f);
+  active_scene_->SetBloomStrength(0.5f);
+  LOG_INFO("Editor") << "Started a new (empty) scene";
+  SyncViewModeToScene();
+}
+
+void Editor::NewScene2D() {
+  NewScene();  // clears content + resets render settings to the editor defaults
+
+  // Declare the scene 2D before populating it: this switches the render path
+  // (sprites only, no 3D stages), applies the 2D render defaults and opens the
+  // editor's 2D Viewport.
+  active_scene_->SetDimension(SceneDimension::Scene2D);
+
+  Create2DDemo();
+  SyncViewModeToScene();
+  LOG_INFO("Editor") << "Started a new 2D scene (orthographic camera, 2D viewport)";
+}
+
+void Editor::Create2DDemo() {
+  // Orthographic primary camera looking down -Z at the XY plane.
+  active_scene_->EnsurePrimaryCamera2D();
+
+  // Tiled background: the sprite is 30x18 units but the texture repeats at its
+  // own size (64 px = 2 units at 32 px/unit) instead of being stretched over it,
+  // so the pattern keeps square cells whatever the viewport aspect is. A real
+  // asset is used (not the procedural default) so the demo saves and reloads
+  // exactly as authored.
+  Entity             backdrop       = CreateEntityWithUniqueName("Backdrop");
+  auto              &back_transform = backdrop.AddComponent<Transform>();
+  back_transform.scale              = glm::vec3(1.0f);
+  auto &back_sprite = backdrop.AddComponent<SpriteComponent>(
+      AssetManager::Instance().GetTexture("textures/checkerboard.png"));
+  back_sprite.SetTiledSize(glm::vec2(30.0f, 18.0f));
+  back_sprite.color         = glm::vec4(0.30f, 0.40f, 0.55f, 1.0f);
+  back_sprite.sorting_layer = -10;
+
+  // A sprite sheet animation: assets/textures/qoguldsd.png holds a 6 frame
+  // horizontal walk cycle (33x32 px per frame), so a 6x1 sheet plus a
+  // SpriteAnimationComponent is all it takes. It animates in Edit mode too (the
+  // editor previews 2D sheet animations), and pressing Play keeps it running.
+  const SpriteSheet fox_sheet{6, 1};
+  Entity            fox          = CreateEntityWithUniqueName("Fox");
+  auto             &fox_tr       = fox.AddComponent<Transform>();
+  fox_tr.translation             = glm::vec3(-2.0f, -1.0f, 0.0f);
+  auto &fox_sprite = fox.AddComponent<SpriteComponent>(AssetManager::Instance().GetTexture("textures/qoguldsd.png"));
+  fox_sprite.FitPixels(fox_sheet, 32.0f);  // frame pixel aspect, nothing stretched
+  fox_sprite.sorting_layer = 0;
+  fox_sprite.SetSheetFrame(fox_sheet, 0);
+  auto &fox_animation = fox.AddComponent<SpriteAnimationComponent>();
+  fox_animation.sheet = fox_sheet;
+  fox_animation.fps   = 8.0f;
+  fox_animation.loop  = true;
+  // Walk-cycle mode: only run the clip while the fox moves, and stand on the
+  // first frame when it stops. The controller script below only moves the
+  // entity, so it drives animation and movement stay in sync by construction.
+  fox_animation.play_while_moving = true;
+
+  // Controllable character: WASD / arrow keys move the fox in Play mode (see
+  // assets/scripts/fox_controller.lua). No key is held while authoring, so the
+  // editor preview shows the idle frame.
+  auto &fox_script = fox.AddComponent<LuaScriptComponent>();
+  fox_script.path  = "scripts/fox_controller.lua";
+
+  // A second, static sprite in front of the background (own sorting layer) so
+  // the draw order is visible in the inspector right away.
+  Entity hero               = CreateEntityWithUniqueName("Hero");
+  auto  &hero_tr            = hero.AddComponent<Transform>();
+  hero_tr.translation       = glm::vec3(1.6f, 0.4f, 0.0f);
+  auto &hero_sprite = hero.AddComponent<SpriteComponent>(AssetManager::Instance().GetTexture("textures/awesomeface.png"));
+  hero_sprite.size          = glm::vec2(1.5f, 1.5f);
+  hero_sprite.sorting_layer = 5;
+
+  selected_entity_ = fox;
+}
+
+void Editor::SyncViewModeToScene() { ApplyViewMode(); }
+
+void Editor::ApplyViewMode() {
+  const bool is_2d = Is2DView();
+  editor_camera_.Set2D(is_2d);
+
+  // The editor grid is an XZ plane; stand it up in the XY plane for 2D so it
+  // lines up with what the orthographic view shows.
+  if (grid_entity_.GetHandle() != entt::null && grid_entity_.HasComponent<Transform>()) {
+    grid_entity_.GetComponent<Transform>().rotation.x = is_2d ? 90.0f : 0.0f;
+  }
+  LOG_INFO("Editor") << (is_2d ? "Scene dimension: 2D (sprite render path)" : "Scene dimension: 3D");
+}
+
+void Editor::OpenSceneDialog() {
+  std::string path;
+  if (!NativeOpenFileDialog(path, SceneDialogInitialDir(base_directory_, current_scene_path_))) {
+    return;  // cancelled
+  }
+  OpenScenePath(path);
+}
+
+void Editor::OpenScenePath(const std::string &path) {
+  ExitGameModeForFileOp();
+  if (!active_scene_->OpenSceneFile(path)) {
+    LOG_ERROR("Editor") << "Failed to open scene: " << path;
+    return;
+  }
+  current_scene_path_ = path;
+  selected_entity_    = Entity();
+  SetGridVisible(true);
+  SyncViewModeToScene();
+  LOG_INFO("Editor") << "Opened scene: " << path;
+}
+
+void Editor::SaveCurrentScene() {
+  if (current_scene_path_.empty()) {
+    SaveSceneAsDialog();
+    return;
+  }
+  ExitGameModeForFileOp();
+  active_scene_->SaveScene(current_scene_path_);
+  LOG_INFO("Editor") << "Saved scene: " << current_scene_path_;
+}
+
+void Editor::SaveSceneAsDialog() {
+  std::string path;
+  if (!NativeSaveFileDialog(path, SceneDialogInitialDir(base_directory_, current_scene_path_))) {
+    return;  // cancelled
+  }
+  static const char *kExt = ".scene";
+  if (path.size() < 6 || path.compare(path.size() - 6, 6, kExt) != 0) {
+    path += kExt;
+  }
+  ExitGameModeForFileOp();
+  active_scene_->SaveScene(path);
+  current_scene_path_ = path;
+  LOG_INFO("Editor") << "Saved scene as: " << path;
+}
+
+void Editor::RunSceneFileSelftest(const std::string &path) {
+  // Count content entities (skip the editor-only grid helper).
+  const auto content_count = [&]() {
+    size_t n = 0;
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (entity == grid_entity_) continue;
+      const auto *tag = entity.HasComponent<Tag>() ? &entity.GetComponent<Tag>() : nullptr;
+      if (tag && tag->editor_only) continue;
+      ++n;
+    }
+    return n;
+  };
+  const auto has_grid = [&]() {
+    return grid_entity_.GetHandle() != entt::null &&
+           active_scene_->GetRegistry().valid(grid_entity_.GetHandle());
+  };
+  // Number of parent->child links in the scene (hierarchy regression check).
+  const auto link_count = [&]() {
+    size_t n = 0;
+    for (auto &entity : active_scene_->GetAllEntities()) {
+      if (active_scene_->GetParent(entity.GetHandle()) != entt::null) ++n;
+    }
+    return n;
+  };
+
+  bool ok = true;
+  const auto check = [&](bool cond, const char *what) {
+    ok = ok && cond;
+    LOG_INFO("Editor") << (cond ? "[selftest] PASS  " : "[selftest] FAIL  ") << what;
+  };
+
+  LOG_INFO("Editor") << "[selftest] scene-file ops begin (open: " << path << ")";
+
+  const size_t base_content = content_count();
+
+  // 1. New Scene must clear all content but keep the grid.
+  NewScene();
+  check(content_count() == 0, "NewScene clears content");
+  check(has_grid(), "NewScene keeps the editor grid");
+
+  // 2. Open Scene must load content (and remember the path).
+  OpenScenePath(path);
+  check(!current_scene_path_.empty() && current_scene_path_ == path, "OpenScenePath records the scene path");
+  const size_t opened_content = content_count();
+  const size_t opened_links   = link_count();
+  const bool   opened_anim    = active_scene_->HasAnyAnimation();
+  check(opened_content > 0, "OpenSceneFile loaded content entities");
+
+  // 3. Save + reopen round-trip must reproduce the same content count.
+  const std::string tmp_path = "editor_selftest_tmp.scene";
+  ExitGameModeForFileOp();
+  active_scene_->SaveScene(tmp_path);
+  check(std::filesystem::exists(tmp_path), "SaveScene wrote a .scene file");
+  NewScene();
+  OpenScenePath(tmp_path);
+  check(content_count() == opened_content, "Save/reopen round-trip preserves content count");
+  check(link_count() == opened_links, "Save/reopen round-trip preserves parent-child links");
+  check(active_scene_->HasAnyAnimation() == opened_anim, "Save/reopen round-trip preserves animation");
+  std::error_code ec;
+  std::filesystem::remove(tmp_path, ec);
+
+  // 4. Restore the default demo scene so interactive use still has content.
+  NewScene();
+  CreateEngineDemo();
+  current_scene_path_.clear();
+
+  LOG_INFO("Editor") << "[selftest] scene-file ops " << (ok ? "PASSED" : "FAILED") << " (base=" << base_content
+                     << " opened=" << opened_content << ")";
+}
+
+void Editor::CreateModelEntity(const std::filesystem::path &path) {
+  LOG_INFO("Editor") << "Importing model: " << path.filename().string();
+
+  // Multi-material OBJ (e.g. the nanosuit): import as ONE entity carrying a
+  // ModelComponent - every `usemtl` part stays a sub-part that shares the
+  // entity's transform (see the Model / ModelPart engine types).
+  // Single-material OBJs and glTF fall through to the legacy single-mesh path
+  // so their .mtl / sibling-texture heuristic and behaviour stay unchanged.
+  if (path.extension() == ".obj") {
+    if (Ref<Model> model = ModelLoader::LoadObjModel(path.string()); model && model->parts.size() > 1) {
+      const std::string stem = path.stem().string();
+      Entity            root = CreateEntityWithUniqueName(stem);
+      auto             &rt   = root.AddComponent<Transform>();
+
+      const Ref<Shader> pbr = AssetManager::Instance().GetShader("pbr");
+      glm::vec3         bmin(std::numeric_limits<float>::max());
+      glm::vec3         bmax(std::numeric_limits<float>::lowest());
+      for (auto &part : model->parts) {
+        if (!part.material) part.material = CreateDefaultMaterial();
+        part.material->SetShader(pbr);
+        for (const auto &v : part.mesh->GetVertices()) {
+          bmin = glm::min(bmin, v.position);
+          bmax = glm::max(bmax, v.position);
+        }
+      }
+      root.AddComponent<ModelComponent>(model, path.string());
+
+      // Auto-fit the whole model: scale so the longest axis is ~2 units and
+      // rest the bottom of its bounds on the ground grid.
+      const glm::vec3 extent     = bmax - bmin;
+      const float     max_extent = std::max({extent.x, extent.y, extent.z});
+      if (max_extent > 0.0001f) {
+        const float fit_scale = 2.0f / max_extent;
+        rt.scale              = glm::vec3(fit_scale);
+        rt.translation        = -glm::vec3((bmin + bmax) * 0.5f) * fit_scale;
+        rt.translation.y      = -bmin.y * fit_scale;  // sit on the grid
+      }
+
+      selected_entity_ = root;
+      LOG_INFO("Editor") << "Imported multi-material model '" << stem << "': " << model->parts.size() << " parts";
+      return;
+    }
+  }
+
+  Ref<Mesh>     mesh;
+  Ref<Material> material;
+  if (!LoadModelAsset(path, mesh, material)) {
+    LOG_WARN("Editor") << "Failed to load model: " << path;
+    return;
+  }
+
+  Entity entity    = CreateEntityWithUniqueName(path.stem().string());
+  auto  &transform = entity.AddComponent<Transform>();
+  entity.AddComponent<MeshComponent>(mesh, material);
+
+  // Auto-fit: scale so the longest axis is ~2 units and rest the bottom of the
+  // model's bounds on the ground grid.
+  glm::vec3 min_v(std::numeric_limits<float>::max());
+  glm::vec3 max_v(std::numeric_limits<float>::lowest());
+  for (const auto &v : mesh->GetVertices()) {
+    min_v = glm::min(min_v, v.position);
+    max_v = glm::max(max_v, v.position);
+  }
+  const glm::vec3 extent     = max_v - min_v;
+  const float     max_extent = std::max({extent.x, extent.y, extent.z});
+  if (max_extent > 0.0001f) {
+    const float fit_scale   = 2.0f / max_extent;
+    transform.scale         = glm::vec3(fit_scale);
+    transform.translation   = -glm::vec3((min_v + max_v) * 0.5f) * fit_scale;
+    transform.translation.y = -min_v.y * fit_scale;  // sit on the grid
+  }
+
+  selected_entity_ = entity;
+
+  LOG_INFO("Editor") << "Imported model '" << path.filename().string() << "': " << mesh->GetVertices().size()
+                     << " vertices, " << mesh->GetIndexCount() / 3 << " triangles";
+}
+
+void Editor::DuplicateSelectedEntity() {
+  if (selected_entity_.GetHandle() == entt::null || selected_entity_ == grid_entity_) {
+    return;
+  }
+
+  Entity source = selected_entity_;
+  Entity duplicate =
+      DuplicateEntitySubtree(source, active_scene_->GetParent(source.GetHandle()));
+  if (duplicate.GetHandle() != entt::null) {
+    selected_entity_ = duplicate;
+  }
+  LOG_DEBUG("Editor") << "Duplicated entity '" << source.GetComponent<Tag>().tag << "' -> '"
+                      << (duplicate.GetHandle() != entt::null ? duplicate.GetComponent<Tag>().tag : "?") << "'";
+}
+
+Entity Editor::DuplicateEntitySubtree(Entity source, entt::entity parent_copy) {
+  if (source.GetHandle() == entt::null || !active_scene_->GetRegistry().valid(source.GetHandle())) {
+    return Entity();
+  }
+
+  Entity duplicate = CreateEntityWithUniqueName(source.GetComponent<Tag>().tag + " (Copy)");
+  if (source.HasComponent<Transform>()) {
+    duplicate.AddComponent<Transform>(source.GetComponent<Transform>());
+  }
+  if (source.HasComponent<MeshComponent>()) {
+    auto &mesh = source.GetComponent<MeshComponent>();
+    duplicate.AddComponent<MeshComponent>(mesh.mesh, mesh.material);
+  }
+  if (source.HasComponent<ModelComponent>()) {
+    const auto &model = source.GetComponent<ModelComponent>();
+    duplicate.AddComponent<ModelComponent>(model.model, model.source);
+  }
+  if (source.HasComponent<CameraComponent>()) {
+    duplicate.AddComponent<CameraComponent>(source.GetComponent<CameraComponent>());
+  }
+  if (source.HasComponent<AnimationComponent>()) {
+    duplicate.AddComponent<AnimationComponent>(source.GetComponent<AnimationComponent>());
+  }
+
+  if (parent_copy != entt::null) {
+    active_scene_->SetParent(duplicate.GetHandle(), parent_copy);
+  }
+
+  // Recursively duplicate children so the whole subtree stays a valid tree.
+  for (const entt::entity child : active_scene_->GetChildren(source.GetHandle())) {
+    DuplicateEntitySubtree(Entity(child, &active_scene_->GetRegistry()), duplicate.GetHandle());
+  }
+  return duplicate;
+}
+
+void Editor::ApplyDefaultLayout(ImGuiID dockspace_id) {
+  ImGui::DockBuilderRemoveNode(dockspace_id);
+  ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+  ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
+
+  ImGuiID dock_left   = 0;
+  ImGuiID dock_right  = 0;
+  ImGuiID dock_bottom = 0;
+
+  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Left, 0.18f, &dock_left, &dockspace_id);
+  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.22f, &dock_right, &dockspace_id);
+  ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Down, 0.25f, &dock_bottom, &dockspace_id);
+
+  // Left column: Scene on top, Properties below it.
+  ImGuiID dock_left_scene = 0;
+  ImGuiID dock_left_props = 0;
+  ImGui::DockBuilderSplitNode(dock_left, ImGuiDir_Down, 0.45f, &dock_left_props, &dock_left_scene);
+  ImGui::DockBuilderDockWindow("Scene", dock_left_scene);
+  ImGui::DockBuilderDockWindow("Properties", dock_left_props);
+
+  ImGui::DockBuilderDockWindow("Content Browser", dock_bottom);
+  ImGui::DockBuilderDockWindow("Log", dock_bottom);
+  ImGui::DockBuilderDockWindow("Timeline", dock_bottom);
+
+  // Central area: the Viewport and the Script Editor share ONE dock node, so
+  // ImGui shows them as two tabs of a single window (click the tab to switch
+  // between the game view and the code editor). Dock the Viewport first so it
+  // is the initially visible tab. The 2D Viewport lives in that same central
+  // node: a scene is either 2D or 3D, and the matching workspace takes the
+  // central area (the other one stays available as a tab).
+  ImGui::DockBuilderDockWindow("Viewport", dockspace_id);
+  ImGui::DockBuilderDockWindow("2D Viewport", dockspace_id);
+  ImGui::DockBuilderDockWindow("Script Editor", dockspace_id);
+
+  // Right column: Information on top, Lighting + Rendering below.
+  ImGuiID dock_right_info = 0;
+  ImGuiID dock_right_fx   = 0;
+  ImGui::DockBuilderSplitNode(dock_right, ImGuiDir_Down, 0.5f, &dock_right_fx, &dock_right_info);
+  ImGui::DockBuilderDockWindow("Information", dock_right_info);
+  ImGui::DockBuilderDockWindow("Lighting", dock_right_fx);
+  ImGui::DockBuilderDockWindow("Rendering", dock_right_fx);
+
+  ImGui::DockBuilderFinish(dockspace_id);
+}
+
+void Editor::ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size) {
+  if (selected_entity_.GetHandle() == entt::null || !selected_entity_.HasComponent<Transform>()) {
+    return;
+  }
+
+  // Remember the pre-edit pose so Auto-Key can see which channels changed.
+  auto       &transform = selected_entity_.GetComponent<Transform>();
+  const glm::vec3 prev_t = transform.translation;
+  const glm::vec3 prev_r = transform.rotation;
+  const glm::vec3 prev_s = transform.scale;
+
+  // Manipulate the entity's world transform so the gizmo appears at its true
+  // world location even when it is a child; the result is written back as a
+  // local TRS (relative to the parent) by SetLocalTransformFromWorld.
+  glm::mat4 model = active_scene_->GetWorldTransform(selected_entity_.GetHandle());
+
+  ImGuizmo::SetDrawlist();
+  ImGuizmo::SetRect(image_pos.x, image_pos.y, image_size.x, image_size.y);
+  ImGuizmo::SetOrthographic(editor_camera_.Is2D());  // correct gizmo picking in the flat view
+  ImGuizmo::Manipulate(glm::value_ptr(editor_camera_.GetViewMatrix()),
+                       glm::value_ptr(editor_camera_.GetProjectionMatrix()), gizmo_operation_, ImGuizmo::LOCAL,
+                       glm::value_ptr(model));
+
+  if (ImGuizmo::IsUsing()) {
+    active_scene_->SetLocalTransformFromWorld(selected_entity_.GetHandle(), model);
+    AutoKeyGizmoEdit(selected_entity_, prev_t, prev_r, prev_s);
+  }
+}
+
+void Editor::AutoKeyGizmoEdit(Entity entity, const glm::vec3 &prev_translation, const glm::vec3 &prev_rotation,
+                              const glm::vec3 &prev_scale) {
+  // Auto-Key only touches entities that are ALREADY animated (so plain scene
+  // arranging never sprinkles stray keyframes on fresh objects), and only in
+  // Edit mode while the timeline is not playing.
+  if (!auto_key_ || !entity.HasComponent<Transform>() || !entity.HasComponent<AnimationComponent>()) {
+    return;
+  }
+  if (game_mode_ != GameMode::Edit || active_scene_->IsAnimationPlaying()) {
+    return;
+  }
+
+  auto       &transform = entity.GetComponent<Transform>();
+  auto       &anim      = entity.GetComponent<AnimationComponent>();
+  const float time      = active_scene_->GetAnimationTime();
+
+  // Inserts/updates the key for one channel at the current playhead time.
+  const auto put = [time](std::vector<Keyframe> &keys, const glm::vec3 &value) {
+    const auto it = std::find_if(keys.begin(), keys.end(),
+                                 [&](const Keyframe &k) { return std::abs(k.time - time) < 1e-4f; });
+    if (it != keys.end()) {
+      it->value = value;
+    } else {
+      keys.push_back(Keyframe(time, value));
+      std::sort(keys.begin(), keys.end(), [](const Keyframe &a, const Keyframe &b) { return a.time < b.time; });
+    }
+  };
+
+  if (transform.translation != prev_translation) {
+    put(anim.translation_keys, transform.translation);
+  }
+  if (transform.rotation != prev_rotation) {
+    put(anim.rotation_keys, transform.rotation);
+  }
+  if (transform.scale != prev_scale) {
+    put(anim.scale_keys, transform.scale);
+  }
+}
+
+void Editor::DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size) {
+  if (image_size.x <= 0.0f || image_size.y <= 0.0f) {
+    return;
+  }
+
+  ImDrawList      *draw_list = ImGui::GetWindowDrawList();
+  const glm::mat4 view_proj = editor_camera_.GetProjectionMatrix() * editor_camera_.GetViewMatrix();
+
+  const auto draw_line = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color, float thickness = 1.5f) {
+    DrawWorldLine(draw_list, view_proj, image_pos, image_size, a, b, color, thickness);
+  };
+
+  for (auto &entity : active_scene_->GetAllEntitiesWith<CameraComponent>()) {
+    const Camera &camera  = entity.GetComponent<CameraComponent>().camera;
+    const bool    primary = entity.GetComponent<CameraComponent>().primary;
+    const ImU32   color   = primary ? IM_COL32(70, 200, 110, 255) : IM_COL32(130, 150, 200, 255);
+
+    const glm::vec3 forward = camera.GetForward();
+    const glm::vec3 right   = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
+    const glm::vec3 up      = glm::cross(right, forward);
+
+    const float near_d = std::max(camera.near_plane, 0.05f);
+    // A short, indicative frustum length (not the full far plane) so camera
+    // gizmos stay readable instead of stretching across the scene.
+    const float far_d  = near_d + 6.0f;
+    const float aspect = std::max(camera.aspect_ratio, 0.01f);
+
+    float half_h_near;
+    float half_h_far;
+    if (camera.projection_type == ProjectionType::Perspective) {
+      const float tan_half = glm::tan(glm::radians(camera.fov_degrees) * 0.5f);
+      half_h_near          = tan_half * near_d;
+      half_h_far           = tan_half * far_d;
+    } else {
+      half_h_near = camera.ortho_size;
+      half_h_far  = camera.ortho_size;
+    }
+
+    const glm::vec3 near_center = camera.position + forward * near_d;
+    const glm::vec3 far_center  = camera.position + forward * far_d;
+
+    glm::vec3 near_corners[4];
+    glm::vec3 far_corners[4];
+    for (int i = 0; i < 4; ++i) {
+      const float sx = (i == 0 || i == 3) ? -1.0f : 1.0f;
+      const float sy = (i < 2) ? 1.0f : -1.0f;
+      near_corners[i] = near_center + right * (sx * half_h_near * aspect) + up * (sy * half_h_near);
+      far_corners[i]  = far_center + right * (sx * half_h_far * aspect) + up * (sy * half_h_far);
+    }
+
+    // View frustum: near quad, far quad, and the four connecting edges.
+    for (int i = 0; i < 4; ++i) {
+      draw_line(near_corners[i], near_corners[(i + 1) % 4], color);
+      draw_line(far_corners[i], far_corners[(i + 1) % 4], color);
+      draw_line(near_corners[i], far_corners[i], color);
+    }
+    // View direction.
+    draw_line(camera.position, far_center, color, 2.0f);
+
+    // Camera body: a small box sitting behind the lens.
+    const glm::vec3 body_center = camera.position - forward * 0.10f;
+    const glm::vec3 hx          = right * 0.12f;
+    const glm::vec3 hy          = up * 0.08f;
+    const glm::vec3 hz          = forward * 0.16f;
+    const glm::vec3 box[8]      = {
+        body_center - hx - hy - hz, body_center + hx - hy - hz, body_center + hx + hy - hz,
+        body_center - hx + hy - hz, body_center - hx - hy + hz, body_center + hx - hy + hz,
+        body_center + hx + hy + hz, body_center - hx + hy + hz,
+    };
+    const int edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+                              {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+    for (const auto &edge : edges) {
+      draw_line(box[edge[0]], box[edge[1]], color);
+    }
+  }
+}
+
+/// @brief Draws in-scene icons for entity lights (Edit mode only), one shape
+/// per light type, so lights read like camera gizmos:
+///   directional  -> a "sun" disc + an arrow along its travel direction
+///   point        -> a small wireframe bulb (3 axis rings) + sparkle rays
+///   spot         -> a wireframe cone (outer angle) from the entity's origin
+/// Positions come from each entity's world Transform; the travel / aim
+/// direction is the transform's rotated local -Z (matching the engine's
+/// SyncLightComponents convention, so what you see == what renders).
+void Editor::DrawLightGizmos(const ImVec2 &image_pos, const ImVec2 &image_size) {
+  if (image_size.x <= 0.0f || image_size.y <= 0.0f) {
+    return;
+  }
+
+  ImDrawList      *draw_list = ImGui::GetWindowDrawList();
+  const glm::mat4 view_proj = editor_camera_.GetProjectionMatrix() * editor_camera_.GetViewMatrix();
+
+  const auto draw_line = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color, float thickness = 1.5f) {
+    DrawWorldLine(draw_list, view_proj, image_pos, image_size, a, b, color, thickness);
+  };
+
+  // Ring of `segments` points around `center`, spanning the (right, up) plane.
+  const auto draw_ring = [&](const glm::vec3 &center, const glm::vec3 &right, const glm::vec3 &up,
+                             float radius, int segments, ImU32 color) {
+    constexpr float two_pi = 6.28318530718f;
+    glm::vec3       prev  = center + right * radius;
+    for (int i = 1; i <= segments; ++i) {
+      const float    a = two_pi * static_cast<float>(i) / static_cast<float>(segments);
+      const glm::vec3 p = center + right * (glm::cos(a) * radius) + up * (glm::sin(a) * radius);
+      draw_line(prev, p, color);
+      prev = p;
+    }
+  };
+
+  // Local -Z is the light's travel / aim direction (see Scene::SyncLightComponents).
+  const glm::vec3 kLightForward(0.0f, 0.0f, -1.0f);
+
+  // Builds an orthonormal frame (right, up) around a (normalized) direction.
+  const auto make_basis = [&](const glm::vec3 &d, glm::vec3 &right, glm::vec3 &up) {
+    const glm::vec3 world_up(0.0f, 1.0f, 0.0f);
+    right = std::abs(glm::dot(d, world_up)) > 0.99f ? glm::normalize(glm::cross(d, glm::vec3(1.0f, 0.0f, 0.0f)))
+                                                    : glm::normalize(glm::cross(d, world_up));
+    up = glm::normalize(glm::cross(right, d));
+  };
+
+  // Light travel/aim direction from an entity's world transform (-Z mapped).
+  const auto forward_dir = [&](const glm::mat4 &world, const glm::vec3 &fallback) {
+    const glm::vec3 d = glm::normalize(glm::mat3(world) * kLightForward);
+    return glm::length(d) > 0.5f ? d : fallback;
+  };
+
+  // ---- Directional: sun disc + travel arrow --------------------------------
+  const ImU32 kDirCol = IM_COL32(255, 190, 80, 240);
+  for (auto &entity : active_scene_->GetAllEntitiesWith<DirectionalLightComponent, Transform>()) {
+    const glm::mat4 world = active_scene_->GetWorldTransform(entity.GetHandle());
+    const glm::vec3 pos   = glm::vec3(world[3]);
+    const glm::vec3 d     = forward_dir(world, glm::vec3(0.0f, -1.0f, 0.0f));
+    glm::vec3       right;
+    glm::vec3       up;
+    make_basis(d, right, up);
+
+    const float r = 0.32f;
+    draw_ring(pos, right, up, r, 24, kDirCol);
+
+    // Travel-direction arrow sticking out of the sun disc.
+    const glm::vec3 base = pos + d * (r + 0.06f);
+    const glm::vec3 tip  = pos + d * 1.15f;
+    draw_line(base, tip, kDirCol, 2.0f);
+    const float head = 0.18f;
+    draw_line(tip, tip - d * head + right * head, kDirCol);
+    draw_line(tip, tip - d * head - right * head, kDirCol);
+    draw_line(tip, tip - d * head + up * head, kDirCol);
+    draw_line(tip, tip - d * head - up * head, kDirCol);
+  }
+
+  // ---- Point: wireframe bulb (3 axis rings) + glow rays --------------------
+  const ImU32 kPtCol = IM_COL32(255, 224, 150, 240);
+  for (auto &entity : active_scene_->GetAllEntitiesWith<PointLightComponent, Transform>()) {
+    const glm::mat4 world = active_scene_->GetWorldTransform(entity.GetHandle());
+    const glm::vec3 pos   = glm::vec3(world[3]);
+
+    const float r = 0.28f;
+    const glm::vec3 axes[3] = {glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)};
+    for (int axis = 0; axis < 3; ++axis) {
+      const glm::vec3 helper = axis == 1 ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
+      const glm::vec3 b1     = glm::normalize(glm::cross(axes[axis], helper));
+      const glm::vec3 b2     = glm::cross(axes[axis], b1);
+      draw_ring(pos, b1, b2, r, 20, kPtCol);
+    }
+    // Short sparkle rays suggest an omnidirectional glow.
+    const glm::vec3 rays[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    for (const glm::vec3 &ray : rays) {
+      draw_line(pos + ray * r, pos + ray * (r + 0.32f), kPtCol, 1.5f);
+    }
+  }
+
+  // ---- Spot: wireframe cone (outer angle) ----------------------------------
+  const ImU32 kSpCol = IM_COL32(255, 205, 120, 240);
+  for (auto &entity : active_scene_->GetAllEntitiesWith<SpotLightComponent, Transform>()) {
+    const glm::mat4 world = active_scene_->GetWorldTransform(entity.GetHandle());
+    const glm::vec3 pos   = glm::vec3(world[3]);
+    const glm::vec3 d     = forward_dir(world, glm::vec3(0.0f, -1.0f, 0.0f));
+    glm::vec3       right;
+    glm::vec3       up;
+    make_basis(d, right, up);
+
+    const float half = glm::acos(std::clamp(entity.GetComponent<SpotLightComponent>().light.outer_cutoff, -1.0f, 1.0f));
+    const float len  = 1.2f;
+    const float radius = len * std::tan(std::min(half, 1.45f));  // cap ~83deg
+    const glm::vec3 center = pos + d * len;
+
+    draw_ring(center, right, up, radius, 24, kSpCol);
+    // Four cone edges from the apex to the outer ring.
+    for (int i = 0; i < 4; ++i) {
+      const float    a   = static_cast<float>(i) * 1.57079632679f;
+      const glm::vec3 dir = right * (glm::cos(a) * radius) + up * (glm::sin(a) * radius);
+      draw_line(pos, center + dir, kSpCol);
+    }
+    // A short centre arrow shows the cone axis (travel) direction.
+    const glm::vec3 tip = pos + d * (len + 0.25f);
+    draw_line(pos, tip, kSpCol, 2.0f);
+    const float head = 0.15f;
+    draw_line(tip, tip - d * head + right * head, kSpCol);
+    draw_line(tip, tip - d * head - right * head, kSpCol);
+    draw_line(tip, tip - d * head + up * head, kSpCol);
+    draw_line(tip, tip - d * head - up * head, kSpCol);
+  }
+}
+
+void Editor::DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_size) {
+  if (image_size.x <= 0.0f || image_size.y <= 0.0f) {
+    return;
+  }
+
+  ImDrawList      *draw_list = ImGui::GetWindowDrawList();
+  const glm::mat4 view_proj = editor_camera_.GetProjectionMatrix() * editor_camera_.GetViewMatrix();
+
+  const auto draw_line = [&](const glm::vec3 &a, const glm::vec3 &b, ImU32 color, float thickness = 1.5f) {
+    DrawWorldLine(draw_list, view_proj, image_pos, image_size, a, b, color, thickness);
+  };
+
+  const ImU32 color = IM_COL32(240, 160, 60, 255);
+
+  for (auto &entity : active_scene_->GetAllEntitiesWith<ColliderComponent, Transform>()) {
+    const auto &collider = entity.GetComponent<ColliderComponent>();
+
+    // Colliders are authored in world space; use the hierarchy-composed world
+    // transform so gizmos follow the entity when it is a child.
+    const glm::mat4 world = active_scene_->GetWorldTransform(entity.GetHandle());
+    glm::vec3       center;
+    glm::vec3       scale;
+    glm::quat       rotation;
+    glm::vec3       skew;
+    glm::vec4       perspective;
+    glm::decompose(world, scale, rotation, center, skew, perspective);
+    center += collider.offset;
+
+    if (collider.shape == ColliderComponent::Shape::Sphere) {
+      const float radius = collider.sphere_radius;
+      constexpr int segments = 48;
+      constexpr float two_pi = 6.28318530718f;
+      for (int axis = 0; axis < 3; ++axis) {
+        for (int i = 0; i < segments; ++i) {
+          const float a0 = two_pi * static_cast<float>(i) / static_cast<float>(segments);
+          const float a1 = two_pi * static_cast<float>(i + 1) / static_cast<float>(segments);
+          glm::vec3   p0(0.0f);
+          glm::vec3   p1(0.0f);
+          if (axis == 0) {
+            p0 = glm::vec3(0.0f, glm::cos(a0), glm::sin(a0));
+            p1 = glm::vec3(0.0f, glm::cos(a1), glm::sin(a1));
+          } else if (axis == 1) {
+            p0 = glm::vec3(glm::cos(a0), 0.0f, glm::sin(a0));
+            p1 = glm::vec3(glm::cos(a1), 0.0f, glm::sin(a1));
+          } else {
+            p0 = glm::vec3(glm::cos(a0), glm::sin(a0), 0.0f);
+            p1 = glm::vec3(glm::cos(a1), glm::sin(a1), 0.0f);
+          }
+          draw_line(center + rotation * (p0 * radius), center + rotation * (p1 * radius), color);
+        }
+      }
+    } else {
+      // Capsule/Cylinder are shown as their axis-aligned bounding box for now.
+      glm::vec3 he;
+      switch (collider.shape) {
+        case ColliderComponent::Shape::Capsule:
+          he = glm::vec3(collider.capsule_radius, collider.capsule_half_height + collider.capsule_radius,
+                         collider.capsule_radius);
+          break;
+        case ColliderComponent::Shape::Cylinder:
+          he = glm::vec3(collider.cylinder_radius, collider.cylinder_half_height, collider.cylinder_radius);
+          break;
+        case ColliderComponent::Shape::Box:
+        default:
+          he = collider.box_half_extents;
+          break;
+      }
+      glm::vec3       corners[8];
+      for (int i = 0; i < 8; ++i) {
+        const glm::vec3 local((i & 1) ? he.x : -he.x, (i & 2) ? he.y : -he.y, (i & 4) ? he.z : -he.z);
+        corners[i] = center + rotation * local;
+      }
+      const int edges[12][2] = {{0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
+                                {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+      for (const auto &edge : edges) {
+        draw_line(corners[edge[0]], corners[edge[1]], color);
+      }
+    }
+  }
 }
 
 Application *CreateApplication() { return new Editor(); }

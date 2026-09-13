@@ -1,70 +1,111 @@
 #include "core/application.hpp"
 
-#define GLFW_INCLUDE_NONE
-#include <GLFW/glfw3.h>
-#include <glad/glad.h>
+#include <cstdio>
+#include <fstream>
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
-#include "core/command.hpp"
-#include "core/input.hpp"
-#include "core/script_engine.hpp"
-#include "render/frame_buffer.hpp"
-#include "render/gl.hpp"
-#include "render/renderer.hpp"
-#include "render/shader.hpp"
-#include "scene/camera.hpp"
-#include "scene/component.hpp"
-#include "scene/scene.hpp"
+#include "audio/audio.hpp"
+#include "core/logger.hpp"
+#include "render/asset_manager.hpp"
+#include "utils/profiler.h"
 
 namespace MEngine {
 
 static Application *s_app;
 
+std::string Application::startup_scene_path_;
+GraphicsAPI Application::startup_api_ = GraphicsAPI::OpenGL;
+int         Application::max_frames_  = 0;  // 0 = run until the window closes
+bool        Application::window_hidden_ = false;
+int         Application::capture_frame_  = 0;  // 0 = disabled
+std::string Application::capture_out_path_ = "capture.ppm";
+int         Application::startup_window_width_  = 1600;
+int         Application::startup_window_height_ = 900;
+std::string Application::environment_hdr_path_ = "textures/hdr/kloppenheim_06_puresky_1k.hdr";
+bool        Application::environment_hdr_flip_  = false;
+
 Application *Application::GetInstance() { return s_app; }
 
-Application::Application() {
+Application::Application(GraphicsAPI api) : graphics_api_(api) {
   if (s_app) {
-    logger_->error("Application already exists");
+    LOG_ERROR("Application") << "Application already exists";
     exit(-1);
   }
-  s_app   = this;
-  logger_ = Logger::Get("Application");
-  logger_->info("Application started");
-  prev_time_   = glfwGetTime();
-  frame_time_  = glfwGetTime();
+  s_app = this;
+
+  // Shared asset root (single source of truth for shaders / textures / ...).
+  AssetManager::Instance().SetAssetRoot("assets");
+
+  LOG_INFO("Application") << "Application started";
+
+  // NOTE: ImGui context ownership lives with the UI application (Editor), not
+  // with the engine Application, so the engine itself never needs Dear ImGui.
+
+  prev_time_   = static_cast<float>(glfwGetTime());
+  frame_time_  = static_cast<float>(glfwGetTime());
   frame_count_ = 0;
   fps_         = 0;
 
-  glfwInit();
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  if (!glfwInit()) {
+    LOG_FATAL("Application") << "Failed to initialize GLFW";
+    exit(-1);
+  }
+  LOG_DEBUG("Application") << "GLFW initialized";
 
-  window_ = glfwCreateWindow(1600, 900, "MEngine", nullptr, nullptr);
+  rhi_ = CreateRHI(graphics_api_);
+  if (!rhi_) {
+    LOG_FATAL("Application") << "Failed to create RHI";
+    exit(-1);
+  }
+
+  SetActiveRHI(rhi_);
+
+  rhi_->SetupWindowHints();
+
+  // `--hidden` keeps the window invisible (headless-style smoke runs still
+  // render into the default framebuffer and swap normally).
+  if (window_hidden_) {
+    glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+  }
+
+  window_ = glfwCreateWindow(startup_window_width_, startup_window_height_, "MEngine", nullptr, nullptr);
 
   if (!window_) {
-    logger_->error("Failed to create GLFW window");
+    LOG_ERROR("Application") << "Failed to create GLFW window";
     glfwTerminate();
     exit(-1);
   }
 
-  glfwMakeContextCurrent(window_);
-  if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-    logger_->critical("Failed to initialize GLAD!");
+  // Push the base title (no FPS yet - it appears after the first second).
+  UpdateWindowTitle();
+
+  int window_width  = 0;
+  int window_height = 0;
+  glfwGetFramebufferSize(window_, &window_width, &window_height);
+  LOG_DEBUG("Application") << "Window created (framebuffer " << window_width << "x" << window_height << ")";
+
+  if (!rhi_->Initialize(window_)) {
+    LOG_FATAL("Application") << "Failed to initialize render backend";
     exit(-1);
   }
 
-  logger_->info("Application initialized");
+  LOG_INFO("Application") << "Application initialized";
+
+  // Engine-wide audio subsystem (device opens lazily on first playback).
+  audio_ = CreateRef<AudioSystem>();
 }
 
 Application::~Application() {
+  // Stop audio before tearing down the window / RHI (no GL dependency, but
+  // keep device shutdown deterministic).
+  audio_.reset();
+
+  rhi_.reset();
+
   if (window_) {
     glfwDestroyWindow(window_);
   }
   glfwTerminate();
-  logger_->info("Application terminated");
+  LOG_INFO("Application") << "Application terminated";
 }
 
 void Application::Initialize() {
@@ -72,32 +113,68 @@ void Application::Initialize() {
 }
 
 void Application::OnUpdate(float dt) {
+  (void)dt;
   // NOTE: This is a default implementation.
 }
 
 void Application::Run() {
+  PROFILER_FUNCTION();
+
+  // Total rendered frames (frame_count_ is the rolling FPS counter and resets
+  // every second — never use it for budgets or one-shot frame triggers).
+  int total_frames = 0;
+
   while (!glfwWindowShouldClose(window_)) {
-    float dt = GetDeltaTime();
+    PROFILER_SCOPE("One Frame");
 
-    glEnable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    const float dt = GetDeltaTime();
+    ++total_frames;
 
-    glClearColor(0.6f, 0.6f, 0.6f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    rhi_->BeginFrame(glm::vec4(0.6f, 0.6f, 0.6f, 1.0f));
 
     OnUpdate(dt);
 
-    glfwSwapBuffers(window_);
+    rhi_->EndFrame(window_);
 
     glfwPollEvents();
+
+    // Unattended verification: save the backbuffer as PPM on the requested
+    // frame (read before the swap, from the still-current default framebuffer).
+    if (capture_frame_ > 0 && total_frames == capture_frame_) {
+      int width = 0;
+      int height = 0;
+      glfwGetFramebufferSize(window_, &width, &height);
+      std::vector<unsigned char> rgb;
+      if (rhi_ && width > 0 && height > 0 && rhi_->ReadBackBuffer(width, height, rgb)) {
+        std::ofstream file(capture_out_path_, std::ios::binary);
+        if (file.is_open()) {
+          file << "P6\n" << width << " " << height << "\n255\n";
+          // OpenGL rows are bottom-up; flip so the PPM is top-down.
+          for (int row = height - 1; row >= 0; --row) {
+            file.write(reinterpret_cast<const char *>(rgb.data()) + static_cast<size_t>(row) * width * 3,
+                       static_cast<std::streamsize>(width) * 3);
+          }
+          LOG_INFO("Application") << "Captured frame " << capture_frame_ << " to " << capture_out_path_ << " ("
+                                  << width << "x" << height << ")";
+        } else {
+          LOG_ERROR("Application") << "Failed to open capture file " << capture_out_path_;
+        }
+      } else {
+        LOG_ERROR("Application") << "Backbuffer readback unavailable or failed";
+      }
+    }
+
+    if (max_frames_ > 0 && total_frames >= max_frames_) {
+      LOG_INFO("Application") << "Frame budget reached (" << total_frames << " frames); exiting";
+      break;
+    }
   }
 }
 
 float Application::GetDeltaTime() {
-  float current_time = static_cast<float>(glfwGetTime());
-  float delta_time   = current_time - prev_time_;
-  prev_time_         = current_time;
+  const auto  current_time = static_cast<float>(glfwGetTime());
+  const float delta_time   = current_time - prev_time_;
+  prev_time_               = current_time;
 
   frame_count_++;
 
@@ -105,9 +182,28 @@ float Application::GetDeltaTime() {
     fps_         = frame_count_;
     frame_count_ = 0;
     frame_time_  = current_time;
+    UpdateWindowTitle();  // title bar carries the live FPS once a second
   }
 
   return delta_time;
+}
+
+void Application::SetWindowTitleBase(const std::string &title) {
+  window_title_base_ = title;
+  UpdateWindowTitle();
+}
+
+void Application::UpdateWindowTitle() {
+  if (!window_) {
+    return;
+  }
+  std::string title = window_title_base_;
+  if (fps_ > 0) {
+    char suffix[64];
+    std::snprintf(suffix, sizeof(suffix), "  |  %d FPS (%.1f ms)", fps_, 1000.0 / static_cast<double>(fps_));
+    title += suffix;
+  }
+  glfwSetWindowTitle(window_, title.c_str());
 }
 
 }  // namespace MEngine

@@ -11,22 +11,18 @@
 
 #pragma once
 
-#include "core/application.hpp"
-#include "core/entry_point.hpp"
-#include "core/script_engine.hpp"
-#include "render/frame_buffer.hpp"
-#include "scene/camera.hpp"
-#include "scene/entity.hpp"
-#include "scene/scene.hpp"
+#include "mengine.hpp"
 
-#include <filesystem>
+#include <ImGuizmo.h>
+
+#include "editor_camera.hpp"
 
 using namespace MEngine;
 
 class Editor : public Application {
  public:
   Editor();
-  ~Editor();
+  ~Editor() override;
 
   void Initialize() override;
 
@@ -35,9 +31,22 @@ class Editor : public Application {
   void BeginImGui();
   void EndImGui();
 
+  void ShowImGuiContentBrowser();
   void ShowImGuiScene();
   void ShowImGuiViewport();
+  /// @brief The 2D workspace: shown instead of the 3D "Viewport" panel whenever
+  /// the open scene is a 2D scene. It is the only place a 2D scene is rendered
+  /// (always through Scene::Render2D) and it has its own toolbar / controls:
+  /// sprites are created here, the orthographic camera pans with the middle
+  /// mouse button and zooms with the wheel, and there is no fly/orbit mode.
+  void ShowImGui2DViewport();
   void ShowImGuiProperties();
+  void ShowImGuiLighting();
+  void ShowImGuiRendering();
+  void ShowImGuiLog();
+  void ShowImGuiInformation();
+  void ShowImGuiScriptEditor();
+  void ShowImGuiTimeline();
 
   template <typename T>
   void DisplayAddComponentEntry(const std::string &entryName);
@@ -55,18 +64,151 @@ class Editor : public Application {
 
   std::shared_ptr<FrameBuffer> frame_buffer_;
 
-  std::shared_ptr<ScriptEngine> script_engine_;
+  EditorCamera editor_camera_;
 
-  std::shared_ptr<Camera2D> editor_camera_info_;
+  std::filesystem::path base_directory_;
+  std::filesystem::path current_directory_;
 
-  std::filesystem::path m_BaseDirectory;
-  std::filesystem::path m_CurrentDirectory;
+  std::shared_ptr<Texture> directory_icon_;
+  std::shared_ptr<Texture> file_icon_;
 
-  std::shared_ptr<Texture> m_DirectoryIcon;
-  std::shared_ptr<Texture> m_FileIcon;
+  std::unordered_map<std::string, Ref<Texture>> thumbnail_cache_;
 
-  ShaderLibrary  shader_library_;
-  TextureLibrary texture_library_;
+  Entity        grid_entity_;
+  Ref<Mesh>     grid_mesh_;
+  Ref<Material> grid_material_;
+  Ref<Material> default_material_;
+
+  ImGuizmo::OPERATION gizmo_operation_ = ImGuizmo::TRANSLATE;
+
+  bool show_content_browser_ = true;
+  bool show_scene_           = true;
+  bool show_viewport_        = true;
+  bool show_viewport_2d_     = true;
+  bool show_properties_      = true;
+  bool show_lighting_        = true;
+  bool show_rendering_       = true;
+  bool show_log_             = true;
+  bool show_information_     = true;
+  bool show_colliders_       = true;
+  bool show_script_editor_   = true;
+  bool show_timeline_        = true;
+  bool env_hdr_flip_         = false;  ///< vertical flip when loading a dropped .hdr environment
+  /// @brief Auto-Key toggle: gizmo moves on an already-animated entity record
+  /// keys at the current playhead (like Blender auto-keyframe / Unity record).
+  bool auto_key_ = true;
+
+  // --- Timeline interaction state ------------------------------------------
+  /// @brief Currently selected keyframe: channel 0..2 (T/R/S), -1 = none; the
+  /// key is identified by its time so it survives re-sorting of the channel.
+  int   tl_sel_channel_ = -1;
+  float tl_sel_time_    = -1.0f;
+
+  ImGuiID dockspace_id_ = 0;
+
+  ImFont *mono_font_ = nullptr;
+
+  // --- Script editor state -------------------------------------------------
+  static constexpr size_t kScriptBufferSize = 128 * 1024;
+
+  std::string current_script_path_;  ///< open script, relative to the asset root
+  bool        script_dirty_ = false; ///< buffer differs from the file on disk
+  char        script_code_[kScriptBufferSize] = {};
+  std::string script_pending_path_;  ///< file awaiting the unsaved-changes prompt
+  bool        script_pending_create_ = false;  ///< pending file must be created first
+
+  /// @brief Loads `relative` into the editor buffer (marks it clean).
+  void LoadScriptIntoBuffer(const std::string &relative);
+
+  /// @brief Writes the current buffer to disk and hot-reloads running scripts.
+  /// Returns false when the write fails.
+  bool SaveCurrentScript();
+
+  /// @brief Opens `relative` in the Script Editor, showing an unsaved-changes
+  /// prompt first if the current buffer is dirty.
+  void OpenScriptInEditor(const std::string &relative);
+
+  /// @brief Applies the pending open/create after the user resolves the prompt.
+  void ApplyScriptPending();
+
+  Entity CreateEntityWithUniqueName(const std::string &base_name);
+  void CreatePrimitive(const std::string &name, const Ref<Mesh> &mesh);
+  /// @brief Creates a primitive (or empty entity) parented under the current
+  /// selection and selects it. Creates at root when nothing is selected.
+  Entity CreateChildPrimitive(const std::string &name, const Ref<Mesh> &mesh);
+  void CreateCameraEntity();
+  void CreatePointLightEntity();
+  void CreateSpotLightEntity();
+  void CreateDirectionalLightEntity();
+  void CreateModelEntity(const std::filesystem::path &path);
+  /// @brief Creates a 2D sprite entity (Transform + SpriteComponent) under the
+  /// current selection (or at the origin), with a default texture.
+  void CreateSpriteEntity();
+  void CreateEngineDemo();
+  /// @brief Builds the default 2D showcase scene (orthographic primary camera,
+  /// tile background, an animated sprite and a static sprite).
+  void Create2DDemo();
+  void DuplicateSelectedEntity();
+  /// @brief Deep-copies `source` and its whole child subtree. The copy is
+  /// parented under `parent_copy` (entt::null = root) when `source` had one.
+  Entity DuplicateEntitySubtree(Entity source, entt::entity parent_copy);
+  /// @brief Auto-Key: when enabled and the entity is already animated, records
+  /// any gizmo-changed Transform channel as a key at the current playhead time.
+  /// Only fires in Edit mode while the timeline is not playing.
+  void AutoKeyGizmoEdit(Entity entity, const glm::vec3 &prev_translation, const glm::vec3 &prev_rotation,
+                        const glm::vec3 &prev_scale);
+  void ApplyDefaultLayout(ImGuiID dockspace_id);
+  void ShowGizmo(const ImVec2 &image_pos, const ImVec2 &image_size);
+  void DrawCameraGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
+  void DrawLightGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
+  void DrawColliderGizmos(const ImVec2 &image_pos, const ImVec2 &image_size);
+  void SetGridVisible(bool visible);
+  void LaunchStandalone();
+
+  // --- 2D scene support ------------------------------------------------------
+  /// @brief True when the open scene is a 2D scene (the 2D Viewport panel is
+  /// shown instead of the 3D one and every draw goes through Scene::Render2D).
+  [[nodiscard]] bool Is2DView() const { return active_scene_ != nullptr && active_scene_->Is2D(); }
+
+  /// @brief Lays out the editor-only helpers for the current scene's dimension
+  /// (the XY grid plane for 2D, the XZ one for 3D) and points the editor camera
+  /// at the matching view. Called whenever the open scene changes.
+  void ApplyViewMode();
+
+  /// @brief Adopts the current scene's dimension (2D or 3D) and applies it.
+  void SyncViewModeToScene();
+
+  // --- Scene file management (File menu) ------------------------------------
+  std::string current_scene_path_;  ///< absolute path of the open `.scene` file, empty for an unsaved new scene
+
+  /// @brief Stops any running simulation and clears script / selection state so
+  /// a scene-file operation can safely replace the content. Mirror of the
+  /// Play-mode Stop handler.
+  void ExitGameModeForFileOp();
+
+  /// @brief Starts a brand-new, empty scene.
+  void NewScene();
+
+  /// @brief Starts a brand-new 2D scene: an orthographic primary camera, a
+  /// solid background (no skybox) and the 2D view enabled.
+  void NewScene2D();
+
+  /// @brief Shows the native "Open Scene" dialog and loads the chosen file.
+  void OpenSceneDialog();
+
+  /// @brief Loads `path` (stops Play first if running).
+  void OpenScenePath(const std::string &path);
+
+  /// @brief Saves to current_scene_path_, or shows "Save As" when none is set.
+  void SaveCurrentScene();
+
+  /// @brief Shows the native "Save Scene As" dialog and saves.
+  void SaveSceneAsDialog();
+
+  /// @brief Unattended verification of the File-menu scene ops: new / open /
+  /// save round-trip. Driven by MENGINE_EDITOR_SELFTEST_SCENE=<path>; logs a
+  /// PASS/FAIL summary and restores the default demo scene afterwards.
+  void RunSceneFileSelftest(const std::string &path);
 };
 
 ::MEngine::Application *CreateApplication();
